@@ -1,0 +1,29 @@
+{
+  "name": "@realestate-radar/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "tsc --noEmit",
+    "pipeline:download": "tsx src/pipeline/download.ts",
+    "pipeline:import": "tsx src/pipeline/import-plvr.ts",
+    "pipeline:run": "tsx src/pipeline/download.ts && tsx src/pipeline/import-plvr.ts"
+  },
+  "dependencies": {
+    "csv-parse": "^5.6.0",
+    "express": "^5.1.0",
+    "iconv-lite": "^0.6.3",
+    "pg": "^8.13.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

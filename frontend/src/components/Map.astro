@@ -1,0 +1,209 @@
+---
+/**
+ * MapLibre GL JS map component
+ * Renders transaction data as a dot layer with popups
+ */
+---
+
+<div id="map"></div>
+
+<script>
+  import maplibregl from "maplibre-gl";
+
+  const API_BASE = import.meta.env.DEV ? "/api" : "https://api.example.com/api";
+
+  // Center on Taiwan
+  const map = new maplibregl.Map({
+    container: "map",
+    style: {
+      version: 8,
+      name: "Real Price Radar",
+      sources: {
+        osm: {
+          type: "raster",
+          tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+          tileSize: 256,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        },
+      },
+      layers: [
+        {
+          id: "osm-tiles",
+          type: "raster",
+          source: "osm",
+          minzoom: 0,
+          maxzoom: 19,
+        },
+      ],
+    },
+    center: [121.5654, 25.033],  // Taipei
+    zoom: 12,
+    maxBounds: [[119, 21.5], [123, 26.5]],  // Taiwan bounds
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), "top-right");
+  map.addControl(new maplibregl.ScaleControl({ maxWidth: 200 }));
+
+  // Price color scale (unit_price in 萬/坪)
+  function priceColor(unitPrice: number): string {
+    const priceWan = unitPrice / 10000;
+    if (priceWan < 20) return "#22c55e";   // green — cheap
+    if (priceWan < 40) return "#84cc16";   // lime
+    if (priceWan < 60) return "#eab308";   // yellow
+    if (priceWan < 80) return "#f97316";   // orange
+    if (priceWan < 100) return "#ef4444";  // red
+    return "#dc2626";                       // dark red — expensive
+  }
+
+  // Format price for display
+  function formatPrice(price: number): string {
+    if (price >= 100_000_000) return `${(price / 100_000_000).toFixed(1)} 億`;
+    if (price >= 10_000) return `${(price / 10_000).toFixed(0)} 萬`;
+    return price.toLocaleString();
+  }
+
+  // Load transaction GeoJSON
+  async function loadTransactions(params: Record<string, string> = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const url = `${API_BASE}/transactions/geojson${qs ? `?${qs}` : ""}`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const geojson = await res.json();
+
+      const source = map.getSource("transactions") as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(geojson);
+      } else {
+        map.addSource("transactions", {
+          type: "geojson",
+          data: geojson,
+        });
+
+        // Circle layer colored by price
+        map.addLayer({
+          id: "transactions-circles",
+          type: "circle",
+          source: "transactions",
+          paint: {
+            "circle-radius": [
+              "interpolate", ["linear"], ["zoom"],
+              10, 2,
+              14, 6,
+              18, 12,
+            ],
+            "circle-color": [
+              "interpolate", ["linear"],
+              ["get", "unitPrice"],
+              200000, "#22c55e",
+              400000, "#84cc16",
+              600000, "#eab308",
+              800000, "#f97316",
+              1000000, "#ef4444",
+              1500000, "#dc2626",
+            ],
+            "circle-opacity": 0.7,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-opacity": 0.5,
+          },
+        });
+      }
+
+      // Update stats
+      const statsEl = document.getElementById("stats-content");
+      if (statsEl && geojson.features) {
+        const prices = geojson.features
+          .map((f: any) => f.properties.unitPrice)
+          .filter((p: any) => p != null && p > 0);
+
+        if (prices.length > 0) {
+          prices.sort((a: number, b: number) => a - b);
+          const median = prices[Math.floor(prices.length / 2)];
+          const avg = Math.round(prices.reduce((s: number, p: number) => s + p, 0) / prices.length);
+
+          statsEl.innerHTML = `
+            <div class="popup-row">
+              <span class="popup-label">筆數</span>
+              <span class="popup-value">${geojson.features.length.toLocaleString()}</span>
+            </div>
+            <div class="popup-row">
+              <span class="popup-label">中位數 (元/坪)</span>
+              <span class="popup-price">${formatPrice(median)}</span>
+            </div>
+            <div class="popup-row">
+              <span class="popup-label">平均 (元/坪)</span>
+              <span class="popup-price">${formatPrice(avg)}</span>
+            </div>
+          `;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load transactions:", err);
+    }
+  }
+
+  // Popup on click
+  map.on("click", "transactions-circles", (e) => {
+    if (!e.features || e.features.length === 0) return;
+    const props = e.features[0].properties;
+    const coords = (e.features[0].geometry as GeoJSON.Point).coordinates.slice() as [number, number];
+
+    new maplibregl.Popup({ offset: 10 })
+      .setLngLat(coords)
+      .setHTML(`
+        <div class="popup-title">${props.address || "地址未登錄"}</div>
+        <div class="popup-row">
+          <span class="popup-label">單價</span>
+          <span class="popup-price">${formatPrice(props.unitPrice)}/坪</span>
+        </div>
+        <div class="popup-row">
+          <span class="popup-label">總價</span>
+          <span class="popup-value">${formatPrice(props.totalPrice)}</span>
+        </div>
+        <div class="popup-row">
+          <span class="popup-label">坪數</span>
+          <span class="popup-value">${props.areaPing ? Number(props.areaPing).toFixed(1) + " 坪" : "—"}</span>
+        </div>
+        <div class="popup-row">
+          <span class="popup-label">型態</span>
+          <span class="popup-value">${props.buildingType || "—"}</span>
+        </div>
+        <div class="popup-row">
+          <span class="popup-label">日期</span>
+          <span class="popup-value">${props.date}</span>
+        </div>
+      `)
+      .addTo(map);
+  });
+
+  // Cursor style
+  map.on("mouseenter", "transactions-circles", () => {
+    map.getCanvas().style.cursor = "pointer";
+  });
+  map.on("mouseleave", "transactions-circles", () => {
+    map.getCanvas().style.cursor = "";
+  });
+
+  // Search button handler
+  document.getElementById("search-btn")?.addEventListener("click", () => {
+    const params: Record<string, string> = {};
+    const city = (document.getElementById("city-select") as HTMLSelectElement)?.value;
+    const minPrice = (document.getElementById("price-min") as HTMLInputElement)?.value;
+    const maxPrice = (document.getElementById("price-max") as HTMLInputElement)?.value;
+    const buildingType = (document.getElementById("building-type") as HTMLSelectElement)?.value;
+
+    if (city) params.city = city;
+    if (minPrice) params.minPrice = String(Number(minPrice) * 10000);  // 萬 → 元
+    if (maxPrice) params.maxPrice = String(Number(maxPrice) * 10000);
+    if (buildingType) params.buildingType = buildingType;
+
+    loadTransactions(params);
+  });
+
+  // Initial load when map is ready
+  map.on("load", () => {
+    loadTransactions({ city: "台北市" });
+  });
+</script>

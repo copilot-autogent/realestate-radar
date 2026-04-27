@@ -1,0 +1,62 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Map from "../components/Map.astro";
+---
+
+<Layout title="實價登錄雷達 — Real Price Radar">
+  <header class="header">
+    <h1>🏠 實價登錄雷達</h1>
+    <p class="subtitle">Real Price Radar — Taiwan Real Estate Analytics</p>
+  </header>
+
+  <main class="main">
+    <aside class="sidebar">
+      <div class="filter-group">
+        <label for="city-select">縣市</label>
+        <select id="city-select">
+          <option value="">全部</option>
+          <option value="台北市">台北市</option>
+          <option value="新北市">新北市</option>
+          <option value="桃園市">桃園市</option>
+          <option value="台中市">台中市</option>
+          <option value="台南市">台南市</option>
+          <option value="高雄市">高雄市</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="price-min">單價 (萬/坪)</label>
+        <div class="range-inputs">
+          <input type="number" id="price-min" placeholder="最低" />
+          <span>~</span>
+          <input type="number" id="price-max" placeholder="最高" />
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label for="building-type">建物型態</label>
+        <select id="building-type">
+          <option value="">全部</option>
+          <option value="住宅大樓">住宅大樓</option>
+          <option value="華廈">華廈</option>
+          <option value="公寓">公寓</option>
+          <option value="透天厝">透天厝</option>
+          <option value="套房">套房</option>
+        </select>
+      </div>
+
+      <button id="search-btn" class="search-btn">搜尋</button>
+
+      <div id="stats-panel" class="stats-panel">
+        <h3>統計資訊</h3>
+        <div id="stats-content">
+          <p class="placeholder">選擇條件後按搜尋</p>
+        </div>
+      </div>
+    </aside>
+
+    <div class="map-container">
+      <Map />
+    </div>
+  </main>
+</Layout>
