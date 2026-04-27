@@ -10,7 +10,8 @@
 <script>
   import maplibregl from "maplibre-gl";
 
-  const API_BASE = import.meta.env.DEV ? "/api" : "https://api.example.com/api";
+  const API_BASE = import.meta.env.DEV ? "/api" : "";
+  const STATIC_DATA_URL = `${import.meta.env.BASE_URL}data/sample-transactions.json`;
 
   // Center on Taiwan
   const map = new maplibregl.Map({
@@ -62,15 +63,44 @@
     return price.toLocaleString();
   }
 
-  // Load transaction GeoJSON
+  // Load transaction GeoJSON — tries live API first, falls back to static sample data
   async function loadTransactions(params: Record<string, string> = {}) {
-    const qs = new URLSearchParams(params).toString();
-    const url = `${API_BASE}/transactions/geojson${qs ? `?${qs}` : ""}`;
+    let geojson: any;
 
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const geojson = await res.json();
+      if (API_BASE) {
+        const qs = new URLSearchParams(params).toString();
+        const url = `${API_BASE}/transactions/geojson${qs ? `?${qs}` : ""}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        geojson = await res.json();
+      } else {
+        throw new Error("No API configured");
+      }
+    } catch {
+      // Fall back to static sample data
+      const res = await fetch(STATIC_DATA_URL);
+      geojson = await res.json();
+
+      // Client-side filtering for static data
+      if (params.city) {
+        geojson.features = geojson.features.filter((f: any) => f.properties.city === params.city);
+      }
+      if (params.district) {
+        geojson.features = geojson.features.filter((f: any) => f.properties.district === params.district);
+      }
+      if (params.minPrice) {
+        geojson.features = geojson.features.filter((f: any) => f.properties.unitPrice >= Number(params.minPrice));
+      }
+      if (params.maxPrice) {
+        geojson.features = geojson.features.filter((f: any) => f.properties.unitPrice <= Number(params.maxPrice));
+      }
+      if (params.buildingType) {
+        geojson.features = geojson.features.filter((f: any) => f.properties.buildingType === params.buildingType);
+      }
+    }
+
+    try {
 
       const source = map.getSource("transactions") as maplibregl.GeoJSONSource | undefined;
       if (source) {
@@ -190,11 +220,13 @@
   document.getElementById("search-btn")?.addEventListener("click", () => {
     const params: Record<string, string> = {};
     const city = (document.getElementById("city-select") as HTMLSelectElement)?.value;
+    const district = (document.getElementById("district-select") as HTMLSelectElement)?.value;
     const minPrice = (document.getElementById("price-min") as HTMLInputElement)?.value;
     const maxPrice = (document.getElementById("price-max") as HTMLInputElement)?.value;
     const buildingType = (document.getElementById("building-type") as HTMLSelectElement)?.value;
 
     if (city) params.city = city;
+    if (district) params.district = district;
     if (minPrice) params.minPrice = String(Number(minPrice) * 10000);  // 萬 → 元
     if (maxPrice) params.maxPrice = String(Number(maxPrice) * 10000);
     if (buildingType) params.buildingType = buildingType;
@@ -202,8 +234,8 @@
     loadTransactions(params);
   });
 
-  // Initial load when map is ready
+  // Initial load when map is ready (no filter = show all demo data)
   map.on("load", () => {
-    loadTransactions({ city: "台北市" });
+    loadTransactions();
   });
 </script>
