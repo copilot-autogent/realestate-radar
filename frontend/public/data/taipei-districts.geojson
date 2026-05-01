@@ -1,0 +1,149 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "district": "北投區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.455, 25.100], [121.546, 25.100],
+          [121.546, 25.212], [121.455, 25.212],
+          [121.455, 25.100]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "士林區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.488, 25.058], [121.626, 25.058],
+          [121.626, 25.122], [121.488, 25.122],
+          [121.488, 25.058]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "內湖區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.572, 25.044], [121.660, 25.044],
+          [121.660, 25.122], [121.572, 25.122],
+          [121.572, 25.044]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "大同區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.498, 25.041], [121.534, 25.041],
+          [121.534, 25.078], [121.498, 25.078],
+          [121.498, 25.041]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "中山區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.530, 25.038], [121.582, 25.038],
+          [121.582, 25.082], [121.530, 25.082],
+          [121.530, 25.038]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "松山區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.543, 25.028], [121.602, 25.028],
+          [121.602, 25.062], [121.543, 25.062],
+          [121.543, 25.028]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "萬華區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.464, 25.010], [121.512, 25.010],
+          [121.512, 25.060], [121.464, 25.060],
+          [121.464, 25.010]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "中正區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.502, 25.006], [121.550, 25.006],
+          [121.550, 25.050], [121.502, 25.050],
+          [121.502, 25.006]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "大安區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.526, 24.988], [121.578, 24.988],
+          [121.578, 25.042], [121.526, 25.042],
+          [121.526, 24.988]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "信義區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.550, 24.998], [121.622, 24.998],
+          [121.622, 25.060], [121.550, 25.060],
+          [121.550, 24.998]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "南港區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.588, 25.024], [121.662, 25.024],
+          [121.662, 25.100], [121.588, 25.100],
+          [121.588, 25.024]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "文山區", "city": "台北市" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.530, 24.960], [121.622, 24.960],
+          [121.622, 25.010], [121.530, 25.010],
+          [121.530, 24.960]
+        ]]
+      }
+    }
+  ]
+}
