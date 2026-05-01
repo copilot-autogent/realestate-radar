@@ -1,19 +1,82 @@
 ---
 /**
  * MapLibre GL JS map component
- * Renders transaction data as a dot layer with popups
+ * Renders transaction dots + district choropleth layer
  */
 ---
 
 <div id="map"></div>
+
+<style is:global>
+  /* Choropleth legend overlay */
+  .choropleth-legend {
+    position: absolute;
+    bottom: 40px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.93);
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.78rem;
+    z-index: 10;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+  .legend-title {
+    font-weight: 700;
+    font-size: 0.72rem;
+    color: #475569;
+    margin-bottom: 7px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .legend-items { display: flex; flex-direction: column; gap: 4px; }
+  .legend-item  { display: flex; align-items: center; gap: 6px; color: #334155; }
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    opacity: 0.82;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+
+  /* Toggle row in sidebar */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 8px 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+  }
+  .toggle-row input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: #2563eb;
+  }
+  .toggle-row label {
+    font-size: 0.85rem;
+    color: #475569;
+    cursor: pointer;
+    margin-bottom: 0 !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    font-weight: 500;
+  }
+</style>
 
 <script>
   import maplibregl from "maplibre-gl";
 
   const API_BASE = import.meta.env.DEV ? "/api" : "";
   const STATIC_DATA_URL = `${import.meta.env.BASE_URL}data/sample-transactions.json`;
+  const DISTRICTS_URL = `${import.meta.env.BASE_URL}data/taipei-districts.geojson`;
 
-  // Center on Taiwan
+  // Center on Taipei
   const map = new maplibregl.Map({
     container: "map",
     style: {
@@ -37,34 +100,65 @@
         },
       ],
     },
-    center: [121.5654, 25.033],  // Taipei
+    center: [121.5654, 25.033],
     zoom: 12,
-    maxBounds: [[119, 21.5], [123, 26.5]],  // Taiwan bounds
+    maxBounds: [[119, 21.5], [123, 26.5]],
   });
 
   map.addControl(new maplibregl.NavigationControl(), "top-right");
   map.addControl(new maplibregl.ScaleControl({ maxWidth: 200 }));
 
-  // Price color scale (unit_price in 萬/坪)
-  function priceColor(unitPrice: number): string {
-    const priceWan = unitPrice / 10000;
-    if (priceWan < 20) return "#22c55e";   // green — cheap
-    if (priceWan < 40) return "#84cc16";   // lime
-    if (priceWan < 60) return "#eab308";   // yellow
-    if (priceWan < 80) return "#f97316";   // orange
-    if (priceWan < 100) return "#ef4444";  // red
-    return "#dc2626";                       // dark red — expensive
-  }
-
-  // Format price for display
+  // ---- Helpers ----
   function formatPrice(price: number): string {
     if (price >= 100_000_000) return `${(price / 100_000_000).toFixed(1)} 億`;
     if (price >= 10_000) return `${(price / 10_000).toFixed(0)} 萬`;
     return price.toLocaleString();
   }
 
-  // Load transaction GeoJSON — tries live API first, falls back to static sample data
-  async function loadTransactions(params: Record<string, string> = {}) {
+  // ---- Choropleth state ----
+  let districtGeoJSON: any = null;
+  let currentTxGeojson: any = null;
+
+  /** Compute median unit price per district from transaction features. */
+  function computeDistrictMedians(features: any[]): Record<string, number> {
+    const byDistrict: Record<string, number[]> = {};
+    for (const f of features) {
+      const d = f.properties?.district as string | undefined;
+      const p = f.properties?.unitPrice as number | undefined;
+      if (d && p && p > 0) {
+        if (!byDistrict[d]) byDistrict[d] = [];
+        byDistrict[d].push(p);
+      }
+    }
+    const medians: Record<string, number> = {};
+    for (const [d, prices] of Object.entries(byDistrict)) {
+      const sorted = [...prices].sort((a, b) => a - b);
+      medians[d] = sorted[Math.floor(sorted.length / 2)];
+    }
+    return medians;
+  }
+
+  /** Re-join district median prices into the district GeoJSON and update source. */
+  function updateChoropleth(): void {
+    const src = map.getSource("districts") as maplibregl.GeoJSONSource | undefined;
+    if (!src || !districtGeoJSON || !currentTxGeojson) return;
+    const medians = computeDistrictMedians(currentTxGeojson.features ?? []);
+    const updated = {
+      ...districtGeoJSON,
+      features: districtGeoJSON.features.map((f: any) => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          // -1 signals "no data" to the paint expression
+          medianPrice: medians[f.properties.district] ?? -1,
+        },
+      })),
+    };
+    src.setData(updated);
+  }
+
+  // ---- Transaction loading ----
+  async function loadTransactions(params: Record<string, string> = {}): Promise<any> {
     let geojson: any;
 
     try {
@@ -82,36 +176,22 @@
       const res = await fetch(STATIC_DATA_URL);
       geojson = await res.json();
 
-      // Client-side filtering for static data
-      if (params.city) {
-        geojson.features = geojson.features.filter((f: any) => f.properties.city === params.city);
-      }
-      if (params.district) {
-        geojson.features = geojson.features.filter((f: any) => f.properties.district === params.district);
-      }
-      if (params.minPrice) {
-        geojson.features = geojson.features.filter((f: any) => f.properties.unitPrice >= Number(params.minPrice));
-      }
-      if (params.maxPrice) {
-        geojson.features = geojson.features.filter((f: any) => f.properties.unitPrice <= Number(params.maxPrice));
-      }
-      if (params.buildingType) {
-        geojson.features = geojson.features.filter((f: any) => f.properties.buildingType === params.buildingType);
-      }
+      // Client-side filtering
+      if (params.city)         geojson.features = geojson.features.filter((f: any) => f.properties.city === params.city);
+      if (params.district)    geojson.features = geojson.features.filter((f: any) => f.properties.district === params.district);
+      if (params.minPrice)    geojson.features = geojson.features.filter((f: any) => f.properties.unitPrice >= Number(params.minPrice));
+      if (params.maxPrice)    geojson.features = geojson.features.filter((f: any) => f.properties.unitPrice <= Number(params.maxPrice));
+      if (params.buildingType) geojson.features = geojson.features.filter((f: any) => f.properties.buildingType === params.buildingType);
     }
 
-    try {
+    currentTxGeojson = geojson;
 
+    try {
       const source = map.getSource("transactions") as maplibregl.GeoJSONSource | undefined;
       if (source) {
         source.setData(geojson);
       } else {
-        map.addSource("transactions", {
-          type: "geojson",
-          data: geojson,
-        });
-
-        // Circle layer colored by price
+        map.addSource("transactions", { type: "geojson", data: geojson });
         map.addLayer({
           id: "transactions-circles",
           type: "circle",
@@ -119,9 +199,7 @@
           paint: {
             "circle-radius": [
               "interpolate", ["linear"], ["zoom"],
-              10, 2,
-              14, 6,
-              18, 12,
+              10, 2, 14, 6, 18, 12,
             ],
             "circle-color": [
               "interpolate", ["linear"],
@@ -133,7 +211,7 @@
               1000000, "#ef4444",
               1500000, "#dc2626",
             ],
-            "circle-opacity": 0.7,
+            "circle-opacity": 0.85,
             "circle-stroke-width": 1,
             "circle-stroke-color": "#ffffff",
             "circle-stroke-opacity": 0.5,
@@ -141,18 +219,16 @@
         });
       }
 
-      // Update stats
+      // Update stats panel
       const statsEl = document.getElementById("stats-content");
       if (statsEl && geojson.features) {
         const prices = geojson.features
           .map((f: any) => f.properties.unitPrice)
           .filter((p: any) => p != null && p > 0);
-
         if (prices.length > 0) {
           prices.sort((a: number, b: number) => a - b);
           const median = prices[Math.floor(prices.length / 2)];
           const avg = Math.round(prices.reduce((s: number, p: number) => s + p, 0) / prices.length);
-
           statsEl.innerHTML = `
             <div class="popup-row">
               <span class="popup-label">筆數</span>
@@ -170,16 +246,93 @@
         }
       }
     } catch (err) {
-      console.error("Failed to load transactions:", err);
+      console.error("Failed to update map layer:", err);
     }
+
+    // Recompute choropleth colors with current data
+    updateChoropleth();
+    return geojson;
   }
 
-  // Popup on click
+  // ---- Map load ----
+  map.on("load", async () => {
+    // 1. District fill + border layers FIRST (render below transaction dots)
+    map.addSource("districts", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+
+    map.addLayer({
+      id: "districts-fill",
+      type: "fill",
+      source: "districts",
+      paint: {
+        "fill-color": [
+          "case",
+          // medianPrice < 0 means no data → grey
+          ["<", ["coalesce", ["get", "medianPrice"], -1], 0],
+          "#d1d5db",
+          [
+            "interpolate", ["linear"],
+            ["get", "medianPrice"],
+            300000,  "#22c55e",
+            500000,  "#84cc16",
+            700000,  "#eab308",
+            900000,  "#f97316",
+            1100000, "#ef4444",
+            1400000, "#7c1010",
+          ],
+        ],
+        "fill-opacity": 0.44,
+      },
+    });
+
+    map.addLayer({
+      id: "districts-line",
+      type: "line",
+      source: "districts",
+      paint: {
+        "line-color": "#475569",
+        "line-width": 1.5,
+        "line-opacity": 0.65,
+      },
+    });
+
+    // 2. Load transactions — circles layer added ON TOP of district fill
+    await loadTransactions();
+
+    // 3. Fetch district boundaries (async, doesn't block tx rendering)
+    try {
+      const res = await fetch(DISTRICTS_URL);
+      districtGeoJSON = await res.json();
+      updateChoropleth();
+    } catch (e) {
+      console.warn("[choropleth] district boundaries unavailable:", e);
+    }
+
+    // 4. Inject legend into map container
+    const legend = document.createElement("div");
+    legend.id = "choropleth-legend";
+    legend.className = "choropleth-legend";
+    legend.innerHTML = `
+      <div class="legend-title">行政區 中位數單價</div>
+      <div class="legend-items">
+        <div class="legend-item"><span class="legend-swatch" style="background:#22c55e"></span>&lt; 50萬/坪</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#84cc16"></span>50–70萬/坪</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#eab308"></span>70–90萬/坪</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#f97316"></span>90–110萬/坪</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>110–140萬/坪</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#7c1010"></span>&gt; 140萬/坪</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
+      </div>`;
+    document.getElementById("map")!.appendChild(legend);
+  });
+
+  // ---- Popup on transaction click ----
   map.on("click", "transactions-circles", (e) => {
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
     const coords = (e.features[0].geometry as GeoJSON.Point).coordinates.slice() as [number, number];
-
     new maplibregl.Popup({ offset: 10 })
       .setLngLat(coords)
       .setHTML(`
@@ -208,7 +361,7 @@
       .addTo(map);
   });
 
-  // Cursor style
+  // Cursor on transaction dots
   map.on("mouseenter", "transactions-circles", () => {
     map.getCanvas().style.cursor = "pointer";
   });
@@ -216,26 +369,61 @@
     map.getCanvas().style.cursor = "";
   });
 
-  // Search button handler
+  // ---- District hover popup ----
+  let districtHover: maplibregl.Popup | null = null;
+
+  map.on("mousemove", "districts-fill", (e) => {
+    if (!e.features || e.features.length === 0) return;
+    const props = e.features[0].properties as Record<string, any>;
+    if (!districtHover) {
+      districtHover = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 4,
+      });
+    }
+    const priceHtml =
+      props.medianPrice > 0
+        ? `<div class="popup-row"><span class="popup-label">中位數單價</span><span class="popup-price">${formatPrice(props.medianPrice)}/坪</span></div>`
+        : `<div class="popup-row"><span class="popup-label">資料不足</span></div>`;
+    districtHover
+      .setLngLat(e.lngLat)
+      .setHTML(`<div class="popup-title">${props.district}</div>${priceHtml}`)
+      .addTo(map);
+  });
+
+  map.on("mouseleave", "districts-fill", () => {
+    districtHover?.remove();
+    districtHover = null;
+  });
+
+  // ---- Search button ----
   document.getElementById("search-btn")?.addEventListener("click", () => {
     const params: Record<string, string> = {};
-    const city = (document.getElementById("city-select") as HTMLSelectElement)?.value;
-    const district = (document.getElementById("district-select") as HTMLSelectElement)?.value;
-    const minPrice = (document.getElementById("price-min") as HTMLInputElement)?.value;
-    const maxPrice = (document.getElementById("price-max") as HTMLInputElement)?.value;
-    const buildingType = (document.getElementById("building-type") as HTMLSelectElement)?.value;
-
-    if (city) params.city = city;
-    if (district) params.district = district;
-    if (minPrice) params.minPrice = String(Number(minPrice) * 10000);  // 萬 → 元
-    if (maxPrice) params.maxPrice = String(Number(maxPrice) * 10000);
+    const city         = (document.getElementById("city-select")    as HTMLSelectElement)?.value;
+    const district     = (document.getElementById("district-select") as HTMLSelectElement)?.value;
+    const minPrice     = (document.getElementById("price-min")       as HTMLInputElement)?.value;
+    const maxPrice     = (document.getElementById("price-max")       as HTMLInputElement)?.value;
+    const buildingType = (document.getElementById("building-type")   as HTMLSelectElement)?.value;
+    if (city)         params.city = city;
+    if (district)     params.district = district;
+    if (minPrice)     params.minPrice = String(Number(minPrice) * 10000);
+    if (maxPrice)     params.maxPrice = String(Number(maxPrice) * 10000);
     if (buildingType) params.buildingType = buildingType;
-
     loadTransactions(params);
   });
 
-  // Initial load when map is ready (no filter = show all demo data)
-  map.on("load", () => {
-    loadTransactions();
+  // ---- Choropleth toggle ----
+  document.getElementById("choropleth-toggle")?.addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    const vis = on ? "visible" : "none";
+    for (const id of ["districts-fill", "districts-line"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+    }
+    const legend = document.getElementById("choropleth-legend");
+    if (legend) legend.style.opacity = on ? "1" : "0";
   });
+
+  // Initial load
+  map.on("load", () => { /* handled by the async load handler above */ });
 </script>
