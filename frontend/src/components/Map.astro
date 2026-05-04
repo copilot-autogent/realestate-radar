@@ -369,6 +369,44 @@
     map.getCanvas().style.cursor = "";
   });
 
+  // ---- District click → dispatch trend event ----
+  map.on("click", "districts-fill", (e) => {
+    if (!e.features || e.features.length === 0) return;
+    const district = e.features[0].properties.district as string;
+
+    const txFeatures = currentTxGeojson?.features ?? [];
+    const quarterly: Record<string, number[]> = {};
+    for (const f of txFeatures) {
+      if (f.properties.district !== district) continue;
+      const p = f.properties.unitPrice as number | undefined;
+      const d = f.properties.date as string | undefined;
+      if (!p || !d) continue;
+      const dt = new Date(d);
+      const q = Math.floor(dt.getMonth() / 3) + 1;
+      const key = `${dt.getFullYear()}-Q${q}`;
+      if (!quarterly[key]) quarterly[key] = [];
+      quarterly[key].push(p);
+    }
+
+    const quarters = Object.keys(quarterly).sort();
+    const medians = quarters.map((q) => {
+      const arr = quarterly[q].sort((a, b) => a - b);
+      return arr[Math.floor(arr.length / 2)];
+    });
+
+    document.dispatchEvent(
+      new CustomEvent("district-trend", { detail: { district, quarters, medians } })
+    );
+  });
+
+  // Cursor on district polygons
+  map.on("mouseenter", "districts-fill", () => {
+    map.getCanvas().style.cursor = "pointer";
+  });
+  map.on("mouseleave", "districts-fill", () => {
+    map.getCanvas().style.cursor = "";
+  });
+
   // ---- District hover popup ----
   let districtHover: maplibregl.Popup | null = null;
 
