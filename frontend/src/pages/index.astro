@@ -78,6 +78,12 @@ import Map from "../components/Map.astro";
           <p class="placeholder">選擇條件後按搜尋</p>
         </div>
       </div>
+
+      <div id="trend-panel" class="trend-panel" style="display:none">
+        <h3 id="trend-title">價格走勢</h3>
+        <canvas id="trend-chart" width="260" height="160"></canvas>
+        <p id="trend-note" class="trend-note"></p>
+      </div>
     </aside>
 
     <div class="map-container">
@@ -85,3 +91,84 @@ import Map from "../components/Map.astro";
     </div>
   </main>
 </Layout>
+
+<script>
+  // Dynamically load Chart.js when first needed (CDN, no npm dep)
+  let Chart: any = null;
+  let trendChartInstance: any = null;
+
+  async function ensureChart() {
+    if (Chart) return;
+    // @ts-ignore — CDN ESM import, no type declarations needed
+    const mod = await import("https://cdn.jsdelivr.net/npm/chart.js@4.4.0/auto/auto.esm.js");
+    Chart = mod.default;
+  }
+
+  document.addEventListener("district-trend", async (e: Event) => {
+    const { district, quarters, medians } = (e as CustomEvent).detail as {
+      district: string;
+      quarters: string[];
+      medians: number[];
+    };
+
+    await ensureChart();
+
+    const panel = document.getElementById("trend-panel") as HTMLDivElement;
+    const title = document.getElementById("trend-title") as HTMLHeadingElement;
+    const note  = document.getElementById("trend-note")  as HTMLParagraphElement;
+
+    panel.style.display = "block";
+    title.textContent = `${district} — 季均價走勢`;
+    note.textContent  = quarters.length ? `共 ${quarters.length} 季資料` : "暫無資料";
+
+    const canvas = document.getElementById("trend-chart") as HTMLCanvasElement;
+
+    if (trendChartInstance) {
+      trendChartInstance.destroy();
+      trendChartInstance = null;
+    }
+
+    if (!quarters.length) return;
+
+    const data = medians.map((p: number) => Math.round(p / 10000));
+
+    trendChartInstance = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: quarters,
+        datasets: [{
+          label: "中位數單價 (萬/坪)",
+          data,
+          borderColor: "#2563eb",
+          backgroundColor: "rgba(37,99,235,0.1)",
+          tension: 0.3,
+          pointRadius: 4,
+          fill: true,
+        }],
+      },
+      options: {
+        responsive: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => `${ctx.parsed.y} 萬/坪`,
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: false,
+            ticks: {
+              callback: (v: any) => `${v}萬`,
+              font: { size: 10 },
+            },
+          },
+          x: {
+            ticks: { font: { size: 10 }, maxRotation: 45 },
+          },
+        },
+      },
+    });
+  });
+</script>
