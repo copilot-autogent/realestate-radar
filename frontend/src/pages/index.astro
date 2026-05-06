@@ -10,7 +10,9 @@ import Map from "../components/Map.astro";
   </header>
 
   <main class="main">
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
     <aside class="sidebar">
+      <button id="sidebar-close-btn" class="sidebar-close-btn" aria-label="關閉篩選">✕</button>
       <div class="filter-group">
         <label for="city-select">縣市</label>
         <select id="city-select">
@@ -71,6 +73,7 @@ import Map from "../components/Map.astro";
       </div>
 
       <button id="search-btn" class="search-btn">搜尋</button>
+      <button id="reset-btn" class="reset-btn">清除篩選</button>
 
       <div id="stats-panel" class="stats-panel">
         <h3>統計資訊</h3>
@@ -90,7 +93,103 @@ import Map from "../components/Map.astro";
       <Map />
     </div>
   </main>
+  <button id="filter-toggle-btn" class="filter-toggle-btn" aria-label="開啟篩選">☰ 篩選</button>
 </Layout>
+
+<script>
+  // ---- URL state ----
+  function getFilterParams(): Record<string, string> {
+    const params: Record<string, string> = {};
+    const city         = (document.getElementById("city-select")     as HTMLSelectElement)?.value;
+    const district     = (document.getElementById("district-select")  as HTMLSelectElement)?.value;
+    const minPrice     = (document.getElementById("price-min")        as HTMLInputElement)?.value;
+    const maxPrice     = (document.getElementById("price-max")        as HTMLInputElement)?.value;
+    const buildingType = (document.getElementById("building-type")    as HTMLSelectElement)?.value;
+    if (city)         params.city = city;
+    if (district)     params.district = district;
+    if (minPrice)     params.minPrice = minPrice;
+    if (maxPrice)     params.maxPrice = maxPrice;
+    if (buildingType) params.buildingType = buildingType;
+    return params;
+  }
+
+  function pushUrlState(params: Record<string, string>): void {
+    const qs = new URLSearchParams(params).toString();
+    const newUrl = qs ? `${location.pathname}?${qs}` : location.pathname;
+    history.pushState(null, "", newUrl);
+  }
+
+  function loadFromUrl(): void {
+    const sp = new URLSearchParams(location.search);
+    const set = (id: string, key: string) => {
+      const el = document.getElementById(id) as HTMLSelectElement | HTMLInputElement | null;
+      const v = sp.get(key);
+      if (el && v) el.value = v;
+    };
+    set("city-select",     "city");
+    set("district-select", "district");
+    set("price-min",       "minPrice");
+    set("price-max",       "maxPrice");
+    set("building-type",   "buildingType");
+  }
+
+  // Hook search button to also push URL state
+  document.getElementById("search-btn")?.addEventListener("click", () => {
+    pushUrlState(getFilterParams());
+  });
+
+  // Reset button
+  document.getElementById("reset-btn")?.addEventListener("click", () => {
+    (document.getElementById("city-select")     as HTMLSelectElement).value = "";
+    (document.getElementById("district-select")  as HTMLSelectElement).value = "";
+    (document.getElementById("price-min")        as HTMLInputElement).value  = "";
+    (document.getElementById("price-max")        as HTMLInputElement).value  = "";
+    (document.getElementById("building-type")    as HTMLSelectElement).value = "";
+    history.pushState(null, "", location.pathname);
+    document.getElementById("search-btn")?.click();
+  });
+
+  // ---- Mobile sidebar toggle ----
+  const sidebar  = document.querySelector(".sidebar")         as HTMLElement | null;
+  const backdrop = document.getElementById("sidebar-backdrop") as HTMLElement | null;
+
+  function openSidebar()  {
+    sidebar?.classList.add("open");
+    backdrop?.classList.add("open");
+    document.body.style.overflow = "hidden";
+  }
+  function closeSidebar() {
+    sidebar?.classList.remove("open");
+    backdrop?.classList.remove("open");
+    document.body.style.overflow = "";
+  }
+
+  document.getElementById("filter-toggle-btn")?.addEventListener("click", openSidebar);
+  document.getElementById("sidebar-close-btn")?.addEventListener("click", closeSidebar);
+  backdrop?.addEventListener("click", closeSidebar);
+
+  // ---- On load: restore from URL ----
+  loadFromUrl();
+  if (location.search) {
+    setTimeout(() => document.getElementById("search-btn")?.click(), 800);
+  }
+</script>
+
+<style>
+  .reset-btn {
+    width: 100%;
+    padding: 8px;
+    margin-top: 6px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .reset-btn:hover { background: #e2e8f0; }
+</style>
 
 <script>
   // Dynamically load Chart.js when first needed (CDN, no npm dep)
