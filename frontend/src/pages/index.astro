@@ -146,7 +146,7 @@ import Map from "../components/Map.astro";
   // Reset button
   document.getElementById("reset-btn")?.addEventListener("click", () => {
     (document.getElementById("city-select")     as HTMLSelectElement).value = "";
-    (document.getElementById("district-select")  as HTMLSelectElement).value = "";
+    (document.getElementById("district-select")  as HTMLSelectElement)?.value == "";
     (document.getElementById("price-min")        as HTMLInputElement).value  = "";
     (document.getElementById("price-max")        as HTMLInputElement).value  = "";
     (document.getElementById("building-type")    as HTMLSelectElement).value = "";
@@ -214,6 +214,7 @@ import Map from "../components/Map.astro";
 
 <script>
   // Dynamically load Chart.js when first needed (CDN, no npm dep)
+  // jsDelivr +esm transforms the auto entry to a valid ESM module
   let Chart: any = null;
   let trendChartInstance: any = null;
   let histogramChartInstance: any = null;
@@ -221,7 +222,7 @@ import Map from "../components/Map.astro";
   async function ensureChart() {
     if (Chart) return;
     // @ts-ignore — CDN ESM import, no type declarations needed
-    const mod = await import("https://cdn.jsdelivr.net/npm/chart.js@4.4.0/auto/auto.esm.js");
+    const mod = await import("https://cdn.jsdelivr.net/npm/chart.js@4.4.0/auto/+esm");
     Chart = mod.default;
   }
 
