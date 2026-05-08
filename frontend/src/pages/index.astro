@@ -87,6 +87,11 @@ import Map from "../components/Map.astro";
         <canvas id="trend-chart" width="260" height="160"></canvas>
         <p id="trend-note" class="trend-note"></p>
       </div>
+
+      <div id="histogram-panel" class="histogram-panel" style="display:none">
+        <h3>單價分佈</h3>
+        <canvas id="histogram-chart" width="260" height="120"></canvas>
+      </div>
     </aside>
 
     <div class="map-container">
@@ -189,12 +194,29 @@ import Map from "../components/Map.astro";
     transition: background 0.15s;
   }
   .reset-btn:hover { background: #e2e8f0; }
+
+  .histogram-panel {
+    margin-top: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .histogram-panel h3 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
 </style>
 
 <script>
   // Dynamically load Chart.js when first needed (CDN, no npm dep)
   let Chart: any = null;
   let trendChartInstance: any = null;
+  let histogramChartInstance: any = null;
 
   async function ensureChart() {
     if (Chart) return;
@@ -265,6 +287,73 @@ import Map from "../components/Map.astro";
           },
           x: {
             ticks: { font: { size: 10 }, maxRotation: 45 },
+          },
+        },
+      },
+    });
+  });
+
+  document.addEventListener("stats-histogram", async (e: Event) => {
+    const { bins, counts } = (e as CustomEvent).detail as {
+      bins: string[];
+      counts: number[];
+      median: number;
+      avg: number;
+    };
+
+    const panel = document.getElementById("histogram-panel") as HTMLDivElement;
+
+    if (!bins.length) {
+      panel.style.display = "none";
+      if (histogramChartInstance) {
+        histogramChartInstance.destroy();
+        histogramChartInstance = null;
+      }
+      return;
+    }
+
+    await ensureChart();
+    panel.style.display = "block";
+
+    const canvas = document.getElementById("histogram-chart") as HTMLCanvasElement;
+    if (histogramChartInstance) {
+      histogramChartInstance.destroy();
+      histogramChartInstance = null;
+    }
+
+    histogramChartInstance = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: bins,
+        datasets: [{
+          label: "筆數",
+          data: counts,
+          backgroundColor: "rgba(37, 99, 235, 0.7)",
+          borderColor: "rgba(37, 99, 235, 0.9)",
+          borderWidth: 1,
+        }],
+      },
+      options: {
+        responsive: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => `${ctx.parsed.y} 筆`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { font: { size: 9 }, maxRotation: 45 },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              font: { size: 9 },
+              stepSize: 1,
+              callback: (v: any) => Number.isInteger(Number(v)) ? v : null,
+            },
           },
         },
       },
