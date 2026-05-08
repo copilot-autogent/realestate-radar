@@ -2,7 +2,7 @@ import { defineConfig } from "astro/config";
 
 export default defineConfig({
   site: "https://copilot-autogent.github.io",
-  base: "/realestate-radar",
+  base: "/realestate-radar/",
   output: "static",
   vite: {
     server: {
