@@ -182,6 +182,8 @@
       if (params.minPrice)    geojson.features = geojson.features.filter((f: any) => f.properties.unitPrice >= Number(params.minPrice));
       if (params.maxPrice)    geojson.features = geojson.features.filter((f: any) => f.properties.unitPrice <= Number(params.maxPrice));
       if (params.buildingType) geojson.features = geojson.features.filter((f: any) => f.properties.buildingType === params.buildingType);
+      if (params.dateFrom)  geojson.features = geojson.features.filter((f: any) => f.properties.date >= params.dateFrom);
+      if (params.dateTo)    geojson.features = geojson.features.filter((f: any) => f.properties.date <= params.dateTo);
     }
 
     currentTxGeojson = geojson;
@@ -479,6 +481,10 @@
     if (minPrice)     params.minPrice = String(Number(minPrice) * 10000);
     if (maxPrice)     params.maxPrice = String(Number(maxPrice) * 10000);
     if (buildingType) params.buildingType = buildingType;
+    const dateFrom = (document.getElementById("date-from") as HTMLInputElement)?.value;
+    const dateTo   = (document.getElementById("date-to")   as HTMLInputElement)?.value;
+    if (dateFrom) params.dateFrom = dateFrom;
+    if (dateTo)   params.dateTo   = dateTo;
     loadTransactions(params);
   });
 

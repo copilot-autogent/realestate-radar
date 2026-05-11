@@ -6,7 +6,7 @@ import Map from "../components/Map.astro";
 <Layout title="實價登錄雷達 — Real Price Radar">
   <header class="header">
     <h1>🏠 實價登錄雷達</h1>
-    <p class="subtitle">Real Price Radar — Taiwan Real Estate Analytics</p>
+    <p class="subtitle">台灣不動產實價資訊平台</p>
   </header>
 
   <main class="main">
@@ -66,6 +66,21 @@ import Map from "../components/Map.astro";
         </select>
       </div>
 
+      <div class="filter-group">
+        <label>交易期間</label>
+        <div class="date-presets">
+          <button class="preset-btn active" data-months="0">全部</button>
+          <button class="preset-btn" data-months="6">近半年</button>
+          <button class="preset-btn" data-months="12">近1年</button>
+          <button class="preset-btn" data-months="24">近2年</button>
+        </div>
+        <div class="range-inputs" style="margin-top:8px">
+          <input type="date" id="date-from" aria-label="開始日期" />
+          <span>~</span>
+          <input type="date" id="date-to" aria-label="結束日期" />
+        </div>
+      </div>
+
       <!-- Choropleth toggle -->
       <div class="toggle-row">
         <input type="checkbox" id="choropleth-toggle" checked />
@@ -115,6 +130,10 @@ import Map from "../components/Map.astro";
     if (minPrice)     params.minPrice = minPrice;
     if (maxPrice)     params.maxPrice = maxPrice;
     if (buildingType) params.buildingType = buildingType;
+    const dateFrom = (document.getElementById("date-from") as HTMLInputElement)?.value;
+    const dateTo   = (document.getElementById("date-to")   as HTMLInputElement)?.value;
+    if (dateFrom) params.dateFrom = dateFrom;
+    if (dateTo)   params.dateTo   = dateTo;
     return params;
   }
 
@@ -136,6 +155,8 @@ import Map from "../components/Map.astro";
     set("price-min",       "minPrice");
     set("price-max",       "maxPrice");
     set("building-type",   "buildingType");
+    set("date-from",       "dateFrom");
+    set("date-to",         "dateTo");
   }
 
   // Hook search button to also push URL state
@@ -150,8 +171,55 @@ import Map from "../components/Map.astro";
     (document.getElementById("price-min")        as HTMLInputElement).value  = "";
     (document.getElementById("price-max")        as HTMLInputElement).value  = "";
     (document.getElementById("building-type")    as HTMLSelectElement).value = "";
+    (document.getElementById("date-from") as HTMLInputElement).value = "";
+    (document.getElementById("date-to")   as HTMLInputElement).value = "";
+    // Reset preset active state
+    document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+    document.querySelector('.preset-btn[data-months="0"]')?.classList.add("active");
     history.pushState(null, "", location.pathname);
     document.getElementById("search-btn")?.click();
+  });
+
+  // Date preset buttons
+  document.querySelectorAll(".preset-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      // Mark active
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+
+      const months = Number((btn as HTMLButtonElement).dataset.months ?? "0");
+      const dateFromEl = document.getElementById("date-from") as HTMLInputElement;
+      const dateToEl   = document.getElementById("date-to")   as HTMLInputElement;
+
+      if (months === 0) {
+        // "全部" — clear both date inputs
+        dateFromEl.value = "";
+        dateToEl.value   = "";
+      } else {
+        // Compute dateFrom = today minus N months
+        const to   = new Date();
+        const from = new Date();
+        from.setMonth(from.getMonth() - months);
+        const fmt = (d: Date) => d.toISOString().slice(0, 10);
+        dateFromEl.value = fmt(from);
+        dateToEl.value   = fmt(to);
+      }
+      // Trigger search
+      document.getElementById("search-btn")?.click();
+    });
+  });
+
+  // Clear preset active state when date inputs are manually changed
+  ["date-from", "date-to"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", () => {
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      // Mark "全部" active if both are empty
+      const df = (document.getElementById("date-from") as HTMLInputElement)?.value;
+      const dt = (document.getElementById("date-to")   as HTMLInputElement)?.value;
+      if (!df && !dt) {
+        document.querySelector('.preset-btn[data-months="0"]')?.classList.add("active");
+      }
+    });
   });
 
   // ---- Mobile sidebar toggle ----
@@ -209,6 +277,30 @@ import Map from "../components/Map.astro";
     margin-bottom: 8px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+  .date-presets {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  .preset-btn {
+    flex: 1;
+    min-width: 52px;
+    padding: 5px 6px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .preset-btn:hover { background: #e2e8f0; }
+  .preset-btn.active {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
   }
 </style>
 
