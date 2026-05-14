@@ -41,6 +41,18 @@
     border: 1px solid rgba(0,0,0,0.08);
   }
 
+  /* Match count badge */
+  .match-count {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin-top: 4px;
+    padding: 4px 0;
+  }
+  .match-count strong {
+    color: #2563eb;
+    font-weight: 700;
+  }
+
   /* Toggle row in sidebar */
   .toggle-row {
     display: flex;
@@ -184,6 +196,14 @@
       if (params.buildingType) geojson.features = geojson.features.filter((f: any) => f.properties.buildingType === params.buildingType);
       if (params.dateFrom)  geojson.features = geojson.features.filter((f: any) => f.properties.date >= params.dateFrom);
       if (params.dateTo)    geojson.features = geojson.features.filter((f: any) => f.properties.date <= params.dateTo);
+      // Address substring search (case-insensitive)
+      if (params.address) {
+        const keyword = params.address.toLowerCase();
+        geojson.features = geojson.features.filter((f: any) => {
+          const addr = (f.properties.address || "").toLowerCase();
+          return addr.includes(keyword);
+        });
+      }
     }
 
     currentTxGeojson = geojson;
@@ -232,10 +252,7 @@
           const median = prices[Math.floor(prices.length / 2)];
           const avg = Math.round(prices.reduce((s: number, p: number) => s + p, 0) / prices.length);
           statsEl.innerHTML = `
-            <div class="popup-row">
-              <span class="popup-label">筆數</span>
-              <span class="popup-value">${geojson.features.length.toLocaleString()}</span>
-            </div>
+            <div class="match-count">符合筆數：<strong>${geojson.features.length.toLocaleString()}</strong></div>
             <div class="popup-row">
               <span class="popup-label">中位數 (元/坪)</span>
               <span class="popup-price">${formatPrice(median)}</span>
@@ -245,6 +262,8 @@
               <span class="popup-price">${formatPrice(avg)}</span>
             </div>
           `;
+        } else {
+          statsEl.innerHTML = '<p class="placeholder">查無符合條件的資料</p>';
         }
       }
 
@@ -387,7 +406,15 @@
           <span class="popup-value">${props.buildingType || "—"}</span>
         </div>
         <div class="popup-row">
-          <span class="popup-label">日期</span>
+          <span class="popup-label">樓層</span>
+          <span class="popup-value">${props.floor && props.floorsTotal ? `${props.floor}F / ${props.floorsTotal}F` : "—"}</span>
+        </div>
+        <div class="popup-row">
+          <span class="popup-label">格局</span>
+          <span class="popup-value">${props.rooms ? `${props.rooms}房` : "—"}</span>
+        </div>
+        <div class="popup-row">
+          <span class="popup-label">交易日期</span>
           <span class="popup-value">${props.date}</span>
         </div>
       `)
@@ -476,11 +503,13 @@
     const minPrice     = (document.getElementById("price-min")       as HTMLInputElement)?.value;
     const maxPrice     = (document.getElementById("price-max")       as HTMLInputElement)?.value;
     const buildingType = (document.getElementById("building-type")   as HTMLSelectElement)?.value;
+    const address      = (document.getElementById("address-search")  as HTMLInputElement)?.value;
     if (city)         params.city = city;
     if (district)     params.district = district;
     if (minPrice)     params.minPrice = String(Number(minPrice) * 10000);
     if (maxPrice)     params.maxPrice = String(Number(maxPrice) * 10000);
     if (buildingType) params.buildingType = buildingType;
+    if (address)      params.address = address;
     const dateFrom = (document.getElementById("date-from") as HTMLInputElement)?.value;
     const dateTo   = (document.getElementById("date-to")   as HTMLInputElement)?.value;
     if (dateFrom) params.dateFrom = dateFrom;
