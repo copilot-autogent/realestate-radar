@@ -13,6 +13,15 @@ import Map from "../components/Map.astro";
     <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
     <aside class="sidebar">
       <button id="sidebar-close-btn" class="sidebar-close-btn" aria-label="關閉篩選">✕</button>
+
+      <div class="filter-group">
+        <label for="address-search">地址搜尋</label>
+        <div class="search-input-wrapper">
+          <input type="text" id="address-search" placeholder="輸入路名、地址關鍵字…" autocomplete="off" />
+          <button id="address-clear-btn" class="input-clear-btn" aria-label="清除" style="display:none">✕</button>
+        </div>
+      </div>
+
       <div class="filter-group">
         <label for="city-select">縣市</label>
         <select id="city-select">
@@ -30,18 +39,6 @@ import Map from "../components/Map.astro";
         <label for="district-select">鄉鎮市區</label>
         <select id="district-select">
           <option value="">全部</option>
-          <option value="大安區">大安區</option>
-          <option value="信義區">信義區</option>
-          <option value="中山區">中山區</option>
-          <option value="松山區">松山區</option>
-          <option value="內湖區">內湖區</option>
-          <option value="士林區">士林區</option>
-          <option value="北投區">北投區</option>
-          <option value="萬華區">萬華區</option>
-          <option value="中正區">中正區</option>
-          <option value="文山區">文山區</option>
-          <option value="南港區">南港區</option>
-          <option value="大同區">大同區</option>
         </select>
       </div>
 
@@ -117,6 +114,60 @@ import Map from "../components/Map.astro";
 </Layout>
 
 <script>
+  // ---- District data per city ----
+  const DISTRICTS_BY_CITY: Record<string, string[]> = {
+    "台北市": ["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
+    "新北市": ["板橋區","三重區","中和區","永和區","新莊區","新店區","土城區","蘆洲區","樹林區","汐止區","鶯歌區","三峽區","淡水區","林口區","五股區","泰山區","瑞芳區","八里區","深坑區","三芝區","萬里區","金山區","貢寮區","石門區","平溪區","雙溪區","石碇區","坪林區","烏來區"],
+    "桃園市": ["桃園區","中壢區","大溪區","楊梅區","蘆竹區","大園區","龜山區","八德區","龍潭區","平鎮區","新屋區","觀音區","復興區"],
+    "台中市": ["中區","東區","南區","西區","北區","北屯區","西屯區","南屯區","太平區","大里區","霧峰區","烏日區","豐原區","后里區","石岡區","東勢區","和平區","新社區","潭子區","大雅區","神岡區","大肚區","沙鹿區","龍井區","梧棲區","清水區","大甲區","外埔區","大安區"],
+    "台南市": ["中西區","東區","南區","北區","安平區","安南區","永康區","歸仁區","新化區","左鎮區","玉井區","楠西區","南化區","仁德區","關廟區","龍崎區","官田區","麻豆區","佳里區","西港區","七股區","將軍區","學甲區","北門區","新營區","後壁區","白河區","東山區","六甲區","下營區","柳營區","鹽水區","善化區","大內區","山上區","新市區","安定區"],
+    "高雄市": ["楠梓區","左營區","鼓山區","三民區","鹽埕區","前金區","新興區","苓雅區","前鎮區","旗津區","小港區","鳳山區","林園區","大寮區","大樹區","大社區","仁武區","鳥松區","岡山區","橋頭區","燕巢區","田寮區","阿蓮區","路竹區","湖內區","茄萣區","永安區","彌陀區","梓官區","旗山區","美濃區","六龜區","甲仙區","杉林區","內門區","茂林區","桃源區","那瑪夏區"],
+  };
+
+  // ---- Dynamic district dropdown ----
+  function updateDistrictOptions(city: string): void {
+    const districtSelect = document.getElementById("district-select") as HTMLSelectElement;
+    const currentValue = districtSelect.value;
+    districtSelect.innerHTML = '<option value="">全部</option>';
+    const districts = city ? DISTRICTS_BY_CITY[city] : [];
+    for (const d of districts) {
+      const opt = document.createElement("option");
+      opt.value = d;
+      opt.textContent = d;
+      districtSelect.appendChild(opt);
+    }
+    // Restore selection if still valid
+    if (districts.includes(currentValue)) {
+      districtSelect.value = currentValue;
+    }
+  }
+
+  document.getElementById("city-select")?.addEventListener("change", (e) => {
+    updateDistrictOptions((e.target as HTMLSelectElement).value);
+  });
+
+  // ---- Address search ----
+  const addressInput = document.getElementById("address-search") as HTMLInputElement;
+  const addressClearBtn = document.getElementById("address-clear-btn") as HTMLButtonElement;
+
+  addressInput?.addEventListener("input", () => {
+    addressClearBtn.style.display = addressInput.value ? "block" : "none";
+  });
+
+  addressClearBtn?.addEventListener("click", () => {
+    addressInput.value = "";
+    addressClearBtn.style.display = "none";
+    document.getElementById("search-btn")?.click();
+  });
+
+  // Enter key triggers search
+  addressInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("search-btn")?.click();
+    }
+  });
+
   // ---- URL state ----
   function getFilterParams(): Record<string, string> {
     const params: Record<string, string> = {};
@@ -125,11 +176,13 @@ import Map from "../components/Map.astro";
     const minPrice     = (document.getElementById("price-min")        as HTMLInputElement)?.value;
     const maxPrice     = (document.getElementById("price-max")        as HTMLInputElement)?.value;
     const buildingType = (document.getElementById("building-type")    as HTMLSelectElement)?.value;
+    const address      = (document.getElementById("address-search")   as HTMLInputElement)?.value;
     if (city)         params.city = city;
     if (district)     params.district = district;
     if (minPrice)     params.minPrice = minPrice;
     if (maxPrice)     params.maxPrice = maxPrice;
     if (buildingType) params.buildingType = buildingType;
+    if (address)      params.address = address;
     const dateFrom = (document.getElementById("date-from") as HTMLInputElement)?.value;
     const dateTo   = (document.getElementById("date-to")   as HTMLInputElement)?.value;
     if (dateFrom) params.dateFrom = dateFrom;
@@ -151,12 +204,20 @@ import Map from "../components/Map.astro";
       if (el && v) el.value = v;
     };
     set("city-select",     "city");
+    // Populate district options before setting value
+    const city = sp.get("city");
+    if (city) updateDistrictOptions(city);
     set("district-select", "district");
     set("price-min",       "minPrice");
     set("price-max",       "maxPrice");
     set("building-type",   "buildingType");
     set("date-from",       "dateFrom");
     set("date-to",         "dateTo");
+    set("address-search",  "address");
+    // Show clear button if address has value
+    if (sp.get("address")) {
+      addressClearBtn.style.display = "block";
+    }
   }
 
   // Hook search button to also push URL state
@@ -167,12 +228,16 @@ import Map from "../components/Map.astro";
   // Reset button
   document.getElementById("reset-btn")?.addEventListener("click", () => {
     (document.getElementById("city-select")     as HTMLSelectElement).value = "";
-    (document.getElementById("district-select")  as HTMLSelectElement)?.value == "";
+    (document.getElementById("district-select")  as HTMLSelectElement).value = "";
     (document.getElementById("price-min")        as HTMLInputElement).value  = "";
     (document.getElementById("price-max")        as HTMLInputElement).value  = "";
     (document.getElementById("building-type")    as HTMLSelectElement).value = "";
     (document.getElementById("date-from") as HTMLInputElement).value = "";
     (document.getElementById("date-to")   as HTMLInputElement).value = "";
+    (document.getElementById("address-search") as HTMLInputElement).value = "";
+    addressClearBtn.style.display = "none";
+    // Reset district options
+    updateDistrictOptions("");
     // Reset preset active state
     document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
     document.querySelector('.preset-btn[data-months="0"]')?.classList.add("active");
@@ -249,6 +314,32 @@ import Map from "../components/Map.astro";
 </script>
 
 <style>
+  .search-input-wrapper {
+    position: relative;
+  }
+  .search-input-wrapper input {
+    width: 100%;
+    padding: 8px 32px 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    background: var(--bg);
+  }
+  .input-clear-btn {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    line-height: 1;
+  }
+  .input-clear-btn:hover { color: #475569; }
+
   .reset-btn {
     width: 100%;
     padding: 8px;
