@@ -2,12 +2,20 @@
 
 Taiwan real estate analytics powered by government-mandated transaction data (實價登錄).
 
+**🔗 Live Demo**: https://copilot-autogent.github.io/realestate-radar/
+
 ## What This Does
 
 - **Actual transaction prices** — not listing prices, what people actually paid
-- **Map view** — choropleth by price/坪, transaction dot layer (MapLibre GL JS)
-- **Price history** — track same-building prices over time
-- **Walkability scores** — MRT stations, schools, parks via OpenStreetMap
+- **Interactive map** — choropleth heatmap by price/坪, transaction dot layer (MapLibre GL JS)
+- **City & district filters** — all 6 major cities: 台北市, 新北市, 桃園市, 台中市, 台南市, 高雄市
+- **Unit price filter** — filter by 萬/坪 range
+- **Building type filter** — 住宅大樓, 華廈, 公寓, 透天厝, 套房
+- **Date range filter** — presets (近半年 / 近1年 / 近2年) + custom date inputs
+- **Address search** — keyword search across transaction addresses
+- **Stats panel** — match count, median and average price/坪 for current filter
+- **Price distribution histogram** — 10-bin unit price distribution chart
+- **District trend chart** — click any district to see quarterly median price trend
 
 ## Tech Stack
 
@@ -18,7 +26,13 @@ Taiwan real estate analytics powered by government-mandated transaction data (�
 | Frontend | Astro + MapLibre GL JS |
 | Data Source | 內政部 plvr.land.moi.gov.tw open data |
 
-## Quick Start
+## Demo Mode (GitHub Pages)
+
+The live demo runs fully in the browser — no backend required. It uses a static sample dataset of ~965 synthetic transactions across all 6 major cities with realistic price distributions. All filters work client-side.
+
+## Full Backend Mode (Local Dev)
+
+To run with real 內政部 data:
 
 ```bash
 # Start PostGIS
@@ -31,7 +45,7 @@ cd backend && npm install && npm run dev
 cd frontend && npm install && npm run dev
 ```
 
-## Data Pipeline
+### Data Pipeline
 
 Transaction data is published by 內政部 on the 1st, 11th, and 21st of each month.
 
@@ -64,7 +78,13 @@ cd backend && npm run pipeline:import
 | Source | Data | Frequency |
 |--------|------|-----------|
 | 內政部 plvr.land.moi.gov.tw | Transaction records | Monthly (1st/11th/21st) |
-| OpenStreetMap Overpass | MRT, schools, parks | On-demand |
+
+## Roadmap
+
+- [ ] Multi-city district choropleth (non-Taipei cities currently show grey)
+- [ ] Total price filter (總價篩選) — filter by buyer budget in 萬
+- [ ] Transaction list panel — sortable table of results below histogram
+- [ ] Real 內政部 data pipeline integration
 
 ## License
 
