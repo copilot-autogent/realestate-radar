@@ -85,8 +85,26 @@
   import maplibregl from "maplibre-gl";
 
   const API_BASE = import.meta.env.DEV ? "/api" : "";
-  const STATIC_DATA_URL = `${import.meta.env.BASE_URL}data/sample-transactions.json`;
-  const DISTRICTS_URL = `${import.meta.env.BASE_URL}data/taipei-districts.geojson`;
+  const BASE_URL = import.meta.env.BASE_URL;
+  const STATIC_DATA_URL = `${BASE_URL}data/sample-transactions.json`;
+
+  const CITY_DISTRICTS: Record<string, string> = {
+    "台北市": `${BASE_URL}data/taipei-districts.geojson`,
+    "新北市": `${BASE_URL}data/xinbei-districts.geojson`,
+    "桃園市": `${BASE_URL}data/taoyuan-districts.geojson`,
+    "台中市": `${BASE_URL}data/taichung-districts.geojson`,
+    "台南市": `${BASE_URL}data/tainan-districts.geojson`,
+    "高雄市": `${BASE_URL}data/kaohsiung-districts.geojson`,
+  };
+
+  const CITY_CENTERS: Record<string, { center: [number, number]; zoom: number }> = {
+    "台北市": { center: [121.5654, 25.033], zoom: 12 },
+    "新北市": { center: [121.460, 25.012], zoom: 11 },
+    "桃園市": { center: [121.250, 24.970], zoom: 11 },
+    "台中市": { center: [120.684, 24.138], zoom: 11 },
+    "台南市": { center: [120.200, 23.000], zoom: 11 },
+    "高雄市": { center: [120.300, 22.630], zoom: 11 },
+  };
 
   // Center on Taipei
   const map = new maplibregl.Map({
@@ -161,12 +179,24 @@
         ...f,
         properties: {
           ...f.properties,
-          // -1 signals "no data" to the paint expression
           medianPrice: medians[f.properties.district] ?? -1,
         },
       })),
     };
     src.setData(updated);
+  }
+
+  /** Load district boundary GeoJSON for the given city. */
+  async function loadDistrictBoundaries(city: string): Promise<void> {
+    const url = CITY_DISTRICTS[city] ?? CITY_DISTRICTS["台北市"];
+    try {
+      const res = await fetch(url);
+      districtGeoJSON = await res.json();
+    } catch (e) {
+      console.warn("[choropleth] district boundaries unavailable:", e);
+      districtGeoJSON = null;
+    }
+    updateChoropleth();
   }
 
   // ---- Transaction loading ----
@@ -196,7 +226,6 @@
       if (params.buildingType) geojson.features = geojson.features.filter((f: any) => f.properties.buildingType === params.buildingType);
       if (params.dateFrom)  geojson.features = geojson.features.filter((f: any) => f.properties.date >= params.dateFrom);
       if (params.dateTo)    geojson.features = geojson.features.filter((f: any) => f.properties.date <= params.dateTo);
-      // Address substring search (case-insensitive)
       if (params.address) {
         const keyword = params.address.toLowerCase();
         geojson.features = geojson.features.filter((f: any) => {
@@ -321,7 +350,6 @@
       paint: {
         "fill-color": [
           "case",
-          // medianPrice < 0 means no data → grey
           ["<", ["coalesce", ["get", "medianPrice"], -1], 0],
           "#d1d5db",
           [
@@ -353,14 +381,8 @@
     // 2. Load transactions — circles layer added ON TOP of district fill
     await loadTransactions();
 
-    // 3. Fetch district boundaries (async, doesn't block tx rendering)
-    try {
-      const res = await fetch(DISTRICTS_URL);
-      districtGeoJSON = await res.json();
-      updateChoropleth();
-    } catch (e) {
-      console.warn("[choropleth] district boundaries unavailable:", e);
-    }
+    // 3. Fetch Taipei district boundaries initially
+    await loadDistrictBoundaries("台北市");
 
     // 4. Inject legend into map container
     const legend = document.createElement("div");
@@ -391,7 +413,7 @@
         <div class="popup-title">${props.address || "地址未登錄"}</div>
         <div class="popup-row">
           <span class="popup-label">單價</span>
-          <span class="popup-price">${formatPrice(props.unitPrice)}/坪</span>
+          <span class="popup-price">${formatPrice(props.unitPrice)}/</span>
         </div>
         <div class="popup-row">
           <span class="popup-label">總價</span>
@@ -514,7 +536,14 @@
     const dateTo   = (document.getElementById("date-to")   as HTMLInputElement)?.value;
     if (dateFrom) params.dateFrom = dateFrom;
     if (dateTo)   params.dateTo   = dateTo;
+
+    // Fly to selected city center and load matching district boundaries
+    const targetCity = city || "台北市";
+    if (city && CITY_CENTERS[city]) {
+      map.flyTo({ center: CITY_CENTERS[city].center, zoom: CITY_CENTERS[city].zoom, duration: 800 });
+    }
     loadTransactions(params);
+    loadDistrictBoundaries(targetCity);
   });
 
   // ---- Choropleth toggle ----
