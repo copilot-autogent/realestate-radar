@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "district": "板橋區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.425,24.993],[121.482,24.993],[121.482,25.027],[121.425,25.027],[121.425,24.993]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "三重區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.474,25.052],[121.512,25.052],[121.512,25.088],[121.474,25.088],[121.474,25.052]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "中和區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.487,24.983],[121.532,24.983],[121.532,25.015],[121.487,25.015],[121.487,24.983]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "永和區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.507,24.995],[121.543,24.995],[121.543,25.028],[121.507,25.028],[121.507,24.995]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "新莊區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.410,25.018],[121.468,25.018],[121.468,25.065],[121.410,25.065],[121.410,25.018]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "新店區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.518,24.942],[121.590,24.942],[121.590,24.993],[121.518,24.993],[121.518,24.942]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "土城區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.435,24.960],[121.492,24.960],[121.492,24.997],[121.435,24.997],[121.435,24.960]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "蘆洲區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.462,25.078],[121.506,25.078],[121.506,25.108],[121.462,25.108],[121.462,25.078]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "淡水區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.405,25.152],[121.480,25.152],[121.480,25.200],[121.405,25.200],[121.405,25.152]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "汐止區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.640,25.060],[121.710,25.060],[121.710,25.108],[121.640,25.108],[121.640,25.060]]] }
+    }
+  ]
+}

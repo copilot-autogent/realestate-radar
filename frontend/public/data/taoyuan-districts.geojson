@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "district": "桃園區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.282,24.975],[121.345,24.975],[121.345,25.022],[121.282,25.022],[121.282,24.975]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "中壢區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.210,24.948],[121.268,24.948],[121.268,24.988],[121.210,24.988],[121.210,24.948]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "大溪區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.262,24.865],[121.338,24.865],[121.338,24.922],[121.262,24.922],[121.262,24.865]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "楊梅區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.118,24.895],[121.185,24.895],[121.185,24.948],[121.118,24.948],[121.118,24.895]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "蘆竹區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.290,25.028],[121.358,25.028],[121.358,25.078],[121.290,25.078],[121.290,25.028]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "龜山區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.352,24.995],[121.418,24.995],[121.418,25.048],[121.352,25.048],[121.352,24.995]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "八德區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.278,24.930],[121.338,24.930],[121.338,24.972],[121.278,24.972],[121.278,24.930]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "龍潭區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.192,24.855],[121.258,24.855],[121.258,24.912],[121.192,24.912],[121.192,24.855]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "平鎮區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.212,24.928],[121.272,24.928],[121.272,24.970],[121.212,24.970],[121.212,24.928]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "新屋區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.072,24.958],[121.148,24.958],[121.148,25.012],[121.072,25.012],[121.072,24.958]]] }
+    }
+  ]
+}

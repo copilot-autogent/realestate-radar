@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "district": "北屯區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.668,24.152],[120.748,24.152],[120.748,24.208],[120.668,24.208],[120.668,24.152]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "西屯區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.598,24.138],[120.672,24.138],[120.672,24.192],[120.598,24.192],[120.598,24.138]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "南屯區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.608,24.092],[120.680,24.092],[120.680,24.148],[120.608,24.148],[120.608,24.092]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "北區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.660,24.122],[120.712,24.122],[120.712,24.168],[120.660,24.168],[120.660,24.122]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "東區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.690,24.112],[120.748,24.112],[120.748,24.158],[120.690,24.158],[120.690,24.112]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "西區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.632,24.122],[120.672,24.122],[120.672,24.168],[120.632,24.168],[120.632,24.122]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "南區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.648,24.085],[120.702,24.085],[120.702,24.130],[120.648,24.130],[120.648,24.085]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "大里區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.678,24.060],[120.748,24.060],[120.748,24.108],[120.678,24.108],[120.678,24.060]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "太平區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.710,24.092],[120.778,24.092],[120.778,24.152],[120.710,24.152],[120.710,24.092]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "豐原區", "city": "台中市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.708,24.222],[120.778,24.222],[120.778,24.278],[120.708,24.278],[120.708,24.222]]] }
+    }
+  ]
+}
