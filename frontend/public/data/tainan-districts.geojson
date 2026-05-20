@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "district": "東區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.218,22.982],[120.288,22.982],[120.288,23.028],[120.218,23.028],[120.218,22.982]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "南區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.188,22.935],[120.248,22.935],[120.248,22.988],[120.188,22.988],[120.188,22.935]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "北區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.175,23.002],[120.238,23.002],[120.238,23.052],[120.175,23.052],[120.175,23.002]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "中西區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.172,22.982],[120.222,22.982],[120.222,23.022],[120.172,23.022],[120.172,22.982]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "安平區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.142,22.982],[120.192,22.982],[120.192,23.028],[120.142,23.028],[120.142,22.982]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "安南區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.128,23.028],[120.212,23.028],[120.212,23.092],[120.128,23.092],[120.128,23.028]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "永康區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.225,23.018],[120.308,23.018],[120.308,23.072],[120.225,23.072],[120.225,23.018]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "歸仁區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.265,22.938],[120.332,22.938],[120.332,22.992],[120.265,22.992],[120.265,22.938]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "新化區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.298,22.978],[120.368,22.978],[120.368,23.032],[120.298,23.032],[120.298,22.978]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "仁德區", "city": "台南市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.218,22.928],[120.285,22.928],[120.285,22.978],[120.218,22.978],[120.218,22.928]]] }
+    }
+  ]
+}

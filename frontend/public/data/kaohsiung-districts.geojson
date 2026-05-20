@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "district": "三民區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.288,22.622],[120.352,22.622],[120.352,22.678],[120.288,22.678],[120.288,22.622]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "鼓山區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.258,22.642],[120.302,22.642],[120.302,22.695],[120.258,22.695],[120.258,22.642]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "左營區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.272,22.688],[120.338,22.688],[120.338,22.742],[120.272,22.742],[120.272,22.688]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "楠梓區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.298,22.738],[120.368,22.738],[120.368,22.802],[120.298,22.802],[120.298,22.738]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "苓雅區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.305,22.602],[120.368,22.602],[120.368,22.645],[120.305,22.645],[120.305,22.602]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "前鎮區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.305,22.555],[120.392,22.555],[120.392,22.608],[120.305,22.608],[120.305,22.555]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "新興區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.288,22.622],[120.325,22.622],[120.325,22.662],[120.288,22.662],[120.288,22.622]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "鹽埕區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.265,22.612],[120.300,22.612],[120.300,22.652],[120.265,22.652],[120.265,22.612]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "小港區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.325,22.508],[120.422,22.508],[120.422,22.572],[120.325,22.572],[120.325,22.508]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "鳳山區", "city": "高雄市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[120.352,22.618],[120.428,22.618],[120.428,22.672],[120.352,22.672],[120.352,22.618]]] }
+    }
+  ]
+}
