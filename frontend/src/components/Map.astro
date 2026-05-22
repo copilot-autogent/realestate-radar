@@ -226,6 +226,8 @@
       if (params.buildingType) geojson.features = geojson.features.filter((f: any) => f.properties.buildingType === params.buildingType);
       if (params.dateFrom)  geojson.features = geojson.features.filter((f: any) => f.properties.date >= params.dateFrom);
       if (params.dateTo)    geojson.features = geojson.features.filter((f: any) => f.properties.date <= params.dateTo);
+      if (params.totalPriceMin) geojson.features = geojson.features.filter((f: any) => f.properties.totalPrice >= Number(params.totalPriceMin) * 10000);
+      if (params.totalPriceMax) geojson.features = geojson.features.filter((f: any) => f.properties.totalPrice <= Number(params.totalPriceMax) * 10000);
       if (params.address) {
         const keyword = params.address.toLowerCase();
         geojson.features = geojson.features.filter((f: any) => {
@@ -530,6 +532,10 @@
     if (district)     params.district = district;
     if (minPrice)     params.minPrice = String(Number(minPrice) * 10000);
     if (maxPrice)     params.maxPrice = String(Number(maxPrice) * 10000);
+    const totalPriceMin = (document.getElementById("total-price-min") as HTMLInputElement)?.value;
+    const totalPriceMax = (document.getElementById("total-price-max") as HTMLInputElement)?.value;
+    if (totalPriceMin) params.totalPriceMin = totalPriceMin;
+    if (totalPriceMax) params.totalPriceMax = totalPriceMax;
     if (buildingType) params.buildingType = buildingType;
     if (address)      params.address = address;
     const dateFrom = (document.getElementById("date-from") as HTMLInputElement)?.value;
