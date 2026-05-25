@@ -443,6 +443,34 @@
         </div>
       `)
       .addTo(map);
+
+    // Dispatch price-history trend for same district × building type
+    const txDistrict = props.district as string | undefined;
+    const txType     = props.buildingType as string | undefined;
+    if (txDistrict) {
+      const txFeatures = currentTxGeojson?.features ?? [];
+      const quarterly: Record<string, number[]> = {};
+      for (const f of txFeatures) {
+        if (f.properties.district !== txDistrict) continue;
+        if (txType && f.properties.buildingType !== txType) continue;
+        const p = f.properties.unitPrice as number | undefined;
+        const d = f.properties.date as string | undefined;
+        const dt = new Date(d);
+        const q = Math.floor(dt.getMonth() / 3) + 1;
+        const key = `${dt.getFullYear()}-Q${q}`;
+        quarterly[key].push(p);
+      }
+      const quarters = Object.keys(quarterly).sort();
+      const medians = quarters.map((q) => {
+        const arr = quarterly[q].sort((a, b) => a - b);
+        return arr[Math.floor(arr.length / 2)];
+      });
+      document.dispatchEvent(
+        new CustomEvent('district-trend', {
+          detail: { district: txDistrict, quarters, medians, buildingType: txType ?? '', source: 'dot' },
+        })
+      );
+    }
   });
 
   // Cursor on transaction dots

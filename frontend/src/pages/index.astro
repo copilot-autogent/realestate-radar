@@ -734,10 +734,12 @@ import Map from "../components/Map.astro";
   }
 
   document.addEventListener("district-trend", async (e: Event) => {
-    const { district, quarters, medians } = (e as CustomEvent).detail as {
+    const { district, quarters, medians, buildingType, source } = (e as CustomEvent).detail as {
       district: string;
       quarters: string[];
       medians: number[];
+      buildingType?: string;
+      source?: string;
     };
 
     await ensureChart();
@@ -747,8 +749,11 @@ import Map from "../components/Map.astro";
     const note  = document.getElementById("trend-note")  as HTMLParagraphElement;
 
     panel.style.display = "block";
-    title.textContent = `${district} — 季均價走勢`;
-    note.textContent  = quarters.length ? `共 ${quarters.length} 季資料` : "暫無資料";
+    const typeLabel = buildingType ? ` ${buildingType}` : '';
+    const sourceNote = source === 'dot' ? '同類型物件歷史走勢' : '行政區季均價走勢';
+    title.textContent = `${district}${typeLabel} — 季均價走勢`;
+    note.textContent  = quarters.length ? `${sourceNote}（共 ${quarters.length} 季）` : '暫無資料';
+
 
     const canvas = document.getElementById("trend-chart") as HTMLCanvasElement;
 
