@@ -1,0 +1,28 @@
+[
+  {
+    "id": "demo-1",
+    "name": "台北大安 住宅大樓 3000萬以下",
+    "city": "台北市",
+    "district": "大安區",
+    "maxTotalPrice": 3000,
+    "buildingType": "住宅大樓",
+    "created_at": "2026-05-01T00:00:00.000Z"
+  },
+  {
+    "id": "demo-2",
+    "name": "台北信義 5000萬以下",
+    "city": "台北市",
+    "district": "信義區",
+    "maxTotalPrice": 5000,
+    "created_at": "2026-05-01T00:00:00.000Z"
+  },
+  {
+    "id": "demo-3",
+    "name": "新北板橋 30坪以上 2000萬以下",
+    "city": "新北市",
+    "district": "板橋區",
+    "area_min": 30,
+    "maxTotalPrice": 2000,
+    "created_at": "2026-05-01T00:00:00.000Z"
+  }
+]
