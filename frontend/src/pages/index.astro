@@ -1,1 +1,875 @@
-$(cat /tmp/index-final.astro)
+---
+import Layout from "../layouts/Layout.astro";
+import Map from "../components/Map.astro";
+---
+
+<Layout title="實價登錄雷達 — Real Price Radar">
+  <header class="header">
+    <h1>🏠 實價登錄雷達</h1>
+    <p class="subtitle">台灣不動產實價資訊平台</p>
+  </header>
+
+  <main class="main">
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+    <aside class="sidebar">
+      <button id="sidebar-close-btn" class="sidebar-close-btn" aria-label="關閉篩選">✕</button>
+
+      <div class="filter-group">
+        <label for="address-search">地址搜尋</label>
+        <div class="search-input-wrapper">
+          <input type="text" id="address-search" placeholder="輸入路名、地址關鍵字…" autocomplete="off" />
+          <button id="address-clear-btn" class="input-clear-btn" aria-label="清除" style="display:none">✕</button>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label for="city-select">縣市</label>
+        <select id="city-select">
+          <option value="">全部</option>
+          <option value="台北市">台北市</option>
+          <option value="新北市">新北市</option>
+          <option value="桃園市">桃園市</option>
+          <option value="台中市">台中市</option>
+          <option value="台南市">台南市</option>
+          <option value="高雄市">高雄市</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="district-select">鄉鎮市區</label>
+        <select id="district-select">
+          <option value="">全部</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="price-min">單價 (萬/坪)</label>
+        <div class="range-inputs">
+          <input type="number" id="price-min" placeholder="最低" />
+          <span>~</span>
+          <input type="number" id="price-max" placeholder="最高" />
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label for="total-price-min">總價 (萬)</label>
+        <div class="range-inputs">
+          <input type="number" id="total-price-min" placeholder="最低" min="0" />
+          <span>~</span>
+          <input type="number" id="total-price-max" placeholder="最高" min="0" />
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label for="building-type">建物型態</label>
+        <select id="building-type">
+          <option value="">全部</option>
+          <option value="住宅大樓">住宅大樓</option>
+          <option value="華廈">華廈</option>
+          <option value="公寓">公寓</option>
+          <option value="透天厝">透天厝</option>
+          <option value="套房">套房</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>交易期間</label>
+        <div class="date-presets">
+          <button class="preset-btn active" data-months="0">全部</button>
+          <button class="preset-btn" data-months="6">近半年</button>
+          <button class="preset-btn" data-months="12">近1年</button>
+          <button class="preset-btn" data-months="24">近2年</button>
+        </div>
+        <div class="range-inputs" style="margin-top:8px">
+          <input type="date" id="date-from" aria-label="開始日期" />
+          <span>~</span>
+          <input type="date" id="date-to" aria-label="結束日期" />
+        </div>
+      </div>
+
+      <!-- Choropleth toggle -->
+      <div class="toggle-row">
+        <input type="checkbox" id="choropleth-toggle" checked />
+        <label for="choropleth-toggle">顯示行政區熱力圖</label>
+      </div>
+
+      <button id="search-btn" class="search-btn">搜尋</button>
+      <button id="reset-btn" class="reset-btn">清除篩選</button>
+      <button id="save-search-btn" class="save-search-btn">⭐ 儲存此搜尋</button>
+
+      <div id="my-searches-panel" class="my-searches-panel" style="display:none">
+        <div class="my-searches-header">⭐ 我的搜尋 (<span id="ss-count">0</span>)</div>
+        <div id="my-searches-list" class="my-searches-list"></div>
+      </div>
+
+      <div id="stats-panel" class="stats-panel">
+        <h3>統計資訊</h3>
+        <div id="stats-content">
+          <p class="placeholder">選擇條件後按搜尋</p>
+        </div>
+      </div>
+
+      <div id="trend-panel" class="trend-panel" style="display:none">
+        <h3 id="trend-title">價格走勢</h3>
+        <canvas id="trend-chart" width="260" height="160"></canvas>
+        <p id="trend-note" class="trend-note"></p>
+      </div>
+
+      <div id="histogram-panel" class="histogram-panel" style="display:none">
+        <h3>單價分佈</h3>
+        <canvas id="histogram-chart" width="260" height="120"></canvas>
+      </div>
+    </aside>
+
+    <div class="map-container">
+      <div id="ss-alert-banner" class="ss-alert-banner" style="display:none"></div>
+      <Map />
+    </div>
+  </main>
+  <button id="filter-toggle-btn" class="filter-toggle-btn" aria-label="開啟篩選">☰ 篩選</button>
+</Layout>
+
+<script>
+  // ---- District data per city ----
+  const DISTRICTS_BY_CITY: Record<string, string[]> = {
+    "台北市": ["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
+    "新北市": ["板橋區","三重區","中和區","永和區","新莊區","新店區","土城區","蘆洲區","樹林區","汐止區","鶯歌區","三峽區","淡水區","林口區","五股區","泰山區","瑞芳區","八里區","深坑區","三芝區","萬里區","金山區","貢寮區","石門區","平溪區","雙溪區","石碇區","坪林區","烏來區"],
+    "桃園市": ["桃園區","中壢區","大溪區","楊梅區","蘆竹區","大園區","龜山區","八德區","龍潭區","平鎮區","新屋區","觀音區","復興區"],
+    "台中市": ["中區","東區","南區","西區","北區","北屯區","西屯區","南屯區","太平區","大里區","霧峰區","烏日區","豐原區","后里區","石岡區","東勢區","和平區","新社區","潭子區","大雅區","神岡區","大肚區","沙鹿區","龍井區","梧棲區","清水區","大甲區","外埔區","大安區"],
+    "台南市": ["中西區","東區","南區","北區","安平區","安南區","永康區","歸仁區","新化區","左鎮區","玉井區","楠西區","南化區","仁德區","關廟區","龍崎區","官田區","麻豆區","佳里區","西港區","七股區","將軍區","學甲區","北門區","新營區","後壁區","白河區","東山區","六甲區","下營區","柳營區","鹽水區","善化區","大內區","山上區","新市區","安定區"],
+    "高雄市": ["楠梓區","左營區","鼓山區","三民區","鹽埕區","前金區","新興區","苓雅區","前鎮區","旗津區","小港區","鳳山區","林園區","大寮區","大樹區","大社區","仁武區","鳥松區","岡山區","橋頭區","燕巢區","田寮區","阿蓮區","路竹區","湖內區","茄萣區","永安區","彌陀區","梓官區","旗山區","美濃區","六龜區","甲仙區","杉林區","內門區","茂林區","桃源區","那瑪夏區"],
+  };
+
+  // ---- Dynamic district dropdown ----
+  function updateDistrictOptions(city: string): void {
+    const districtSelect = document.getElementById("district-select") as HTMLSelectElement;
+    const currentValue = districtSelect.value;
+    districtSelect.innerHTML = '<option value="">全部</option>';
+    const districts = city ? DISTRICTS_BY_CITY[city] : [];
+    for (const d of districts) {
+      const opt = document.createElement("option");
+      opt.value = d;
+      opt.textContent = d;
+      districtSelect.appendChild(opt);
+    }
+    // Restore selection if still valid
+    if (districts.includes(currentValue)) {
+      districtSelect.value = currentValue;
+    }
+  }
+
+  document.getElementById("city-select")?.addEventListener("change", (e) => {
+    updateDistrictOptions((e.target as HTMLSelectElement).value);
+  });
+
+  // ---- Address search ----
+  const addressInput = document.getElementById("address-search") as HTMLInputElement;
+  const addressClearBtn = document.getElementById("address-clear-btn") as HTMLButtonElement;
+
+  addressInput?.addEventListener("input", () => {
+    addressClearBtn.style.display = addressInput.value ? "block" : "none";
+  });
+
+  addressClearBtn?.addEventListener("click", () => {
+    addressInput.value = "";
+    addressClearBtn.style.display = "none";
+    document.getElementById("search-btn")?.click();
+  });
+
+  // Enter key triggers search
+  addressInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("search-btn")?.click();
+    }
+  });
+
+  // ---- URL state ----
+  function getFilterParams(): Record<string, string> {
+    const params: Record<string, string> = {};
+    const city         = (document.getElementById("city-select")     as HTMLSelectElement)?.value;
+    const district     = (document.getElementById("district-select")  as HTMLSelectElement)?.value;
+    const minPrice     = (document.getElementById("price-min")        as HTMLInputElement)?.value;
+    const maxPrice     = (document.getElementById("price-max")        as HTMLInputElement)?.value;
+    const buildingType = (document.getElementById("building-type")    as HTMLSelectElement)?.value;
+    const address      = (document.getElementById("address-search")   as HTMLInputElement)?.value;
+    if (city)         params.city = city;
+    if (district)     params.district = district;
+    if (minPrice)     params.minPrice = minPrice;
+    if (maxPrice)     params.maxPrice = maxPrice;
+    const totalPriceMin = (document.getElementById("total-price-min") as HTMLInputElement)?.value;
+    const totalPriceMax = (document.getElementById("total-price-max") as HTMLInputElement)?.value;
+    if (totalPriceMin) params.totalPriceMin = totalPriceMin;
+    if (totalPriceMax) params.totalPriceMax = totalPriceMax;
+    if (buildingType) params.buildingType = buildingType;
+    if (address)      params.address = address;
+    const dateFrom = (document.getElementById("date-from") as HTMLInputElement)?.value;
+    const dateTo   = (document.getElementById("date-to")   as HTMLInputElement)?.value;
+    if (dateFrom) params.dateFrom = dateFrom;
+    if (dateTo)   params.dateTo   = dateTo;
+    return params;
+  }
+
+  function pushUrlState(params: Record<string, string>): void {
+    const qs = new URLSearchParams(params).toString();
+    const newUrl = qs ? `${location.pathname}?${qs}` : location.pathname;
+    history.pushState(null, "", newUrl);
+  }
+
+  function loadFromUrl(): void {
+    const sp = new URLSearchParams(location.search);
+    const set = (id: string, key: string) => {
+      const el = document.getElementById(id) as HTMLSelectElement | HTMLInputElement | null;
+      const v = sp.get(key);
+      if (el && v) el.value = v;
+    };
+    set("city-select",     "city");
+    // Populate district options before setting value
+    const city = sp.get("city");
+    if (city) updateDistrictOptions(city);
+    set("district-select", "district");
+    set("price-min",       "minPrice");
+    set("price-max",       "maxPrice");
+    set("total-price-min", "totalPriceMin");
+    set("total-price-max", "totalPriceMax");
+    set("building-type",   "buildingType");
+    set("date-from",       "dateFrom");
+    set("date-to",         "dateTo");
+    set("address-search",  "address");
+    // Show clear button if address has value
+    if (sp.get("address")) {
+      addressClearBtn.style.display = "block";
+    }
+  }
+
+  // Hook search button to also push URL state
+  document.getElementById("search-btn")?.addEventListener("click", () => {
+    pushUrlState(getFilterParams());
+  });
+
+  // Reset button
+  document.getElementById("reset-btn")?.addEventListener("click", () => {
+    (document.getElementById("city-select")     as HTMLSelectElement).value = "";
+    (document.getElementById("district-select")  as HTMLSelectElement).value = "";
+    (document.getElementById("price-min")        as HTMLInputElement).value  = "";
+    (document.getElementById("price-max")        as HTMLInputElement).value  = "";
+    (document.getElementById("total-price-min") as HTMLInputElement).value  = "";
+    (document.getElementById("total-price-max") as HTMLInputElement).value  = "";
+    (document.getElementById("building-type")    as HTMLSelectElement).value = "";
+    (document.getElementById("date-from") as HTMLInputElement).value = "";
+    (document.getElementById("date-to")   as HTMLInputElement).value = "";
+    (document.getElementById("address-search") as HTMLInputElement).value = "";
+    addressClearBtn.style.display = "none";
+    // Reset district options
+    updateDistrictOptions("");
+    // Reset preset active state
+    document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+    document.querySelector('.preset-btn[data-months="0"]')?.classList.add("active");
+    history.pushState(null, "", location.pathname);
+    document.getElementById("search-btn")?.click();
+  });
+
+  // Date preset buttons
+  document.querySelectorAll(".preset-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      // Mark active
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+
+      const months = Number((btn as HTMLButtonElement).dataset.months ?? "0");
+      const dateFromEl = document.getElementById("date-from") as HTMLInputElement;
+      const dateToEl   = document.getElementById("date-to")   as HTMLInputElement;
+
+      if (months === 0) {
+        // "全部" — clear both date inputs
+        dateFromEl.value = "";
+        dateToEl.value   = "";
+      } else {
+        // Compute dateFrom = today minus N months
+        const to   = new Date();
+        const from = new Date();
+        from.setMonth(from.getMonth() - months);
+        const fmt = (d: Date) => d.toISOString().slice(0, 10);
+        dateFromEl.value = fmt(from);
+        dateToEl.value   = fmt(to);
+      }
+      // Trigger search
+      document.getElementById("search-btn")?.click();
+    });
+  });
+
+  // Clear preset active state when date inputs are manually changed
+  ["date-from", "date-to"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", () => {
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      // Mark "全部" active if both are empty
+      const df = (document.getElementById("date-from") as HTMLInputElement)?.value;
+      const dt = (document.getElementById("date-to")   as HTMLInputElement)?.value;
+      if (!df && !dt) {
+        document.querySelector('.preset-btn[data-months="0"]')?.classList.add("active");
+      }
+    });
+  });
+
+  // ---- Mobile sidebar toggle ----
+  const sidebar  = document.querySelector(".sidebar")         as HTMLElement | null;
+  const backdrop = document.getElementById("sidebar-backdrop") as HTMLElement | null;
+
+  function openSidebar()  {
+    sidebar?.classList.add("open");
+    backdrop?.classList.add("open");
+    document.body.style.overflow = "hidden";
+  }
+  function closeSidebar() {
+    sidebar?.classList.remove("open");
+    backdrop?.classList.remove("open");
+    document.body.style.overflow = "";
+  }
+
+  document.getElementById("filter-toggle-btn")?.addEventListener("click", openSidebar);
+  document.getElementById("sidebar-close-btn")?.addEventListener("click", closeSidebar);
+  backdrop?.addEventListener("click", closeSidebar);
+
+  // ---- On load: restore from URL ----
+  loadFromUrl();
+  if (location.search) {
+    setTimeout(() => document.getElementById("search-btn")?.click(), 800);
+  }
+
+  // ============================================================
+  // ---- Saved Search Feature ----------------------------------
+  // ============================================================
+
+  const SS_KEY = "realestate-radar-saved-searches";
+  const LISTINGS_URL = `${import.meta.env.BASE_URL}data/sample-transactions.json`;
+
+  interface SavedSearch {
+    id: string;
+    name: string;
+    city?: string;
+    district?: string;
+    maxUnitPrice?: number;   // 萬/坪 (unit price)
+    maxTotalPrice?: number;  // 萬 TWD (total price)
+    buildingType?: string;
+    created_at: string;
+  }
+
+  function ssGetAll(): SavedSearch[] {
+    try { return JSON.parse(localStorage.getItem(SS_KEY) ?? "[]"); } catch { return []; }
+  }
+
+  function ssSaveAll(list: SavedSearch[]): void {
+    localStorage.setItem(SS_KEY, JSON.stringify(list));
+  }
+
+  function ssDelete(id: string): void {
+    ssSaveAll(ssGetAll().filter(s => s.id !== id));
+    ssRender();
+  }
+
+  function ssApply(search: SavedSearch): void {
+    // Reset all filters first
+    (document.getElementById("city-select") as HTMLSelectElement).value = "";
+    (document.getElementById("district-select") as HTMLSelectElement).value = "";
+    (document.getElementById("price-min") as HTMLInputElement).value = "";
+    (document.getElementById("price-max") as HTMLInputElement).value = "";
+    (document.getElementById("total-price-min") as HTMLInputElement).value = "";
+    (document.getElementById("total-price-max") as HTMLInputElement).value = "";
+    (document.getElementById("building-type") as HTMLSelectElement).value = "";
+    updateDistrictOptions("");
+
+    if (search.city) {
+      (document.getElementById("city-select") as HTMLSelectElement).value = search.city;
+      updateDistrictOptions(search.city);
+    }
+    if (search.district) {
+      (document.getElementById("district-select") as HTMLSelectElement).value = search.district;
+    }
+    if (search.maxUnitPrice) {
+      (document.getElementById("price-max") as HTMLInputElement).value = String(search.maxUnitPrice);
+    }
+    if (search.maxTotalPrice) {
+      (document.getElementById("total-price-max") as HTMLInputElement).value = String(search.maxTotalPrice);
+    }
+    if (search.buildingType) {
+      (document.getElementById("building-type") as HTMLSelectElement).value = search.buildingType;
+    }
+    document.getElementById("search-btn")?.click();
+    closeSidebar();
+  }
+
+  function ssRender(): void {
+    const list = ssGetAll();
+    const panel = document.getElementById("my-searches-panel") as HTMLDivElement | null;
+    const listEl = document.getElementById("my-searches-list") as HTMLDivElement | null;
+    const countEl = document.getElementById("ss-count") as HTMLSpanElement | null;
+    if (!panel || !listEl) return;
+
+    if (countEl) countEl.textContent = String(list.length);
+    panel.style.display = list.length > 0 ? "block" : "none";
+
+    listEl.innerHTML = "";
+    for (const s of list) {
+      const tags: string[] = [];
+      if (s.city) tags.push(s.city);
+      if (s.district) tags.push(s.district);
+      if (s.maxTotalPrice) tags.push(`總價≤${s.maxTotalPrice}萬`);
+      if (s.maxUnitPrice) tags.push(`單價≤${s.maxUnitPrice}萬/坪`);
+      if (s.buildingType) tags.push(s.buildingType);
+
+      const item = document.createElement("div");
+      item.className = "ss-item";
+      item.innerHTML = `
+        <div class="ss-item-info">
+          <div class="ss-item-name">${s.name}</div>
+          <div class="ss-item-tags">${tags.map(t => `<span class="ss-tag">${t}</span>`).join("")}</div>
+        </div>
+        <div class="ss-item-actions">
+          <button class="ss-apply-btn" title="套用此搜尋">套用</button>
+          <button class="ss-del-btn" title="刪除">✕</button>
+        </div>
+      `;
+      item.querySelector(".ss-apply-btn")?.addEventListener("click", () => ssApply(s));
+      item.querySelector(".ss-del-btn")?.addEventListener("click", () => ssDelete(s.id));
+      listEl.appendChild(item);
+    }
+  }
+
+  // Save current filter state as a new saved search
+  document.getElementById("save-search-btn")?.addEventListener("click", () => {
+    const city         = (document.getElementById("city-select")      as HTMLSelectElement).value;
+    const district     = (document.getElementById("district-select")   as HTMLSelectElement).value;
+    const maxUnitPriceStr  = (document.getElementById("price-max")        as HTMLInputElement).value;
+    const maxTotalPriceStr = (document.getElementById("total-price-max")  as HTMLInputElement).value;
+    const buildingType = (document.getElementById("building-type")    as HTMLSelectElement).value;
+
+    const parts: string[] = [];
+    if (city) parts.push(city);
+    if (district) parts.push(district);
+    if (maxTotalPriceStr) parts.push(`≤${maxTotalPriceStr}萬`);
+    if (buildingType) parts.push(buildingType);
+    const suggestedName = parts.join(" ") || "我的搜尋";
+
+    const name = prompt("為此搜尋條件命名：", suggestedName);
+    if (name === null) return;
+
+    const search: SavedSearch = {
+      id: `ss-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: name.trim() || suggestedName,
+      ...(city && { city }),
+      ...(district && { district }),
+      ...(maxUnitPriceStr  && { maxUnitPrice:  Number(maxUnitPriceStr) }),
+      ...(maxTotalPriceStr && { maxTotalPrice: Number(maxTotalPriceStr) }),
+      ...(buildingType && { buildingType }),
+      created_at: new Date().toISOString(),
+    };
+
+    ssSaveAll([...ssGetAll(), search]);
+    ssRender();
+  });
+
+  // On page load: check how many listings match each saved search and show banner
+  async function checkSavedSearchMatches(): Promise<void> {
+    const searches = ssGetAll();
+    if (searches.length === 0) return;
+
+    let geojson: any;
+    try {
+      const res = await fetch(LISTINGS_URL);
+      geojson = await res.json();
+    } catch {
+      return;
+    }
+
+    const features: any[] = geojson.features ?? [];
+    const alerts: string[] = [];
+
+    for (const s of searches) {
+      const matches = features.filter((f: any) => {
+        const p = f.properties;
+        if (s.city         && p.city         !== s.city)                    return false;
+        if (s.district     && p.district     !== s.district)                 return false;
+        if (s.maxTotalPrice && p.totalPrice  > s.maxTotalPrice * 10000)     return false;
+        if (s.maxUnitPrice  && p.unitPrice   > s.maxUnitPrice  * 10000)     return false;
+        if (s.buildingType  && p.buildingType !== s.buildingType)            return false;
+        return true;
+      });
+      if (matches.length > 0) {
+        alerts.push(`<strong>${matches.length}</strong> 筆符合「${s.name}」`);
+      }
+    }
+
+    const banner = document.getElementById("ss-alert-banner");
+    if (!banner || alerts.length === 0) return;
+
+    banner.innerHTML = `
+      <div class="ss-alert-content">
+        <span class="ss-alert-icon">🏠</span>
+        <span>${alerts.join("；")}</span>
+        <button class="ss-alert-close" aria-label="關閉">✕</button>
+      </div>
+    `;
+    banner.style.display = "block";
+    banner.querySelector(".ss-alert-close")?.addEventListener("click", () => {
+      banner.style.display = "none";
+    });
+  }
+
+  ssRender();
+  checkSavedSearchMatches();
+</script>
+
+<style>
+  .search-input-wrapper {
+    position: relative;
+  }
+  .search-input-wrapper input {
+    width: 100%;
+    padding: 8px 32px 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    background: var(--bg);
+  }
+  .input-clear-btn {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    line-height: 1;
+  }
+  .input-clear-btn:hover { color: #475569; }
+
+  .reset-btn {
+    width: 100%;
+    padding: 8px;
+    margin-top: 6px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .reset-btn:hover { background: #e2e8f0; }
+
+  .histogram-panel {
+    margin-top: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .histogram-panel h3 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .date-presets {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  .preset-btn {
+    flex: 1;
+    min-width: 52px;
+    padding: 5px 6px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .preset-btn:hover { background: #e2e8f0; }
+  .preset-btn.active {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+  }
+
+  /* ---- Saved Search ---- */
+  .save-search-btn {
+    width: 100%;
+    padding: 8px;
+    margin-top: 6px;
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .save-search-btn:hover { background: #dbeafe; }
+
+  .my-searches-panel {
+    margin-top: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .my-searches-header {
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .my-searches-list { padding: 4px 0; }
+  .ss-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.12s;
+  }
+  .ss-item:last-child { border-bottom: none; }
+  .ss-item:hover { background: #f8fafc; }
+  .ss-item-info { flex: 1; min-width: 0; }
+  .ss-item-name {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ss-item-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+  .ss-tag {
+    font-size: 0.7rem;
+    background: #f1f5f9;
+    color: #64748b;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid #e2e8f0;
+  }
+  .ss-item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .ss-apply-btn {
+    padding: 3px 8px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .ss-apply-btn:hover { background: #1d4ed8; }
+  .ss-del-btn {
+    padding: 3px 6px;
+    background: none;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .ss-del-btn:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+
+  /* Alert banner (overlaid on map) */
+  .ss-alert-banner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: #fffbeb;
+    border-bottom: 2px solid #f59e0b;
+  }
+  .ss-alert-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    color: #92400e;
+  }
+  .ss-alert-icon { font-size: 1rem; }
+  .ss-alert-close {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #92400e;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    transition: background 0.12s;
+    flex-shrink: 0;
+  }
+  .ss-alert-close:hover { background: #fef3c7; }
+</style>
+
+<script>
+  // Dynamically load Chart.js when first needed (CDN, no npm dep)
+  // jsDelivr +esm transforms the auto entry to a valid ESM module
+  let Chart: any = null;
+  let trendChartInstance: any = null;
+  let histogramChartInstance: any = null;
+
+  async function ensureChart() {
+    if (Chart) return;
+    // @ts-ignore — CDN ESM import, no type declarations needed
+    const mod = await import("https://cdn.jsdelivr.net/npm/chart.js@4.4.0/auto/+esm");
+    Chart = mod.default;
+  }
+
+  document.addEventListener("district-trend", async (e: Event) => {
+    const { district, quarters, medians, buildingType, source } = (e as CustomEvent).detail as {
+      district: string;
+      quarters: string[];
+      medians: number[];
+      buildingType?: string;
+      source?: string;
+    };
+
+    await ensureChart();
+
+    const panel = document.getElementById("trend-panel") as HTMLDivElement;
+    const title = document.getElementById("trend-title") as HTMLHeadingElement;
+    const note  = document.getElementById("trend-note")  as HTMLParagraphElement;
+
+    panel.style.display = "block";
+    const typeLabel = buildingType ? ` ${buildingType}` : '';
+    const sourceNote = source === 'dot' ? '同類型物件歷史走勢' : '行政區季均價走勢';
+    title.textContent = `${district}${typeLabel} — 季均價走勢`;
+    note.textContent  = quarters.length ? `${sourceNote}（共 ${quarters.length} 季）` : '暫無資料';
+
+
+    const canvas = document.getElementById("trend-chart") as HTMLCanvasElement;
+
+    if (trendChartInstance) {
+      trendChartInstance.destroy();
+      trendChartInstance = null;
+    }
+
+    if (!quarters.length) return;
+
+    const data = medians.map((p: number) => Math.round(p / 10000));
+
+    trendChartInstance = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: quarters,
+        datasets: [{
+          label: "中位數單價 (萬/坪)",
+          data,
+          borderColor: "#2563eb",
+          backgroundColor: "rgba(37,99,235,0.1)",
+          tension: 0.3,
+          pointRadius: 4,
+          fill: true,
+        }],
+      },
+      options: {
+        responsive: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => `${ctx.parsed.y} 萬/坪`,
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: false,
+            ticks: {
+              callback: (v: any) => `${v}萬`,
+              font: { size: 10 },
+            },
+          },
+          x: {
+            ticks: { font: { size: 10 }, maxRotation: 45 },
+          },
+        },
+      },
+    });
+  });
+
+  document.addEventListener("stats-histogram", async (e: Event) => {
+    const { bins, counts } = (e as CustomEvent).detail as {
+      bins: string[];
+      counts: number[];
+      median: number;
+      avg: number;
+    };
+
+    const panel = document.getElementById("histogram-panel") as HTMLDivElement;
+
+    if (!bins.length) {
+      panel.style.display = "none";
+      if (histogramChartInstance) {
+        histogramChartInstance.destroy();
+        histogramChartInstance = null;
+      }
+      return;
+    }
+
+    await ensureChart();
+    panel.style.display = "block";
+
+    const canvas = document.getElementById("histogram-chart") as HTMLCanvasElement;
+    if (histogramChartInstance) {
+      histogramChartInstance.destroy();
+      histogramChartInstance = null;
+    }
+
+    histogramChartInstance = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: bins,
+        datasets: [{
+          label: "筆數",
+          data: counts,
+          backgroundColor: "rgba(37, 99, 235, 0.7)",
+          borderColor: "rgba(37, 99, 235, 0.9)",
+          borderWidth: 1,
+        }],
+      },
+      options: {
+        responsive: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => `${ctx.parsed.y} 筆`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { font: { size: 9 }, maxRotation: 45 },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              font: { size: 9 },
+              stepSize: 1,
+              callback: (v: any) => Number.isInteger(Number(v)) ? v : null,
+            },
+          },
+        },
+      },
+    });
+  });
+</script>
