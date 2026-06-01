@@ -333,6 +333,10 @@
     }
 
     // Recompute choropleth colors with current data
+
+    // Render transaction list
+    const sortBy = (document.getElementById('sort-by') as HTMLSelectElement)?.value || 'date-desc';
+    renderTransactionList(geojson.features || [], sortBy);
     updateChoropleth();
     return geojson;
   }
@@ -588,6 +592,86 @@
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
     }
     const legend = document.getElementById("choropleth-legend");
+
+  // ---- Transaction List Rendering ----
+  function renderTransactionList(features: any[], sortBy: string = 'date-desc'): void {
+    const panel = document.getElementById("transaction-list-panel") as HTMLDivElement | null;
+    const content = document.getElementById("transaction-list-content") as HTMLDivElement | null;
+    if (!panel || !content) return;
+
+    if (!features || features.length === 0) {
+      panel.style.display = "none";
+      return;
+    }
+
+    panel.style.display = "block";
+
+    // Sort transactions
+    const sorted = [...features];
+    const [field, order] = sortBy.split('-');
+    sorted.sort((a, b) => {
+      let aVal: any, bVal: any;
+      if (field === 'date') {
+        aVal = new Date(a.properties.date || '').getTime();
+        bVal = new Date(b.properties.date || '').getTime();
+      } else if (field === 'unitPrice' || field === 'totalPrice') {
+        aVal = a.properties[field] || 0;
+        bVal = b.properties[field] || 0;
+      } else {
+        return 0;
+      }
+      return order === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+
+    // Limit to first 50 transactions (performance)
+    const limited = sorted.slice(0, 50);
+
+    if (limited.length === 0) {
+      content.innerHTML = '<div class="transaction-list-empty">查無符合條件的資料</div>';
+      return;
+    }
+
+    content.innerHTML = limited.map((f: any) => {
+      const p = f.properties;
+      const unitPriceWan = p.unitPrice ? (p.unitPrice / 10000).toFixed(1) : '—';
+      const totalPriceWan = p.totalPrice ? (p.totalPrice / 10000).toFixed(0) : '—';
+      const areaPing = p.areaPing ? Number(p.areaPing).toFixed(1) : '—';
+      const buildingType = p.buildingType || '—';
+      const date = p.date || '—';
+
+      return `
+        <div class="transaction-item" data-coords="${f.geometry.coordinates[0]},${f.geometry.coordinates[1]}">
+          <div class="transaction-item-address">${p.address || '地址未登錄'}</div>
+          <div class="transaction-item-details">
+            <span class="price-highlight">單價 ${unitPriceWan} 萬/坪</span>
+            <span>總價 ${totalPriceWan} 萬</span>
+            <span>${areaPing} 坪</span>
+            <span>${buildingType}</span>
+            <span>${date}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Add click handlers to fly to transaction on map
+    content.querySelectorAll('.transaction-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        const coords = (item as HTMLElement).dataset.coords?.split(',').map(Number);
+        if (coords && coords.length === 2) {
+          map.flyTo({ center: coords as [number, number], zoom: 16, duration: 600 });
+        }
+      });
+    });
+  }
+
+  // Hook sort dropdown
+  document.getElementById("sort-by")?.addEventListener("change", (e) => {
+    const sortBy = (e.target as HTMLSelectElement).value;
+    if (currentTxGeojson) {
+      renderTransactionList(currentTxGeojson.features || [], sortBy);
+    }
+  });
+
     if (legend) legend.style.opacity = on ? "1" : "0";
   });
 
