@@ -61,15 +61,6 @@ import Map from "../components/Map.astro";
       </div>
 
       <div class="filter-group">
-        <label for="area-min">坪數 (坪)</label>
-        <div class="range-inputs">
-          <input type="number" id="area-min" placeholder="最低" min="0" step="0.1" />
-          <span>~</span>
-          <input type="number" id="area-max" placeholder="最高" min="0" step="0.1" />
-        </div>
-      </div>
-
-      <div class="filter-group">
         <label for="building-type">建物型態</label>
         <select id="building-type">
           <option value="">全部</option>
@@ -227,12 +218,8 @@ import Map from "../components/Map.astro";
     const totalPriceMin = (document.getElementById("total-price-min") as HTMLInputElement)?.value;
     const totalPriceMax = (document.getElementById("total-price-max") as HTMLInputElement)?.value;
     if (totalPriceMin) params.totalPriceMin = totalPriceMin;
-    const areaMin = (document.getElementById("area-min") as HTMLInputElement)?.value;    const areaMax = (document.getElementById("area-max") as HTMLInputElement)?.value;
     if (totalPriceMax) params.totalPriceMax = totalPriceMax;
-    if (areaMin) params.areaMin = areaMin;
-    if (areaMax) params.areaMax = areaMax;
     if (buildingType) params.buildingType = buildingType;
-    if (areaMin) params.areaMin = areaMin;    if (areaMax) params.areaMax = areaMax;
     if (address)      params.address = address;
     const dateFrom = (document.getElementById("date-from") as HTMLInputElement)?.value;
     const dateTo   = (document.getElementById("date-to")   as HTMLInputElement)?.value;
@@ -263,8 +250,6 @@ import Map from "../components/Map.astro";
     set("price-max",       "maxPrice");
     set("total-price-min", "totalPriceMin");
     set("total-price-max", "totalPriceMax");
-    set("area-min", "areaMin");
-    set("area-max", "areaMax");
     set("building-type",   "buildingType");
     set("date-from",       "dateFrom");
     set("date-to",         "dateTo");
@@ -288,8 +273,6 @@ import Map from "../components/Map.astro";
     (document.getElementById("price-max")        as HTMLInputElement).value  = "";
     (document.getElementById("total-price-min") as HTMLInputElement).value  = "";
     (document.getElementById("total-price-max") as HTMLInputElement).value  = "";
-    (document.getElementById("area-min") as HTMLInputElement).value = "";
-    (document.getElementById("area-max") as HTMLInputElement).value = "";
     (document.getElementById("building-type")    as HTMLSelectElement).value = "";
     (document.getElementById("date-from") as HTMLInputElement).value = "";
     (document.getElementById("date-to")   as HTMLInputElement).value = "";
@@ -410,8 +393,6 @@ import Map from "../components/Map.astro";
     (document.getElementById("price-max") as HTMLInputElement).value = "";
     (document.getElementById("total-price-min") as HTMLInputElement).value = "";
     (document.getElementById("total-price-max") as HTMLInputElement).value = "";
-    (document.getElementById("area-min") as HTMLInputElement).value = "";
-    (document.getElementById("area-max") as HTMLInputElement).value = "";
     (document.getElementById("building-type") as HTMLSelectElement).value = "";
     updateDistrictOptions("");
 

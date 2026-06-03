@@ -230,8 +230,6 @@
       if (params.totalPriceMax) geojson.features = geojson.features.filter((f: any) => f.properties.totalPrice <= Number(params.totalPriceMax) * 10000);
       if (params.areaMin) geojson.features = geojson.features.filter((f: any) => f.properties.areaPing >= Number(params.areaMin));
       if (params.areaMax) geojson.features = geojson.features.filter((f: any) => f.properties.areaPing <= Number(params.areaMax));
-      if (params.areaMin) geojson.features = geojson.features.filter((f: any) => f.properties.areaPing >= Number(params.areaMin));
-      if (params.areaMax) geojson.features = geojson.features.filter((f: any) => f.properties.areaPing <= Number(params.areaMax));
       if (params.address) {
         const keyword = params.address.toLowerCase();
         geojson.features = geojson.features.filter((f: any) => {
@@ -572,6 +570,7 @@
     const totalPriceMax = (document.getElementById("total-price-max") as HTMLInputElement)?.value;
     if (totalPriceMin) params.totalPriceMin = totalPriceMin;
     if (totalPriceMax) params.totalPriceMax = totalPriceMax;
+    const areaMin = (document.getElementById("area-min") as HTMLInputElement)?.value;    const areaMax = (document.getElementById("area-max") as HTMLInputElement)?.value;    if (areaMin) params.areaMin = areaMin;    if (areaMax) params.areaMax = areaMax;
     const areaMin = (document.getElementById("area-min") as HTMLInputElement)?.value;
     const areaMax = (document.getElementById("area-max") as HTMLInputElement)?.value;
     if (areaMin) params.areaMin = areaMin;
