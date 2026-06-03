@@ -570,6 +570,10 @@
     const totalPriceMax = (document.getElementById("total-price-max") as HTMLInputElement)?.value;
     if (totalPriceMin) params.totalPriceMin = totalPriceMin;
     if (totalPriceMax) params.totalPriceMax = totalPriceMax;
+    const areaMin = (document.getElementById("area-min") as HTMLInputElement)?.value;
+    const areaMax = (document.getElementById("area-max") as HTMLInputElement)?.value;
+    if (areaMin) params.areaMin = areaMin;
+    if (areaMax) params.areaMax = areaMax;
     if (buildingType) params.buildingType = buildingType;
     if (address)      params.address = address;
     const dateFrom = (document.getElementById("date-from") as HTMLInputElement)?.value;
