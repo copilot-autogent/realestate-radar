@@ -111,6 +111,25 @@ import Map from "../components/Map.astro";
         <div id="my-searches-list" class="my-searches-list"></div>
       </div>
 
+      <!-- Budget Calculator -->
+      <div id="budget-calculator" class="budget-calculator">
+        <h3>💰 預算計算器</h3>
+        <div class="calc-inputs">
+          <div class="calc-input-row">
+            <label for="budget-total">總預算 (萬)</label>
+            <input type="number" id="budget-total" placeholder="例如: 1000" min="0" step="50" />
+          </div>
+          <div class="calc-input-row">
+            <label for="budget-ping">坪數需求 (坪)</label>
+            <input type="number" id="budget-ping" placeholder="例如: 30" min="0" step="1" />
+          </div>
+        </div>
+        <div id="budget-result" class="budget-result" style="display:none">
+          <p>您的單價上限：<strong id="max-unit-price">0</strong> 萬/坪</p>
+          <p id="affordable-districts" class="affordable-districts"></p>
+        </div>
+      </div>
+
       <div id="stats-panel" class="stats-panel">
         <h3>統計資訊</h3>
         <div id="stats-content">
@@ -370,6 +389,41 @@ import Map from "../components/Map.astro";
   if (location.search) {
     setTimeout(() => document.getElementById("search-btn")?.click(), 800);
   }
+
+  // ============================================================
+  // ---- Budget Calculator -------------------------------------
+  // ============================================================
+
+  const budgetTotalInput = document.getElementById("budget-total") as HTMLInputElement;
+  const budgetPingInput = document.getElementById("budget-ping") as HTMLInputElement;
+  const budgetResultDiv = document.getElementById("budget-result") as HTMLDivElement;
+  const maxUnitPriceSpan = document.getElementById("max-unit-price") as HTMLSpanElement;
+  const affordableDistrictsP = document.getElementById("affordable-districts") as HTMLParagraphElement;
+
+  function calculateBudget(): void {
+    const total = parseFloat(budgetTotalInput.value);
+    const ping = parseFloat(budgetPingInput.value);
+    
+    if (!total || !ping || ping <= 0) {
+      budgetResultDiv.style.display = "none";
+      return;
+    }
+
+    const maxUnitPrice = total / ping;
+    maxUnitPriceSpan.textContent = maxUnitPrice.toFixed(1);
+    budgetResultDiv.style.display = "block";
+
+    // Show affordable districts hint (no actual filtering yet, just a note)
+    const citySelect = document.getElementById("city-select") as HTMLSelectElement;
+    if (citySelect.value) {
+      affordableDistrictsP.textContent = `提示：在篩選中選擇 ${citySelect.value}，使用「單價上限 ${maxUnitPrice.toFixed(1)} 萬/坪」來搜尋符合預算的房源。`;
+    } else {
+      affordableDistrictsP.textContent = "提示：先選擇縣市，再使用「單價」篩選來查看符合預算的區域。";
+    }
+  }
+
+  budgetTotalInput?.addEventListener("input", calculateBudget);
+  budgetPingInput?.addEventListener("input", calculateBudget);
 
   // ============================================================
   // ---- Saved Search Feature ----------------------------------
@@ -721,6 +775,65 @@ import Map from "../components/Map.astro";
     transition: all 0.12s;
   }
   .ss-del-btn:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+
+  /* ---- Budget Calculator ---- */
+  .budget-calculator {
+    margin-top: 12px;
+    background: #fefce8;
+    border: 1px solid #fde047;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .budget-calculator h3 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #854d0e;
+    margin-bottom: 10px;
+  }
+  .calc-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .calc-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .calc-input-row label {
+    font-size: 0.8rem;
+    color: #854d0e;
+    min-width: 95px;
+    font-weight: 500;
+  }
+  .calc-input-row input {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid #fde047;
+    border-radius: 5px;
+    font-size: 0.85rem;
+    background: #fff;
+  }
+  .budget-result {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #fde047;
+  }
+  .budget-result p {
+    font-size: 0.82rem;
+    color: #854d0e;
+    margin-bottom: 6px;
+  }
+  .budget-result strong {
+    color: #ca8a04;
+    font-size: 1.1rem;
+  }
+  .affordable-districts {
+    font-size: 0.75rem !important;
+    color: #a16207 !important;
+    margin-top: 8px !important;
+    line-height: 1.4;
+  }
 
   /* Alert banner (overlaid on map) */
   .ss-alert-banner {
