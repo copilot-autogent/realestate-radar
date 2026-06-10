@@ -128,10 +128,6 @@ import Map from "../components/Map.astro";
           <p>您的單價上限：<strong id="max-unit-price">0</strong> 萬/坪</p>
           <p id="affordable-districts" class="affordable-districts"></p>
         </div>
-          <div class="toggle-row" id="affordability-toggle-row" style="margin-top:10px">
-            <input type="checkbox" id="affordability-toggle" />
-            <label for="affordability-toggle">🗺️ 顯示可負擔性地圖</label>
-          </div>
       </div>
 
       <!-- Mortgage Calculator -->
@@ -459,35 +455,6 @@ import Map from "../components/Map.astro";
 
   budgetTotalInput?.addEventListener("input", calculateBudget);
   budgetPingInput?.addEventListener("input", calculateBudget);
-
-  // ---- Affordability Map Toggle ----
-  const affordabilityToggle = document.getElementById("affordability-toggle") as HTMLInputElement;
-  
-  function updateAffordabilityMode(): void {
-    const total = parseFloat(budgetTotalInput.value);
-    const ping = parseFloat(budgetPingInput.value);
-    const enabled = affordabilityToggle?.checked ?? false;
-    
-    if (enabled && total > 0 && ping > 0) {
-      // Convert total budget from 萬 to TWD (×10000), then calc max unit price
-      const maxUnitPricePerPing = (total * 10000) / ping;
-      document.dispatchEvent(new CustomEvent("affordability-mode-change", {
-        detail: { enabled: true, maxUnitPricePerPing, totalBudget: total, desiredPing: ping },
-      }));
-    } else {
-      document.dispatchEvent(new CustomEvent("affordability-mode-change", {
-        detail: { enabled: false },
-      }));
-    }
-  }
-  
-  affordabilityToggle?.addEventListener("change", updateAffordabilityMode);
-  budgetTotalInput?.addEventListener("input", () => {
-    if (affordabilityToggle?.checked) updateAffordabilityMode();
-  });
-  budgetPingInput?.addEventListener("input", () => {
-    if (affordabilityToggle?.checked) updateAffordabilityMode();
-  });
 
   // ============================================================
   // ---- Mortgage Calculator -----------------------------------
