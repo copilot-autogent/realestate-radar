@@ -149,6 +149,64 @@
   let districtGeoJSON: any = null;
   let currentTxGeojson: any = null;
 
+  // ---- Affordability overlay state ----
+  let affordabilityActive = false;
+  let affordabilityThreshold = 0; // TWD per ping
+
+  const DEFAULT_FILL_COLOR: any = [
+    "case",
+    ["<", ["coalesce", ["get", "medianPrice"], -1], 0],
+    "#d1d5db",
+    [
+      "interpolate", ["linear"],
+      ["get", "medianPrice"],
+      300000,  "#22c55e",
+      500000,  "#84cc16",
+      700000,  "#eab308",
+      900000,  "#f97316",
+      1100000, "#ef4444",
+      1400000, "#7c1010",
+    ],
+  ];
+
+  function getAffordabilityFillColor(threshold: number): any {
+    return [
+      "case",
+      ["<", ["coalesce", ["get", "medianPrice"], -1], 0], "#d1d5db",
+      ["<=", ["get", "medianPrice"], threshold], "#22c55e",
+      ["<=", ["get", "medianPrice"], threshold * 1.2], "#eab308",
+      "#ef4444",
+    ];
+  }
+
+  function updateAffordabilityLegend(active: boolean, thresholdWan?: number): void {
+    const legend = document.getElementById("choropleth-legend");
+    if (!legend) return;
+    if (active && thresholdWan !== undefined) {
+      const borderlineWan = (thresholdWan * 1.2).toFixed(0);
+      legend.innerHTML = `
+        <div class="legend-title">可負擔性地圖</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="legend-swatch" style="background:#22c55e"></span>可負擔 (≤${thresholdWan.toFixed(0)}萬/坪)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#eab308"></span>邊緣 (≤${borderlineWan}萬/坪)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>負擔重 (&gt;${borderlineWan}萬/坪)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
+        </div>`;
+    } else {
+      legend.innerHTML = `
+        <div class="legend-title">行政區 中位數單價</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="legend-swatch" style="background:#22c55e"></span>&lt; 50萬/坪</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#84cc16"></span>50–70萬/坪</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#eab308"></span>70–90萬/坪</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f97316"></span>90–110萬/坪</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>110–140萬/坪</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#7c1010"></span>&gt; 140萬/坪</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
+        </div>`;
+    }
+  }
+
   /** Compute median unit price per district from transaction features. */
   function computeDistrictMedians(features: any[]): Record<string, number> {
     const byDistrict: Record<string, number[]> = {};
@@ -540,7 +598,21 @@
     }
     const priceHtml =
       props.medianPrice > 0
-        ? `<div class="popup-row"><span class="popup-label">中位數單價</span><span class="popup-price">${formatPrice(props.medianPrice)}/坪</span></div>`
+        ? (() => {
+            const baseHtml = `<div class="popup-row"><span class="popup-label">中位數單價</span><span class="popup-price">${formatPrice(props.medianPrice)}/坪</span></div>`;
+            if (affordabilityActive && affordabilityThreshold > 0) {
+              let status: string;
+              if (props.medianPrice <= affordabilityThreshold) {
+                status = `<div class="popup-row" style="color:#16a34a;font-weight:600">✅ 可負擔</div>`;
+              } else if (props.medianPrice <= affordabilityThreshold * 1.2) {
+                status = `<div class="popup-row" style="color:#ca8a04;font-weight:600">⚠️ 邊緣</div>`;
+              } else {
+                status = `<div class="popup-row" style="color:#dc2626;font-weight:600">❌ 負擔重</div>`;
+              }
+              return baseHtml + status;
+            }
+            return baseHtml;
+          })()
         : `<div class="popup-row"><span class="popup-label">資料不足</span></div>`;
     districtHover
       .setLngLat(e.lngLat)
@@ -588,6 +660,36 @@
     }
     loadTransactions(params);
     loadDistrictBoundaries(targetCity);
+  });
+
+  // ---- Affordability overlay ----
+  document.addEventListener("affordability-mode-change", (e: Event) => {
+    const detail = (e as CustomEvent).detail as {
+      enabled: boolean;
+      maxUnitPricePerPing?: number;
+    };
+
+    if (!map.getLayer("districts-fill")) return;
+
+    if (detail.enabled && detail.maxUnitPricePerPing && detail.maxUnitPricePerPing > 0) {
+      affordabilityActive = true;
+      affordabilityThreshold = detail.maxUnitPricePerPing;
+      map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
+      // Ensure district layers are visible when affordability overlay is turned on
+      for (const id of ["districts-fill", "districts-line"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      }
+      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethToggle) choroplethToggle.checked = true;
+      updateAffordabilityLegend(true, affordabilityThreshold / 10000);
+      const legend = document.getElementById("choropleth-legend");
+      if (legend) legend.style.opacity = "1";
+    } else {
+      affordabilityActive = false;
+      affordabilityThreshold = 0;
+      map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+      updateAffordabilityLegend(false);
+    }
   });
 
   // ---- Choropleth toggle ----
