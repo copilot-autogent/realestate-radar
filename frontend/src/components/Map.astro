@@ -296,7 +296,12 @@
             </div>
           `;
         } else {
-          statsEl.innerHTML = '<p class="placeholder">查無符合條件的資料</p>';
+          statsEl.innerHTML = `
+          <div class="stats-empty-state">
+            <div class="empty-state-icon">📊</div>
+            <p class="empty-state-msg">目前篩選條件下無符合交易記錄。</p>
+            <p class="empty-state-hint">試試調整篩選條件以查看統計資訊。</p>
+          </div>`;
         }
       }
 
@@ -606,7 +611,12 @@
     if (!panel || !content) return;
 
     if (!features || features.length === 0) {
-      panel.style.display = "none";
+      panel.style.display = "block";
+      content.innerHTML = `
+        <div class="transaction-list-empty">
+          <div class="empty-state-icon">🔍</div>
+          <p class="empty-state-msg">目前篩選條件下無符合交易記錄。<br>試試調整價格範圍或日期區間。</p>
+        </div>`;
       return;
     }
 
