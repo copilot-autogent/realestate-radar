@@ -79,6 +79,42 @@
     letter-spacing: normal !important;
     font-weight: 500;
   }
+
+  /* ---- District sparkline popup ---- */
+  .district-sparkline-popup .maplibregl-popup-content {
+    padding: 10px 13px 10px;
+    min-width: 210px;
+    max-width: 275px;
+    font-size: 0.82rem;
+  }
+  .spark-wrap {
+    margin: 7px 0 4px;
+    padding: 6px 0 4px;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .spark-label {
+    font-size: 0.7rem;
+    color: #64748b;
+    font-weight: 600;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .spark-axis-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.64rem;
+    color: #94a3b8;
+    margin-top: 3px;
+  }
+  @media (max-width: 400px) {
+    .district-sparkline-popup .maplibregl-popup-content {
+      min-width: 170px;
+      max-width: 240px;
+      font-size: 0.78rem;
+    }
+  }
 </style>
 
 <script>
@@ -550,34 +586,175 @@
     map.getCanvas().style.cursor = "";
   });
 
-  // ---- District click → dispatch trend event ----
+  // ---- HTML-escape helper (prevents XSS when interpolating GeoJSON properties into setHTML) ----
+  function escHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
+  }
+
+  // ---- SVG sparkline helper ----
+  /**
+   * Renders an inline SVG sparkline for up to N quarterly price points.
+   * Null entries create a visual gap — no line is drawn through those quarters.
+   */
+  function buildSparkline(values: (number | null)[], width = 204, height = 44): string {
+    const W = width, H = height;
+    const PX = 3, PY = 5; // padding
+    const plotW = W - PX * 2;
+    const plotH = H - PY * 2;
+    const n = values.length;
+
+    const nonNull = values.filter((v): v is number => v !== null && v > 0);
+    if (nonNull.length === 0) {
+      return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><text x="${W / 2}" y="${H / 2 + 3}" text-anchor="middle" font-size="9" fill="#94a3b8">暫無走勢資料</text></svg>`;
+    }
+
+    const yMin = Math.min(...nonNull);
+    const yMax = Math.max(...nonNull);
+    const yRange = yMax - yMin || 1;
+
+    // Map each value to SVG coordinates; null → null
+    const pts: ([number, number] | null)[] = values.map((v, i) => {
+      if (v === null) return null;
+      const x = PX + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+      const y = PY + plotH - ((v - yMin) / yRange) * plotH;
+      return [+x.toFixed(1), +y.toFixed(1)];
+    });
+
+    // Build contiguous polyline segments, breaking at null gaps
+    const lines: string[] = [];
+    let seg: [number, number][] = [];
+    const flushSeg = () => {
+      if (seg.length >= 2) {
+        lines.push(`<polyline points="${seg.map((p) => p.join(",")).join(" ")}" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`);
+      } else if (seg.length === 1) {
+        lines.push(`<circle cx="${seg[0][0]}" cy="${seg[0][1]}" r="2" fill="#3b82f6"/>`);
+      }
+      seg = [];
+    };
+    for (const pt of pts) {
+      if (pt === null) { flushSeg(); } else { seg.push(pt); }
+    }
+    flushSeg();
+
+    // Data-point dots overlaid on the lines
+    const dots = pts
+      .filter((p): p is [number, number] => p !== null)
+      .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.2" fill="#2563eb" stroke="white" stroke-width="1.2"/>`)
+      .join("");
+
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible">${lines.join("")}${dots}</svg>`;
+  }
+
+  // ---- District click → sparkline popup + dispatch trend event ----
+  let districtClickPopup: maplibregl.Popup | null = null;
+
   map.on("click", "districts-fill", (e) => {
     if (!e.features || e.features.length === 0) return;
-    const district = e.features[0].properties.district as string;
+    // Don't open district popup when clicking a transaction dot on top of the fill
+    if (map.queryRenderedFeatures(e.point, { layers: ["transactions-circles"] }).length > 0) return;
 
+    const district = e.features[0].properties.district as string;
     const txFeatures = currentTxGeojson?.features ?? [];
+
+    // Group unit prices by quarter for this district
     const quarterly: Record<string, number[]> = {};
     for (const f of txFeatures) {
       if (f.properties.district !== district) continue;
       const p = f.properties.unitPrice as number | undefined;
       const d = f.properties.date as string | undefined;
-      if (!p || !d) continue;
+      if (!p || p <= 0 || !d) continue;
       const dt = new Date(d);
+      if (isNaN(dt.getTime())) continue;
       const q = Math.floor(dt.getMonth() / 3) + 1;
       const key = `${dt.getFullYear()}-Q${q}`;
-      if (!quarterly[key]) quarterly[key] = [];
-      quarterly[key].push(p);
+      (quarterly[key] ??= []).push(p);
     }
 
-    const quarters = Object.keys(quarterly).sort();
-    const medians = quarters.map((q) => {
-      const arr = quarterly[q].sort((a, b) => a - b);
-      return arr[Math.floor(arr.length / 2)];
+    // Overall median for the filtered district (all quarters combined)
+    const allPrices = Object.values(quarterly).flat().sort((a, b) => a - b);
+    const medianPrice = allPrices.length ? allPrices[Math.floor(allPrices.length / 2)] : null;
+
+    // Transactions in the last 6 months (近半年)
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - 6);
+    const sixMonthCount = txFeatures.filter((f: any) => {
+      if (f.properties.district !== district) return false;
+      const d = f.properties.date as string | undefined;
+      return d && new Date(d) >= cutoff;
+    }).length;
+
+    // Determine the 8-quarter window anchored at the latest quarter present in data
+    const allSortedKeys = Object.keys(quarterly).sort();
+    let anchorDate: Date;
+    if (allSortedKeys.length > 0) {
+      const [yr, qStr] = allSortedKeys[allSortedKeys.length - 1].split("-Q");
+      anchorDate = new Date(Number(yr), (Number(qStr) - 1) * 3, 1);
+    } else {
+      anchorDate = new Date();
+    }
+
+    const last8: string[] = [];
+    for (let i = 7; i >= 0; i--) {
+      const d = new Date(anchorDate);
+      d.setMonth(d.getMonth() - i * 3);
+      const q = Math.floor(d.getMonth() / 3) + 1;
+      last8.push(`${d.getFullYear()}-Q${q}`);
+    }
+
+    // Sparkline values: median per quarter, null if no transactions that quarter
+    const sparkValues: (number | null)[] = last8.map((qk) => {
+      const arr = quarterly[qk];
+      if (!arr || arr.length === 0) return null;
+      const sorted = [...arr].sort((a, b) => a - b);
+      return sorted[Math.floor(sorted.length / 2)];
     });
 
+    // Dispatch sidebar trend event (all quarters with data, sorted)
+    const trendMedians = allSortedKeys.map((qk) => {
+      const arr = [...quarterly[qk]].sort((a, b) => a - b);
+      return arr[Math.floor(arr.length / 2)];
+    });
     document.dispatchEvent(
-      new CustomEvent("district-trend", { detail: { district, quarters, medians } })
+      new CustomEvent("district-trend", { detail: { district, quarters: allSortedKeys, medians: trendMedians } })
     );
+
+    // Build popup HTML
+    const medianWan = medianPrice ? (medianPrice / 10_000).toFixed(1) : "—";
+    const hasSparkData = sparkValues.some((v) => v !== null);
+    const sparkSection = hasSparkData
+      ? `<div class="spark-wrap">
+           <div class="spark-label">📈 季均價走勢 (萬/坪)</div>
+           ${buildSparkline(sparkValues)}
+           <div class="spark-axis-labels">
+             <span>${last8[0]}</span><span>${last8[7]}</span>
+           </div>
+         </div>`
+      : `<div class="popup-row" style="color:#94a3b8;font-size:0.76rem;margin-top:4px">走勢資料不足</div>`;
+
+    districtClickPopup?.remove();
+    districtClickPopup = new maplibregl.Popup({
+      closeButton: true,
+      closeOnClick: false,
+      offset: [0, -6],
+      className: "district-sparkline-popup",
+      maxWidth: "280px",
+    })
+      .setLngLat(e.lngLat)
+      .setHTML(
+        `<div class="popup-title">${escHtml(district)}</div>
+         <div class="popup-row">
+           <span class="popup-label">中位單價</span>
+           <span class="popup-price">${medianWan} 萬/坪</span>
+         </div>
+         ${sparkSection}
+         <div class="popup-row" style="margin-top:6px">
+           <span class="popup-label">近半年成交</span>
+           <span class="popup-value">${sixMonthCount} 筆</span>
+         </div>`
+      )
+      .addTo(map);
+    // Null the reference when the popup is dismissed via its own ✕ button
+    districtClickPopup.on("close", () => { districtClickPopup = null; });
   });
 
   // Cursor on district polygons
@@ -628,6 +805,23 @@
   map.on("mouseleave", "districts-fill", () => {
     districtHover?.remove();
     districtHover = null;
+  });
+
+  // Close district sparkline popup when clicking outside a district polygon
+  map.on("click", (e) => {
+    if (!districtClickPopup) return;
+    if (map.queryRenderedFeatures(e.point, { layers: ["districts-fill"] }).length === 0) {
+      districtClickPopup.remove();
+      districtClickPopup = null;
+    }
+  });
+
+  // Escape key closes the district sparkline popup
+  document.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key === "Escape" && districtClickPopup) {
+      districtClickPopup.remove();
+      districtClickPopup = null;
+    }
   });
 
   // ---- Search button ----
