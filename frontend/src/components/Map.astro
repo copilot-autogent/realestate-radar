@@ -586,6 +586,11 @@
     map.getCanvas().style.cursor = "";
   });
 
+  // ---- HTML-escape helper (prevents XSS when interpolating GeoJSON properties into setHTML) ----
+  function escHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
+  }
+
   // ---- SVG sparkline helper ----
   /**
    * Renders an inline SVG sparkline for up to N quarterly price points.
@@ -736,7 +741,7 @@
     })
       .setLngLat(e.lngLat)
       .setHTML(
-        `<div class="popup-title">${district}</div>
+        `<div class="popup-title">${escHtml(district)}</div>
          <div class="popup-row">
            <span class="popup-label">中位單價</span>
            <span class="popup-price">${medianWan} 萬/坪</span>
@@ -748,6 +753,8 @@
          </div>`
       )
       .addTo(map);
+    // Null the reference when the popup is dismissed via its own ✕ button
+    districtClickPopup.on("close", () => { districtClickPopup = null; });
   });
 
   // Cursor on district polygons
