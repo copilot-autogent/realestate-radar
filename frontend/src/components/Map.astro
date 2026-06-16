@@ -324,7 +324,6 @@
       if (params.totalPriceMax) geojson.features = geojson.features.filter((f: any) => f.properties.totalPrice <= Number(params.totalPriceMax) * 10000);
       if (params.areaMin) geojson.features = geojson.features.filter((f: any) => f.properties.areaPing >= Number(params.areaMin));
       if (params.areaMax) geojson.features = geojson.features.filter((f: any) => f.properties.areaPing <= Number(params.areaMax));
-
       if (params.address) {
         const keyword = params.address.toLowerCase();
         geojson.features = geojson.features.filter((f: any) => {
