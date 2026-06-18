@@ -915,12 +915,18 @@
 
     titleEl.textContent = props.address || "地址未登錄";
 
-    // Parse transaction year; fall back to current year if date is absent/malformed
+    // Parse transaction year safely (avoid timezone-skew by replacing - with /).
+    // If date is absent or malformed, fall back to null so buildingAge shows "—" rather
+    // than computing an age relative to the current calendar year.
     const parsedDate = props.date ? new Date(String(props.date).replace(/-/g, "/")) : null;
-    const txYear     = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.getFullYear() : new Date().getFullYear();
-    const buildYear  = props.buildYear ? Number(props.buildYear) : null;
-    const rawAge     = buildYear && buildYear > 1900 ? txYear - buildYear : null;
-    const buildingAge = rawAge != null && rawAge >= 0
+    const txYear     = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.getFullYear() : null;
+    // Treat sub-1911 buildYear values as ROC years and convert; still requires a valid txYear.
+    const buildYearRaw = props.buildYear ? Number(props.buildYear) : null;
+    const buildYear    = buildYearRaw && buildYearRaw > 0
+      ? (buildYearRaw < 200 ? buildYearRaw + 1911 : buildYearRaw)  // ROC → Western
+      : null;
+    const rawAge       = txYear && buildYear ? txYear - buildYear : null;
+    const buildingAge  = rawAge != null && rawAge >= 0 && rawAge < 200
       ? `${rawAge} 年 (${buildYear} 年建)`
       : "—";
 
@@ -973,25 +979,27 @@
     document.getElementById("tx-modal-backdrop")?.setAttribute("hidden", "");
   }
 
-  // Close on backdrop click (outside modal card)
-  document.getElementById("tx-modal-backdrop")?.addEventListener("click", (e) => {
-    if (e.target === e.currentTarget) closeTxModal();
-  });
-  // Close on ✕ button
-  document.getElementById("tx-modal-close")?.addEventListener("click", closeTxModal);
-  // Close on Escape key — guard against duplicate registration (e.g. View Transitions)
-  if (!(window as any).__txModalEscRegistered) {
-    (window as any).__txModalEscRegistered = true;
+  // ---- Modal close handlers (all guarded via single registration flag) ----
+  if (!(window as any).__txModalHandlersRegistered) {
+    (window as any).__txModalHandlersRegistered = true;
+
+    // Close on backdrop click (outside modal card)
+    document.getElementById("tx-modal-backdrop")?.addEventListener("click", (e) => {
+      if (e.target === e.currentTarget) closeTxModal();
+    });
+    // Close on ✕ button
+    document.getElementById("tx-modal-close")?.addEventListener("click", closeTxModal);
+    // Close on Escape key
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         const backdrop = document.getElementById("tx-modal-backdrop");
         if (backdrop && !backdrop.hasAttribute("hidden")) closeTxModal();
       }
     });
+    // Close when user pans/zooms so modal doesn't permanently occlude the map
+    map.on("dragstart", closeTxModal);
+    map.on("zoomstart", closeTxModal);
   }
-  // Close when user pans/zooms the map so modal doesn't permanently occlude it
-  map.on("dragstart", closeTxModal);
-  map.on("zoomstart", closeTxModal);
 
   // ---- SVG sparkline helper ----
   /**
