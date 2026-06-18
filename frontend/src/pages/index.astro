@@ -3,17 +3,28 @@ import Layout from "../layouts/Layout.astro";
 import Map from "../components/Map.astro";
 import { DATA_AS_OF } from "../generated/metadata.ts";
 
-/** Convert "YYYY-MM-DD" to "YYYY 年 QN（YYYY-MM-DD）" */
+/** Sentinel value written by generate-metadata when no real data is available (dev/lint mode). */
+const PLACEHOLDER_DATE = "1970-01-01";
+const isPlaceholder = DATA_AS_OF === PLACEHOLDER_DATE;
+
+/** Convert "YYYY-MM-DD" to "YYYY 年 QN（YYYY-MM-DD）". Returns input as-is on malformed dates. */
 function formatDataAsOf(isoDate: string): string {
-  const [year, month] = isoDate.split("-").map(Number);
+  const parts = isoDate.split("-").map(Number);
+  const [year, month] = parts;
+  if (!year || !month || isNaN(month) || month < 1 || month > 12) return isoDate;
   const quarter = Math.ceil(month / 3);
   return `${year} 年 Q${quarter}（${isoDate}）`;
 }
 
 const dataAsOfLabel = formatDataAsOf(DATA_AS_OF);
 
-/** True if DATA_AS_OF is more than 180 days before today (date-string comparison, UTC-safe). */
-const isStale = (() => {
+/**
+ * True if DATA_AS_OF is more than 180 days before today (date-string comparison, UTC-safe).
+ * Suppressed when DATA_AS_OF is the dev-mode placeholder (1970-01-01).
+ * Note: isStale is computed at build time (SSG). The banner reflects the state when the
+ * site was last deployed, not when each user loads the page.
+ */
+const isStale = !isPlaceholder && (() => {
   const cutoff = new Date();
   cutoff.setUTCDate(cutoff.getUTCDate() - 180);
   const cutoffStr = cutoff.toISOString().slice(0, 10);

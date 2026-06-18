@@ -90,9 +90,16 @@ for (const file of dataFiles) {
 }
 
 if (!maxDate) {
-  console.error("[generate-metadata] ERROR: no date fields found in any data file.");
-  console.error("  Ensure frontend/public/data/ exists and contains valid JSON with 'date' fields.");
-  process.exit(1);
+  if (STRICT) {
+    console.error("[generate-metadata] ERROR: no date fields found in any data file.");
+    console.error("  Ensure frontend/public/data/ exists and contains valid JSON with 'date' fields.");
+    process.exit(1);
+  } else {
+    const placeholder = "1970-01-01";
+    console.warn(`[generate-metadata] Warning: no date fields found — writing placeholder ${placeholder}`);
+    writeMetadata(placeholder, true);
+    process.exit(0);
+  }
 }
 
 writeMetadata(maxDate);
