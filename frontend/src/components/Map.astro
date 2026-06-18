@@ -154,6 +154,66 @@
   const API_BASE = import.meta.env.DEV ? "/api" : "";
   const BASE_URL = import.meta.env.BASE_URL;
   const STATIC_DATA_URL = `${BASE_URL}data/sample-transactions.json`;
+  const MRT_STATIONS_URL = `${BASE_URL}data/mrt-stations.json`;
+
+  // ---- MRT station data (loaded once, concurrency-safe via promise cache) ----
+  interface MrtStation {
+    id: string;
+    name: string;
+    lat: number;
+    lng: number;
+    line: string;
+    lineZh: string;
+  }
+  let mrtStations: MrtStation[] = [];
+  let _mrtLoadPromise: Promise<void> | null = null;
+
+  async function loadMrtStations(): Promise<void> {
+    if (mrtStations.length > 0) return;
+    if (_mrtLoadPromise) return _mrtLoadPromise;
+    _mrtLoadPromise = (async () => {
+      try {
+        const res = await fetch(MRT_STATIONS_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) throw new Error("Empty or invalid station data");
+        mrtStations = data;
+      } catch (e) {
+        console.warn("[mrt] Failed to load mrt-stations.json:", e);
+        // Clear promise so next call can retry
+        _mrtLoadPromise = null;
+      }
+    })();
+    return _mrtLoadPromise;
+  }
+
+  /** Haversine distance in metres between two lat/lng points. */
+  function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  /**
+   * Returns straight-line distance in metres from [lng, lat] to nearest MRT station.
+   * Returns Infinity when station data is unavailable (fails closed — no false matches).
+   * Note: straight-line distance; actual walking distances may be longer near rivers/hills.
+   * When station data fails to load, the filter is skipped (fail-open: shows all results)
+   * rather than showing an empty map. This is a deliberate UX trade-off.
+   */
+  function distToNearestMrt(lng: number, lat: number): number {
+    if (mrtStations.length === 0) return Infinity;
+    let minDist = Infinity;
+    for (const st of mrtStations) {
+      const d = haversineMetres(lat, lng, st.lat, st.lng);
+      if (d < minDist) minDist = d;
+    }
+    return minDist;
+  }
 
   const CITY_DISTRICTS: Record<string, string> = {
     "台北市": `${BASE_URL}data/taipei-districts.geojson`,
@@ -456,6 +516,26 @@
           return addr.includes(keyword);
         });
       }
+      // MRT proximity filter (straight-line Haversine distance to nearest station)
+      if (params.mrtWalkMin) {
+        const walkMinutes = Number(params.mrtWalkMin);
+        // Guard against NaN from malformed URL params
+        if (!isNaN(walkMinutes) && walkMinutes > 0) {
+          // Walking speed ~80m/min => 5min=400m, 10min=800m, 15min=1200m
+          const maxMetres = walkMinutes * 80;
+          await loadMrtStations();
+          if (mrtStations.length === 0) {
+            console.warn("[mrt] Station data unavailable — MRT filter skipped");
+          } else {
+            geojson.features = geojson.features.filter((f: any) => {
+              const coords = f.geometry?.coordinates;
+              if (!Array.isArray(coords) || coords.length < 2) return true;
+              const [lng, lat] = coords as [number, number];
+              return distToNearestMrt(lng, lat) <= maxMetres;
+            });
+          }
+        }
+      }
     }
 
     currentTxGeojson = geojson;
@@ -601,7 +681,52 @@
     // 3. Fetch Taipei district boundaries initially
     await loadDistrictBoundaries("台北市");
 
-    // 4. Inject legend into map container
+    // 4. Load MRT stations layer (hidden initially, shown when filter active)
+    await loadMrtStations();
+    const mrtGeojson = {
+      type: "FeatureCollection",
+      features: mrtStations.map((st) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [st.lng, st.lat] },
+        properties: { name: st.name, line: st.line, lineZh: st.lineZh },
+      })),
+    };
+    map.addSource("mrt-stations", { type: "geojson", data: mrtGeojson as any });
+    map.addLayer({
+      id: "mrt-stations-circles",
+      type: "circle",
+      source: "mrt-stations",
+      layout: { visibility: "none" },
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 7, 18, 10],
+        "circle-color": "#1d4ed8",
+        "circle-opacity": 0.85,
+        "circle-stroke-width": 1.5,
+        "circle-stroke-color": "#ffffff",
+      },
+    });
+    map.addLayer({
+      id: "mrt-stations-labels",
+      type: "symbol",
+      source: "mrt-stations",
+      layout: {
+        visibility: "none",
+        "text-field": ["get", "name"],
+        "text-font": ["Open Sans Regular"],
+        "text-size": 10,
+        "text-offset": [0, 1.4],
+        "text-anchor": "top",
+        "text-optional": true,
+      },
+      paint: {
+        "text-color": "#1e40af",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5,
+      },
+      minzoom: 13,
+    });
+
+    // 5. Inject legend into map container
     const legend = document.createElement("div");
     legend.id = "choropleth-legend";
     legend.className = "choropleth-legend";
@@ -984,6 +1109,10 @@
     if (dateFrom) params.dateFrom = dateFrom;
     if (dateTo)   params.dateTo   = dateTo;
 
+    // MRT proximity filter
+    const mrtWalkMin = (document.getElementById("mrt-walk-min") as HTMLSelectElement)?.value;
+    if (mrtWalkMin) params.mrtWalkMin = mrtWalkMin;
+
     // Fly to selected city center and load matching district boundaries
     const targetCity = city || "台北市";
     if (city && CITY_CENTERS[city]) {
@@ -991,6 +1120,16 @@
     }
     loadTransactions(params);
     loadDistrictBoundaries(targetCity);
+
+    // Sync MRT station layer visibility with filter state
+    const mrtActive = !!params.mrtWalkMin;
+    const mrtLayerToggleRow = document.getElementById("mrt-layer-toggle-row");
+    if (mrtLayerToggleRow) mrtLayerToggleRow.style.display = mrtActive ? "flex" : "none";
+    const mrtLayerToggle = document.getElementById("mrt-layer-toggle") as HTMLInputElement | null;
+    const mrtLayerVis = (mrtActive && (mrtLayerToggle?.checked ?? true)) ? "visible" : "none";
+    for (const id of ["mrt-stations-circles", "mrt-stations-labels"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", mrtLayerVis);
+    }
   });
 
   // ---- Affordability overlay ----
@@ -1020,6 +1159,34 @@
       affordabilityThreshold = 0;
       map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
       updateAffordabilityLegend(false);
+    }
+  });
+
+  // ---- MRT filter reset (from reset button) ----
+  document.addEventListener("mrt-filter-reset", () => {
+    for (const id of ["mrt-stations-circles", "mrt-stations-labels"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+    }
+  });
+
+  // ---- MRT filter → show/hide station layer toggle ----
+  document.getElementById("mrt-walk-min")?.addEventListener("change", (e) => {
+    const active = !!(e.target as HTMLSelectElement).value;
+    const toggleRow = document.getElementById("mrt-layer-toggle-row");
+    if (toggleRow) toggleRow.style.display = active ? "flex" : "none";
+    const layerToggle = document.getElementById("mrt-layer-toggle") as HTMLInputElement | null;
+    const vis = (active && (layerToggle?.checked ?? true)) ? "visible" : "none";
+    for (const id of ["mrt-stations-circles", "mrt-stations-labels"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+    }
+  });
+
+  // ---- MRT layer toggle ----
+  document.getElementById("mrt-layer-toggle")?.addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    const vis = on ? "visible" : "none";
+    for (const id of ["mrt-stations-circles", "mrt-stations-labels"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
     }
   });
 
