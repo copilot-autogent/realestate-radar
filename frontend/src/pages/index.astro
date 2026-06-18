@@ -12,11 +12,12 @@ function formatDataAsOf(isoDate: string): string {
 
 const dataAsOfLabel = formatDataAsOf(DATA_AS_OF);
 
-/** True if DATA_AS_OF is more than 180 days before today. */
+/** True if DATA_AS_OF is more than 180 days before today (date-string comparison, UTC-safe). */
 const isStale = (() => {
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 180);
-  return new Date(DATA_AS_OF) < cutoff;
+  cutoff.setUTCDate(cutoff.getUTCDate() - 180);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return DATA_AS_OF < cutoffStr;
 })();
 ---
 

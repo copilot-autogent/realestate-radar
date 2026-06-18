@@ -34,22 +34,35 @@ function extractDates(value, acc = []) {
 
 let maxDate = "";
 
-for (const file of readdirSync(DATA_DIR)) {
-  if (!file.endsWith(".json")) continue;
+let dataFiles;
+try {
+  dataFiles = readdirSync(DATA_DIR).filter((f) => f.endsWith(".json"));
+} catch (err) {
+  if (err.code === "ENOENT") {
+    console.error(`[generate-metadata] ERROR: data directory not found: ${DATA_DIR}`);
+    console.error("  Run data-download step first, or check your working directory.");
+  } else {
+    console.error(`[generate-metadata] ERROR reading data directory: ${err.message}`);
+  }
+  process.exit(1);
+}
+
+for (const file of dataFiles) {
   try {
     const raw = JSON.parse(readFileSync(join(DATA_DIR, file), "utf8"));
     const dates = extractDates(raw);
     for (const d of dates) {
       if (d > maxDate) maxDate = d;
     }
-  } catch {
-    // Skip malformed files
+  } catch (err) {
+    console.warn(`[generate-metadata] Warning: skipping ${file} — ${err.message}`);
   }
 }
 
 if (!maxDate) {
-  console.warn("[generate-metadata] Warning: no date fields found. Using fallback.");
-  maxDate = new Date().toISOString().slice(0, 10);
+  console.error("[generate-metadata] ERROR: no date fields found in any data file.");
+  console.error("  Ensure frontend/public/data/ exists and contains valid JSON with 'date' fields.");
+  process.exit(1);
 }
 
 mkdirSync(OUT_DIR, { recursive: true });

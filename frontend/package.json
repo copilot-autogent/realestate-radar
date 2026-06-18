@@ -9,6 +9,7 @@
     "prebuild": "node ../scripts/generate-metadata.mjs",
     "build": "astro build",
     "preview": "astro preview",
+    "prelint": "node ../scripts/generate-metadata.mjs",
     "lint": "astro check"
   },
   "dependencies": {
