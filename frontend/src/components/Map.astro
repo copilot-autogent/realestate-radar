@@ -278,7 +278,9 @@
 
     const median = (arr: number[]) => {
       const s = [...arr].sort((a, b) => a - b);
-      return s[Math.floor(s.length / 2)];
+      const mid = Math.floor(s.length / 2);
+      // True median: average two middle values for even-length arrays
+      return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
     };
 
     const pct = ((median(recentPrices) - median(priorPrices)) / median(priorPrices)) * 100;
@@ -831,8 +833,15 @@
       detail: { pricesWan: allPrices.map((p: number) => p / 10000), district },
     }));
 
-    // Compute activeCity once; reused for both yoy-signal dispatch and popup rendering
-    const activeCity = (document.getElementById("city-select") as HTMLSelectElement | null)?.value || undefined;
+    // Compute activeCity once; reused for both yoy-signal dispatch and popup rendering.
+    // Prefer city derived from transaction data for the clicked district (more reliable
+    // than the dropdown when no city filter is active or the map spans multiple cities).
+    const cityFromData = rawAllFeatures.find(
+      (f) => f.properties?.district === district
+    )?.properties?.city as string | undefined;
+    const activeCity = cityFromData
+      || (document.getElementById("city-select") as HTMLSelectElement | null)?.value
+      || undefined;
     const yoyHtml = renderYoYHtml(district, activeCity);
 
     // Dispatch YoY signal so #yoy-panel in the stats card updates on district click
@@ -853,9 +862,6 @@
          </div>`
       : `<div class="popup-row" style="color:#94a3b8;font-size:0.76rem;margin-top:4px">走勢資料不足</div>`;
 
-    // Reuse yoyHtml in popup (same city-scoped computation)
-    const yoyPopupHtml = yoyHtml;
-
     districtClickPopup?.remove();
     districtClickPopup = new maplibregl.Popup({
       closeButton: true,
@@ -871,7 +877,7 @@
            <span class="popup-label">中位單價</span>
            <span class="popup-price">${medianWan} 萬/坪</span>
          </div>
-         ${yoyPopupHtml}
+         ${yoyHtml}
          ${sparkSection}
          <div class="popup-row" style="margin-top:6px">
            <span class="popup-label">近半年成交</span>
