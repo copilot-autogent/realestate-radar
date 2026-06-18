@@ -170,6 +170,7 @@ import Map from "../components/Map.astro";
         <div id="stats-content">
           <p class="placeholder">選擇條件後按搜尋</p>
         </div>
+        <div id="yoy-panel" class="yoy-panel" style="display:none"></div>
       </div>
 
       <div id="trend-panel" class="trend-panel" style="display:none">
@@ -785,6 +786,13 @@ import Map from "../components/Map.astro";
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
+
+  /* ---- 議價時機 YoY panel (standalone in stats card) ---- */
+  .yoy-panel {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+  }
   .date-presets {
     display: flex;
     gap: 4px;
@@ -1304,6 +1312,19 @@ import Map from "../components/Map.astro";
     const { thresholdWan } = (e as CustomEvent).detail as { thresholdWan?: number };
     currentThresholdWan = thresholdWan;
     renderPriceHistogram();
+  });
+
+  // ---- 議價時機 YoY Signal (dispatched by Map.astro on district click or search) ----
+  document.addEventListener("yoy-signal", (e: Event) => {
+    const { html } = (e as CustomEvent).detail as { district?: string; html: string };
+    const panel = document.getElementById("yoy-panel") as HTMLDivElement | null;
+    if (!panel) return;
+    if (html) {
+      panel.innerHTML = html;
+      panel.style.display = "block";
+    } else {
+      panel.style.display = "none";
+    }
   });
 
 </script>

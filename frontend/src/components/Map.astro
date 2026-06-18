@@ -115,6 +115,37 @@
       font-size: 0.78rem;
     }
   }
+
+  /* ---- 議價時機 YoY Trend Signal ---- */
+  .yoy-signal {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .yoy-buyer   { color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .yoy-neutral { color: #a16207; background: #fefce8; border: 1px solid #fde047; }
+  .yoy-seller  { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
+  .yoy-insufficient { color: #94a3b8; font-size: 0.76rem; font-weight: 400; font-style: italic; }
+  .yoy-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-top: 1px solid #f1f5f9;
+    margin-top: 6px;
+    gap: 6px;
+  }
+  .yoy-row-label {
+    font-size: 0.76rem;
+    color: #64748b;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
 </style>
 
 <script>
@@ -184,6 +215,95 @@
   // ---- Choropleth state ----
   let districtGeoJSON: any = null;
   let currentTxGeojson: any = null;
+
+  // ---- Full unfiltered transaction features (cached once on first static load) ----
+  let rawAllFeatures: any[] = [];
+
+  // ---- 議價時機 YoY Trend Signal ----
+  /**
+   * Computes rolling 12-month YoY median unit-price change for a district.
+   * Anchors to the latest date present in rawAllFeatures for that district.
+   * Optionally scoped by city to avoid cross-city district-name collisions.
+   * Requires ≥3 transactions in both the recent and prior 12-month windows.
+   */
+  function computeYoYSignal(district: string, city?: string): {
+    tier: "buyer" | "neutral" | "seller" | "insufficient";
+    pct: number | null;
+    label: string;
+    arrow: string;
+    badge: string;
+  } {
+    const MIN_SAMPLES = 3;
+    const THRESHOLD_PCT = 3;
+
+    const features = rawAllFeatures.filter(
+      (f) =>
+        f.properties?.district === district &&
+        (f.properties?.unitPrice as number) > 0 &&
+        (!city || f.properties?.city === city)
+    );
+
+    const validTimes = features
+      .map((f) => new Date(f.properties.date as string).getTime())
+      .filter((t) => !isNaN(t));
+
+    if (validTimes.length < MIN_SAMPLES * 2) {
+      return { tier: "insufficient", pct: null, label: "資料不足", arrow: "", badge: "" };
+    }
+
+    // Use reduce to avoid RangeError on very large arrays (spread is stack-limited)
+    const maxTime = validTimes.reduce((a, b) => (a > b ? a : b), -Infinity);
+
+    // Recent 12mo: (maxDate-12mo, maxDate]
+    const cutRecent = new Date(maxTime);
+    cutRecent.setFullYear(cutRecent.getFullYear() - 1);
+
+    // Prior 12mo: (maxDate-24mo, maxDate-12mo]
+    const cutPrior = new Date(maxTime);
+    cutPrior.setFullYear(cutPrior.getFullYear() - 2);
+
+    const toTime = (f: any) => new Date(f.properties.date as string).getTime();
+
+    const recentPrices = features
+      .filter((f) => { const t = toTime(f); return t > cutRecent.getTime() && t <= maxTime; })
+      .map((f) => f.properties.unitPrice as number);
+
+    const priorPrices = features
+      .filter((f) => { const t = toTime(f); return t > cutPrior.getTime() && t <= cutRecent.getTime(); })
+      .map((f) => f.properties.unitPrice as number);
+
+    if (recentPrices.length < MIN_SAMPLES || priorPrices.length < MIN_SAMPLES) {
+      return { tier: "insufficient", pct: null, label: "資料不足", arrow: "", badge: "" };
+    }
+
+    const median = (arr: number[]) => {
+      const s = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      // True median: average two middle values for even-length arrays
+      return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
+    };
+
+    const pct = ((median(recentPrices) - median(priorPrices)) / median(priorPrices)) * 100;
+
+    if (pct < -THRESHOLD_PCT) {
+      return { tier: "buyer",   pct, label: "買方有利", arrow: "▼", badge: "🟢" };
+    } else if (pct > THRESHOLD_PCT) {
+      return { tier: "seller",  pct, label: "賣方有利", arrow: "▲", badge: "🔴" };
+    } else {
+      return { tier: "neutral", pct, label: "持平",     arrow: pct >= 0 ? "▲" : "▼", badge: "🟡" };
+    }
+  }
+
+  /** Renders the YoY signal as an HTML row string for use in popups and the stats panel. */
+  function renderYoYHtml(district: string, city?: string): string {
+    if (!rawAllFeatures.length) return "";
+    const sig = computeYoYSignal(district, city);
+    if (sig.tier === "insufficient") {
+      return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-insufficient">資料不足</span></div>`;
+    }
+    const pctStr = Math.abs(sig.pct!).toFixed(1);
+    return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-signal yoy-${sig.tier}">${sig.badge} ${sig.label} ${sig.arrow}${pctStr}% YoY</span></div>`;
+  }
 
   // ---- Affordability overlay state ----
   let affordabilityActive = false;
@@ -312,6 +432,11 @@
       const res = await fetch(STATIC_DATA_URL);
       geojson = await res.json();
 
+      // Cache full unfiltered features once for YoY computation (defensive slice — copy refs, not the array object)
+      if (rawAllFeatures.length === 0 && geojson.features) {
+        rawAllFeatures = geojson.features.slice();
+      }
+
       // Client-side filtering
       if (params.city)         geojson.features = geojson.features.filter((f: any) => f.properties.city === params.city);
       if (params.district)    geojson.features = geojson.features.filter((f: any) => f.properties.district === params.district);
@@ -398,6 +523,14 @@
           </div>`;
         }
       }
+
+      // Update #yoy-panel: populate when district filter active, clear otherwise.
+      // Single render path avoids duplicate YoY display (popup vs inline stats).
+      document.dispatchEvent(new CustomEvent("yoy-signal", {
+        detail: {
+          html: params.district ? renderYoYHtml(params.district, params.city || undefined) : "",
+        },
+      }));
 
       // Dispatch histogram event — pass raw prices in 万/坪; SVG renderer bins them at 5万 intervals
       const allPrices: number[] = (geojson.features ?? [])
@@ -700,6 +833,22 @@
       detail: { pricesWan: allPrices.map((p: number) => p / 10000), district },
     }));
 
+    // Compute activeCity once; reused for both yoy-signal dispatch and popup rendering.
+    // Prefer city derived from transaction data for the clicked district (more reliable
+    // than the dropdown when no city filter is active or the map spans multiple cities).
+    const cityFromData = rawAllFeatures.find(
+      (f) => f.properties?.district === district
+    )?.properties?.city as string | undefined;
+    const activeCity = cityFromData
+      || (document.getElementById("city-select") as HTMLSelectElement | null)?.value
+      || undefined;
+    const yoyHtml = renderYoYHtml(district, activeCity);
+
+    // Dispatch YoY signal so #yoy-panel in the stats card updates on district click
+    document.dispatchEvent(new CustomEvent("yoy-signal", {
+      detail: { district, html: yoyHtml },
+    }));
+
     // Build popup HTML
     const medianWan = medianPrice ? (medianPrice / 10_000).toFixed(1) : "—";
     const hasSparkData = sparkValues.some((v) => v !== null);
@@ -728,6 +877,7 @@
            <span class="popup-label">中位單價</span>
            <span class="popup-price">${medianWan} 萬/坪</span>
          </div>
+         ${yoyHtml}
          ${sparkSection}
          <div class="popup-row" style="margin-top:6px">
            <span class="popup-label">近半年成交</span>
