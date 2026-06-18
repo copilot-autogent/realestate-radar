@@ -13,8 +13,11 @@ export function getPool(): pg.Pool {
   return pool;
 }
 
-export async function query(text: string, params?: unknown[]): Promise<pg.QueryResult> {
-  return pool.query(text, params);
+export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
+  text: string,
+  params?: unknown[]
+): Promise<pg.QueryResult<T>> {
+  return pool.query<T>(text, params as any);
 }
 
 export async function close(): Promise<void> {
