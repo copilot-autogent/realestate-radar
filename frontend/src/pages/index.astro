@@ -1232,28 +1232,34 @@ import Map from "../components/Map.astro";
     const container = document.getElementById("histogram-svg-container") as HTMLDivElement;
     if (!panel || !container) return;
 
-    if (!currentPricesWan.length) {
+    // Filter to finite positive values only; guard against NaN propagation
+    const prices = currentPricesWan.filter(p => Number.isFinite(p) && p > 0);
+    if (!prices.length) {
       panel.style.display = "none";
       return;
     }
     panel.style.display = "block";
 
     const BIN = 5; // fixed 5万/坪 bin width
-    const lo0 = Math.floor(Math.min(...currentPricesWan) / BIN) * BIN;
-    const hi0 = Math.ceil(Math.max(...currentPricesWan) / BIN) * BIN;
-    const nBins = Math.max(1, Math.round((hi0 - lo0) / BIN));
+    // Use reduce instead of spread to avoid stack overflow on large datasets
+    const minP = prices.reduce((a, b) => a < b ? a : b);
+    const maxP = prices.reduce((a, b) => a > b ? a : b);
+    const lo0 = Math.floor(minP / BIN) * BIN;
+    const hi0 = Math.ceil(maxP / BIN) * BIN;
+    // Both endpoints are BIN-multiples, so division is exact integer
+    const nBins = Math.max(1, (hi0 - lo0) / BIN);
 
     const bins = Array.from({ length: nBins }, (_, i) => ({
       lo: lo0 + i * BIN,
       hi: lo0 + (i + 1) * BIN,
       count: 0,
     }));
-    for (const p of currentPricesWan) {
+    for (const p of prices) {
       const idx = Math.min(nBins - 1, Math.max(0, Math.floor((p - lo0) / BIN)));
       bins[idx].count++;
     }
 
-    const maxCount = Math.max(...bins.map(b => b.count), 1);
+    const maxCount = bins.reduce((a, b) => a > b.count ? a : b.count, 1);
     const W = 260, LPAD = 52, RPAD = 28, BAR_W = W - LPAD - RPAD;
     const ROW_H = 16, GAP = 2, TOP = 4;
     const H = TOP + nBins * (ROW_H + GAP);
@@ -1274,7 +1280,8 @@ import Map from "../components/Map.astro";
     }).join("");
 
     let thrEl = "";
-    if (thr !== undefined && thr > lo0 && thr < hi0) {
+    // Show threshold line whenever it's within the displayed price range (inclusive)
+    if (thr !== undefined && thr >= lo0 && thr <= hi0) {
       const ly = TOP + ((thr - lo0) / BIN) * (ROW_H + GAP);
       thrEl = `<line x1="${LPAD}" y1="${ly}" x2="${LPAD + BAR_W}" y2="${ly}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${LPAD + BAR_W - 2}" y="${ly - 2}" font-size="8" fill="#ef4444" text-anchor="end">預算 ${thr.toFixed(0)}萬</text>`;
     }
