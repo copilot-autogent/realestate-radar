@@ -158,7 +158,7 @@ const isStale = !isPlaceholder && (() => {
       <button id="search-btn" class="search-btn">搜尋</button>
       <button id="reset-btn" class="reset-btn">清除篩選</button>
       <button id="save-search-btn" class="save-search-btn">⭐ 儲存此搜尋</button>
-      <button id="share-search-btn" class="share-search-btn">🔗 分享此搜尋</button>
+      <button id="share-search-btn" type="button" class="share-search-btn">🔗 分享此搜尋</button>
 
       <div id="my-searches-panel" class="my-searches-panel" style="display:none">
         <div class="my-searches-header">⭐ 我的搜尋 (<span id="ss-count">0</span>)</div>
@@ -747,8 +747,8 @@ const isStale = !isPlaceholder && (() => {
   const SHARE_BTN_LABEL = "🔗 分享此搜尋";
   document.getElementById("share-search-btn")?.addEventListener("click", async (e) => {
     const btn = e.currentTarget as HTMLButtonElement;
-    // Guard against re-entry during the 2s feedback window
-    if (btn.classList.contains("copied")) return;
+    // Guard against re-entry during success (2s) or error (3s) feedback windows
+    if (btn.disabled) return;
 
     const url = window.location.href;
 
@@ -773,17 +773,22 @@ const isStale = !isPlaceholder && (() => {
       document.body.removeChild(ta);
     }
 
+    btn.disabled = true;
     if (copied) {
       btn.textContent = "✓ 連結已複製";
       btn.classList.add("copied");
       setTimeout(() => {
         btn.textContent = SHARE_BTN_LABEL;
         btn.classList.remove("copied");
+        btn.disabled = false;
       }, 2000);
     } else {
       // Both methods failed (e.g. non-HTTPS context) — prompt user to copy manually
       btn.textContent = "⚠ 請手動複製網址";
-      setTimeout(() => { btn.textContent = SHARE_BTN_LABEL; }, 3000);
+      setTimeout(() => {
+        btn.textContent = SHARE_BTN_LABEL;
+        btn.disabled = false;
+      }, 3000);
     }
   });
 
