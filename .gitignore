@@ -5,3 +5,4 @@ dist/
 data/downloads/
 data/geocode-cache.json
 frontend/.astro/
+frontend/src/generated/
