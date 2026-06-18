@@ -750,6 +750,7 @@ const isStale = !isPlaceholder && (() => {
     // Guard against re-entry during success (2s) or error (3s) feedback windows
     if (btn.disabled) return;
 
+    btn.disabled = true;
     const url = window.location.href;
 
     let copied = false;
@@ -783,12 +784,9 @@ const isStale = !isPlaceholder && (() => {
         btn.disabled = false;
       }, 2000);
     } else {
-      // Both methods failed (e.g. non-HTTPS context) — prompt user to copy manually
-      btn.textContent = "⚠ 請手動複製網址";
-      setTimeout(() => {
-        btn.textContent = SHARE_BTN_LABEL;
-        btn.disabled = false;
-      }, 3000);
+      // Both methods failed (e.g. non-HTTPS context) — surface URL for manual copy
+      btn.disabled = false;
+      prompt("請複製以下網址分享此搜尋：", url);
     }
   });
 
