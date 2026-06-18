@@ -915,9 +915,11 @@
 
     titleEl.textContent = props.address || "地址未登錄";
 
-    const txYear    = props.date ? new Date(String(props.date)).getFullYear() : new Date().getFullYear();
-    const buildYear = props.buildYear ? Number(props.buildYear) : null;
-    const rawAge    = buildYear && buildYear > 1900 ? txYear - buildYear : null;
+    // Parse transaction year; fall back to current year if date is absent/malformed
+    const parsedDate = props.date ? new Date(String(props.date).replace(/-/g, "/")) : null;
+    const txYear     = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.getFullYear() : new Date().getFullYear();
+    const buildYear  = props.buildYear ? Number(props.buildYear) : null;
+    const rawAge     = buildYear && buildYear > 1900 ? txYear - buildYear : null;
     const buildingAge = rawAge != null && rawAge >= 0
       ? `${rawAge} 年 (${buildYear} 年建)`
       : "—";
@@ -932,12 +934,22 @@
       ? `${props.city ? escHtml(String(props.city)) + "\u00a0" : ""}${escHtml(String(props.district))}`
       : "—";
 
+    // Safe number formatter — returns "—" for NaN/null/0
+    const safePrice = (v: any): string | null => {
+      const n = parseFloat(String(v));
+      return !isNaN(n) && n > 0 ? formatPrice(n) : null;
+    };
+    const safePing = (v: any): string | null => {
+      const n = parseFloat(String(v));
+      return !isNaN(n) && n > 0 ? `${n.toFixed(1)} 坪` : null;
+    };
+
     type Row = { label: string; value: string; price?: boolean; rawHtml?: boolean };
     const rows: Row[] = [
       { label: "成交日期", value: props.date ? String(props.date) : "—" },
-      { label: "總價",     value: props.totalPrice ? formatPrice(Number(props.totalPrice)) : "—", price: true },
-      { label: "單價／坪", value: props.unitPrice ? `${formatPrice(Number(props.unitPrice))} ／坪` : "—", price: true },
-      { label: "坪數",     value: props.areaPing ? `${Number(props.areaPing).toFixed(1)} 坪` : "—" },
+      { label: "總價",     value: safePrice(props.totalPrice) ?? "—", price: true },
+      { label: "單價／坪", value: safePrice(props.unitPrice) ? `${safePrice(props.unitPrice)} ／坪` : "—", price: true },
+      { label: "坪數",     value: safePing(props.areaPing) ?? "—" },
       { label: "樓層",     value: floorText },
       { label: "格局",     value: props.rooms ? `${props.rooms} 房` : "—" },
       { label: "屋齡",     value: buildingAge },
@@ -977,6 +989,9 @@
       }
     });
   }
+  // Close when user pans/zooms the map so modal doesn't permanently occlude it
+  map.on("dragstart", closeTxModal);
+  map.on("zoomstart", closeTxModal);
 
   // ---- SVG sparkline helper ----
   /**
