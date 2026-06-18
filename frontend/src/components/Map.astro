@@ -223,9 +223,10 @@
   /**
    * Computes rolling 12-month YoY median unit-price change for a district.
    * Anchors to the latest date present in rawAllFeatures for that district.
+   * Optionally scoped by city to avoid cross-city district-name collisions.
    * Requires ≥3 transactions in both the recent and prior 12-month windows.
    */
-  function computeYoYSignal(district: string): {
+  function computeYoYSignal(district: string, city?: string): {
     tier: "buyer" | "neutral" | "seller" | "insufficient";
     pct: number | null;
     label: string;
@@ -236,7 +237,10 @@
     const THRESHOLD_PCT = 3;
 
     const features = rawAllFeatures.filter(
-      (f) => f.properties?.district === district && (f.properties?.unitPrice as number) > 0
+      (f) =>
+        f.properties?.district === district &&
+        (f.properties?.unitPrice as number) > 0 &&
+        (!city || f.properties?.city === city)
     );
 
     const validTimes = features
@@ -247,7 +251,8 @@
       return { tier: "insufficient", pct: null, label: "資料不足", arrow: "", badge: "" };
     }
 
-    const maxTime = Math.max(...validTimes);
+    // Use reduce to avoid RangeError on very large arrays (spread is stack-limited)
+    const maxTime = validTimes.reduce((a, b) => (a > b ? a : b), -Infinity);
 
     // Recent 12mo: (maxDate-12mo, maxDate]
     const cutRecent = new Date(maxTime);
@@ -257,18 +262,14 @@
     const cutPrior = new Date(maxTime);
     cutPrior.setFullYear(cutPrior.getFullYear() - 2);
 
+    const toTime = (f: any) => new Date(f.properties.date as string).getTime();
+
     const recentPrices = features
-      .filter((f) => {
-        const t = new Date(f.properties.date as string).getTime();
-        return t > cutRecent.getTime() && t <= maxTime;
-      })
+      .filter((f) => { const t = toTime(f); return t > cutRecent.getTime() && t <= maxTime; })
       .map((f) => f.properties.unitPrice as number);
 
     const priorPrices = features
-      .filter((f) => {
-        const t = new Date(f.properties.date as string).getTime();
-        return t > cutPrior.getTime() && t <= cutRecent.getTime();
-      })
+      .filter((f) => { const t = toTime(f); return t > cutPrior.getTime() && t <= cutRecent.getTime(); })
       .map((f) => f.properties.unitPrice as number);
 
     if (recentPrices.length < MIN_SAMPLES || priorPrices.length < MIN_SAMPLES) {
@@ -292,9 +293,9 @@
   }
 
   /** Renders the YoY signal as an HTML row string for use in popups and the stats panel. */
-  function renderYoYHtml(district: string): string {
+  function renderYoYHtml(district: string, city?: string): string {
     if (!rawAllFeatures.length) return "";
-    const sig = computeYoYSignal(district);
+    const sig = computeYoYSignal(district, city);
     if (sig.tier === "insufficient") {
       return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-insufficient">資料不足</span></div>`;
     }
@@ -429,9 +430,9 @@
       const res = await fetch(STATIC_DATA_URL);
       geojson = await res.json();
 
-      // Cache full unfiltered features once for YoY computation
+      // Cache full unfiltered features once for YoY computation (defensive slice — copy refs, not the array object)
       if (rawAllFeatures.length === 0 && geojson.features) {
-        rawAllFeatures = geojson.features;
+        rawAllFeatures = geojson.features.slice();
       }
 
       // Client-side filtering
@@ -492,6 +493,8 @@
 
       // Update stats panel
       const statsEl = document.getElementById("stats-content");
+      // Always clear stale yoy-panel from previous district click when a new search runs
+      document.dispatchEvent(new CustomEvent("yoy-signal", { detail: { html: "" } }));
       if (statsEl && geojson.features) {
         const prices = geojson.features
           .map((f: any) => f.properties.unitPrice)
@@ -500,7 +503,8 @@
           prices.sort((a: number, b: number) => a - b);
           const median = prices[Math.floor(prices.length / 2)];
           const avg = Math.round(prices.reduce((s: number, p: number) => s + p, 0) / prices.length);
-          const yoySection = params.district ? renderYoYHtml(params.district) : "";
+          // Pass city to scope YoY and avoid cross-city district-name collisions
+          const yoySection = params.district ? renderYoYHtml(params.district, params.city) : "";
           statsEl.innerHTML = `
             <div class="match-count">符合筆數：<strong>${geojson.features.length.toLocaleString()}</strong></div>
             <div class="popup-row">
@@ -825,8 +829,10 @@
     }));
 
     // Dispatch YoY signal so the stats panel can display it
+    // (city scoping happens in the popup block below — reuse the computed activeCity)
+    // Note: yoy-signal html is computed before the popup block; we emit after city is known
     document.dispatchEvent(new CustomEvent("yoy-signal", {
-      detail: { district, html: renderYoYHtml(district) },
+      detail: { district, html: renderYoYHtml(district, (document.getElementById("city-select") as HTMLSelectElement | null)?.value || undefined) },
     }));
 
     // Build popup HTML
@@ -842,8 +848,9 @@
          </div>`
       : `<div class="popup-row" style="color:#94a3b8;font-size:0.76rem;margin-top:4px">走勢資料不足</div>`;
 
-    // Compute YoY signal for this district (uses unfiltered rawAllFeatures)
-    const yoyPopupHtml = renderYoYHtml(district);
+    // Compute YoY signal for this district; scope by active city to prevent cross-city collisions
+    const activeCity = (document.getElementById("city-select") as HTMLSelectElement | null)?.value ?? "";
+    const yoyPopupHtml = renderYoYHtml(district, activeCity || undefined);
 
     districtClickPopup?.remove();
     districtClickPopup = new maplibregl.Popup({
