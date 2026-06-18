@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node ../scripts/generate-metadata.mjs",
     "dev": "astro dev",
-    "prebuild": "node ../scripts/generate-metadata.mjs",
+    "prebuild": "node ../scripts/generate-metadata.mjs --strict",
     "build": "astro build",
     "preview": "astro preview",
     "prelint": "node ../scripts/generate-metadata.mjs",

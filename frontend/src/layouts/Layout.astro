@@ -27,6 +27,8 @@
         color: var(--text);
         height: 100vh;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
       }
 
       .header {
@@ -68,7 +70,8 @@
 
       .main {
         display: flex;
-        height: calc(100vh - 52px);
+        flex: 1;
+        min-height: 0;
       }
 
       .sidebar {
