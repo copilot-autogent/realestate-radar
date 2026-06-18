@@ -493,8 +493,6 @@
 
       // Update stats panel
       const statsEl = document.getElementById("stats-content");
-      // Always clear stale yoy-panel from previous district click when a new search runs
-      document.dispatchEvent(new CustomEvent("yoy-signal", { detail: { html: "" } }));
       if (statsEl && geojson.features) {
         const prices = geojson.features
           .map((f: any) => f.properties.unitPrice)
@@ -503,8 +501,6 @@
           prices.sort((a: number, b: number) => a - b);
           const median = prices[Math.floor(prices.length / 2)];
           const avg = Math.round(prices.reduce((s: number, p: number) => s + p, 0) / prices.length);
-          // Pass city to scope YoY and avoid cross-city district-name collisions
-          const yoySection = params.district ? renderYoYHtml(params.district, params.city) : "";
           statsEl.innerHTML = `
             <div class="match-count">符合筆數：<strong>${geojson.features.length.toLocaleString()}</strong></div>
             <div class="popup-row">
@@ -515,7 +511,6 @@
               <span class="popup-label">平均單價 (萬/坪)</span>
               <span class="popup-price">${formatPrice(avg)}</span>
             </div>
-            ${yoySection}
           `;
         } else {
           statsEl.innerHTML = `
@@ -526,6 +521,14 @@
           </div>`;
         }
       }
+
+      // Update #yoy-panel: populate when district filter active, clear otherwise.
+      // Single render path avoids duplicate YoY display (popup vs inline stats).
+      document.dispatchEvent(new CustomEvent("yoy-signal", {
+        detail: {
+          html: params.district ? renderYoYHtml(params.district, params.city || undefined) : "",
+        },
+      }));
 
       // Dispatch histogram event — pass raw prices in 万/坪; SVG renderer bins them at 5万 intervals
       const allPrices: number[] = (geojson.features ?? [])
@@ -828,11 +831,13 @@
       detail: { pricesWan: allPrices.map((p: number) => p / 10000), district },
     }));
 
-    // Dispatch YoY signal so the stats panel can display it
-    // (city scoping happens in the popup block below — reuse the computed activeCity)
-    // Note: yoy-signal html is computed before the popup block; we emit after city is known
+    // Compute activeCity once; reused for both yoy-signal dispatch and popup rendering
+    const activeCity = (document.getElementById("city-select") as HTMLSelectElement | null)?.value || undefined;
+    const yoyHtml = renderYoYHtml(district, activeCity);
+
+    // Dispatch YoY signal so #yoy-panel in the stats card updates on district click
     document.dispatchEvent(new CustomEvent("yoy-signal", {
-      detail: { district, html: renderYoYHtml(district, (document.getElementById("city-select") as HTMLSelectElement | null)?.value || undefined) },
+      detail: { district, html: yoyHtml },
     }));
 
     // Build popup HTML
@@ -848,9 +853,8 @@
          </div>`
       : `<div class="popup-row" style="color:#94a3b8;font-size:0.76rem;margin-top:4px">走勢資料不足</div>`;
 
-    // Compute YoY signal for this district; scope by active city to prevent cross-city collisions
-    const activeCity = (document.getElementById("city-select") as HTMLSelectElement | null)?.value ?? "";
-    const yoyPopupHtml = renderYoYHtml(district, activeCity || undefined);
+    // Reuse yoyHtml in popup (same city-scoped computation)
+    const yoyPopupHtml = yoyHtml;
 
     districtClickPopup?.remove();
     districtClickPopup = new maplibregl.Popup({

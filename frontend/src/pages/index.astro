@@ -1314,9 +1314,9 @@ import Map from "../components/Map.astro";
     renderPriceHistogram();
   });
 
-  // ---- 議價時機 YoY Signal (dispatched by Map.astro on district click) ----
+  // ---- 議價時機 YoY Signal (dispatched by Map.astro on district click or search) ----
   document.addEventListener("yoy-signal", (e: Event) => {
-    const { html } = (e as CustomEvent).detail as { district: string; html: string };
+    const { html } = (e as CustomEvent).detail as { district?: string; html: string };
     const panel = document.getElementById("yoy-panel") as HTMLDivElement | null;
     if (!panel) return;
     if (html) {
