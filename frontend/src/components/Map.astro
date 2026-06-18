@@ -202,6 +202,8 @@
    * Returns straight-line distance in metres from [lng, lat] to nearest MRT station.
    * Returns Infinity when station data is unavailable (fails closed — no false matches).
    * Note: straight-line distance; actual walking distances may be longer near rivers/hills.
+   * When station data fails to load, the filter is skipped (fail-open: shows all results)
+   * rather than showing an empty map. This is a deliberate UX trade-off.
    */
   function distToNearestMrt(lng: number, lat: number): number {
     if (mrtStations.length === 0) return Infinity;
