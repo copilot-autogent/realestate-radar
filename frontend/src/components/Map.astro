@@ -695,10 +695,12 @@
       new CustomEvent("district-trend", { detail: { district, quarters: allSortedKeys, medians: trendMedians } })
     );
 
-    // Dispatch price histogram for the selected district
-    document.dispatchEvent(new CustomEvent("stats-histogram", {
-      detail: { pricesWan: allPrices.map((p: number) => p / 10000), district },
-    }));
+    // Dispatch price histogram for the selected district (only when data exists)
+    if (allPrices.length > 0) {
+      document.dispatchEvent(new CustomEvent("stats-histogram", {
+        detail: { pricesWan: allPrices.map((p: number) => p / 10000), district },
+      }));
+    }
 
     // Build popup HTML
     const medianWan = medianPrice ? (medianPrice / 10_000).toFixed(1) : "—";

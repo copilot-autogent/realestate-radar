@@ -1244,10 +1244,17 @@ import Map from "../components/Map.astro";
     // Use reduce instead of spread to avoid stack overflow on large datasets
     const minP = prices.reduce((a, b) => a < b ? a : b);
     const maxP = prices.reduce((a, b) => a > b ? a : b);
-    const lo0 = Math.floor(minP / BIN) * BIN;
-    const hi0 = Math.ceil(maxP / BIN) * BIN;
-    // Both endpoints are BIN-multiples, so division is exact integer
-    const nBins = Math.max(1, (hi0 - lo0) / BIN);
+    // Clip to 2nd–98th percentile to prevent outliers from generating hundreds of
+    // empty bins (e.g. one 500万/坪 entry alongside normal ~50万/坪 data)
+    const sorted98 = [...prices].sort((a, b) => a - b);
+    const p2  = sorted98[Math.max(0, Math.floor(sorted98.length * 0.02))];
+    const p98 = sorted98[Math.min(sorted98.length - 1, Math.floor(sorted98.length * 0.98))];
+    const clipLo = Math.max(minP, p2);
+    const clipHi = Math.min(maxP, p98);
+    const lo0 = Math.floor(clipLo / BIN) * BIN;
+    const hi0 = Math.ceil(clipHi / BIN) * BIN;
+    // Both endpoints are BIN-multiples, so division is exact integer; cap at 50 bins
+    const nBins = Math.min(50, Math.max(1, (hi0 - lo0) / BIN));
 
     const bins = Array.from({ length: nBins }, (_, i) => ({
       lo: lo0 + i * BIN,
