@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'frontend/**'
+      - 'scripts/generate-metadata.mjs'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 

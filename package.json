@@ -9,7 +9,8 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
-    "build": "npm run build -w backend && npm run build -w frontend",
+    "generate-metadata": "node scripts/generate-metadata.mjs",
+    "build": "npm run generate-metadata && npm run build -w backend && npm run build -w frontend",
     "lint": "npm run lint -w backend && npm run lint -w frontend"
   },
   "devDependencies": {

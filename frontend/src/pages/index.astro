@@ -1,12 +1,37 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import Map from "../components/Map.astro";
+import { DATA_AS_OF } from "../generated/metadata.ts";
+
+/** Convert "YYYY-MM-DD" to "YYYY 年 QN（YYYY-MM-DD）" */
+function formatDataAsOf(isoDate: string): string {
+  const [year, month] = isoDate.split("-").map(Number);
+  const quarter = Math.ceil(month / 3);
+  return `${year} 年 Q${quarter}（${isoDate}）`;
+}
+
+const dataAsOfLabel = formatDataAsOf(DATA_AS_OF);
+
+/** True if DATA_AS_OF is more than 180 days before today. */
+const isStale = (() => {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 180);
+  return new Date(DATA_AS_OF) < cutoff;
+})();
 ---
 
 <Layout title="實價登錄雷達 — Real Price Radar">
+  {isStale && (
+    <div class="stale-banner" role="alert">
+      ⚠️ 資料已超過 6 個月。最新交易資訊請至<a href="https://lvr.land.moi.gov.tw/" target="_blank" rel="noopener">內政部實價登錄</a>查詢。
+    </div>
+  )}
   <header class="header">
     <h1>🏠 實價登錄雷達</h1>
     <p class="subtitle">台灣不動產實價資訊平台</p>
+    <span class="data-freshness-badge" title={`資料來源最新交易日期：${DATA_AS_OF}`}>
+      資料更新至 {dataAsOfLabel}
+    </span>
   </header>
 
   <main class="main">

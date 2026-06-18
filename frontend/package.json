@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node ../scripts/generate-metadata.mjs",
     "dev": "astro dev",
+    "prebuild": "node ../scripts/generate-metadata.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "lint": "astro check"
