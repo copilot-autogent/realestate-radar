@@ -915,10 +915,11 @@
 
     titleEl.textContent = props.address || "地址未登錄";
 
-    const currentYear = new Date().getFullYear();
-    const buildYear   = props.buildYear ? Number(props.buildYear) : null;
-    const buildingAge = buildYear && buildYear > 1900
-      ? `${currentYear - buildYear} 年 (${buildYear} 年建)`
+    const txYear    = props.date ? new Date(String(props.date)).getFullYear() : new Date().getFullYear();
+    const buildYear = props.buildYear ? Number(props.buildYear) : null;
+    const rawAge    = buildYear && buildYear > 1900 ? txYear - buildYear : null;
+    const buildingAge = rawAge != null && rawAge >= 0
+      ? `${rawAge} 年 (${buildYear} 年建)`
       : "—";
 
     const floorText = props.floor && props.floorsTotal
@@ -928,27 +929,27 @@
         : "—";
 
     const districtText = props.district
-      ? `${props.city ? escHtml(String(props.city)) + " " : ""}${escHtml(String(props.district))}`
+      ? `${props.city ? escHtml(String(props.city)) + "\u00a0" : ""}${escHtml(String(props.district))}`
       : "—";
 
-    const rows: Array<{ label: string; value: string; price?: boolean }> = [
-      { label: "成交日期",   value: props.date ? String(props.date) : "—" },
-      { label: "總價",       value: props.totalPrice ? formatPrice(Number(props.totalPrice)) : "—", price: true },
-      { label: "單價／坪",   value: props.unitPrice   ? `${formatPrice(Number(props.unitPrice))} ／坪` : "—", price: true },
-      { label: "坪數",       value: props.areaPing    ? `${Number(props.areaPing).toFixed(1)} 坪` : "—" },
-      { label: "樓層",       value: floorText },
-      { label: "屋齡",       value: buildingAge },
-      { label: "建物型態",   value: props.buildingType ? String(props.buildingType) : "—" },
-      { label: "行政區",     value: "DISTRICT_RAW" },
+    type Row = { label: string; value: string; price?: boolean; rawHtml?: boolean };
+    const rows: Row[] = [
+      { label: "成交日期", value: props.date ? String(props.date) : "—" },
+      { label: "總價",     value: props.totalPrice ? formatPrice(Number(props.totalPrice)) : "—", price: true },
+      { label: "單價／坪", value: props.unitPrice ? `${formatPrice(Number(props.unitPrice))} ／坪` : "—", price: true },
+      { label: "坪數",     value: props.areaPing ? `${Number(props.areaPing).toFixed(1)} 坪` : "—" },
+      { label: "樓層",     value: floorText },
+      { label: "格局",     value: props.rooms ? `${props.rooms} 房` : "—" },
+      { label: "屋齡",     value: buildingAge },
+      { label: "建物型態", value: props.buildingType ? String(props.buildingType) : "—" },
+      { label: "行政區",   value: districtText, rawHtml: true },
     ];
 
     bodyEl.innerHTML = rows.map((row) => {
-      const safeVal = row.label === "行政區"
-        ? districtText
-        : escHtml(row.value);
+      const displayVal = row.rawHtml ? row.value : escHtml(row.value);
       return `<div class="tx-detail-row">
         <span class="tx-detail-label">${escHtml(row.label)}</span>
-        <span class="${row.price ? "tx-detail-price" : "tx-detail-value"}">${safeVal}</span>
+        <span class="${row.price ? "tx-detail-price" : "tx-detail-value"}">${displayVal}</span>
       </div>`;
     }).join("");
 
@@ -966,13 +967,16 @@
   });
   // Close on ✕ button
   document.getElementById("tx-modal-close")?.addEventListener("click", closeTxModal);
-  // Close on Escape key
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      const backdrop = document.getElementById("tx-modal-backdrop");
-      if (backdrop && !backdrop.hasAttribute("hidden")) closeTxModal();
-    }
-  });
+  // Close on Escape key — guard against duplicate registration (e.g. View Transitions)
+  if (!(window as any).__txModalEscRegistered) {
+    (window as any).__txModalEscRegistered = true;
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        const backdrop = document.getElementById("tx-modal-backdrop");
+        if (backdrop && !backdrop.hasAttribute("hidden")) closeTxModal();
+      }
+    });
+  }
 
   // ---- SVG sparkline helper ----
   /**

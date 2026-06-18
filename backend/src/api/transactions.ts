@@ -183,6 +183,8 @@ export function transactionsRouter(): Router {
 
     try {
       const result = await query(
+        // floor, floors_total, rooms, build_year are part of the original schema
+        // (present since initial migration — Transaction type in types.ts)
         `SELECT id, lon, lat, unit_price, total_price, area_ping,
                 building_type, transaction_date, address, city, district,
                 floor, floors_total, rooms, build_year
