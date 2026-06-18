@@ -370,9 +370,11 @@ import Map from "../components/Map.astro";
     (document.getElementById("address-search") as HTMLInputElement).value = "";
     addressClearBtn.style.display = "none";
     (document.getElementById("mrt-walk-min") as HTMLSelectElement).value = "";
-    // Hide MRT layer toggle row on reset
+    // Hide MRT layer toggle row on reset and restore checkbox default state
     const mrtToggleRow = document.getElementById("mrt-layer-toggle-row");
     if (mrtToggleRow) mrtToggleRow.style.display = "none";
+    const mrtLayerToggle = document.getElementById("mrt-layer-toggle") as HTMLInputElement | null;
+    if (mrtLayerToggle) mrtLayerToggle.checked = true;
     document.dispatchEvent(new CustomEvent("mrt-filter-reset"));
     // Reset district options
     updateDistrictOptions("");

@@ -174,9 +174,14 @@
     _mrtLoadPromise = (async () => {
       try {
         const res = await fetch(MRT_STATIONS_URL);
-        mrtStations = await res.json();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) throw new Error("Empty or invalid station data");
+        mrtStations = data;
       } catch (e) {
         console.warn("[mrt] Failed to load mrt-stations.json:", e);
+        // Clear promise so next call can retry
+        _mrtLoadPromise = null;
       }
     })();
     return _mrtLoadPromise;
@@ -517,10 +522,16 @@
           // Walking speed ~80m/min => 5min=400m, 10min=800m, 15min=1200m
           const maxMetres = walkMinutes * 80;
           await loadMrtStations();
-          geojson.features = geojson.features.filter((f: any) => {
-            const [lng, lat] = f.geometry.coordinates as [number, number];
-            return distToNearestMrt(lng, lat) <= maxMetres;
-          });
+          if (mrtStations.length === 0) {
+            console.warn("[mrt] Station data unavailable — MRT filter skipped");
+          } else {
+            geojson.features = geojson.features.filter((f: any) => {
+              const coords = f.geometry?.coordinates;
+              if (!Array.isArray(coords) || coords.length < 2) return true;
+              const [lng, lat] = coords as [number, number];
+              return distToNearestMrt(lng, lat) <= maxMetres;
+            });
+          }
         }
       }
     }
