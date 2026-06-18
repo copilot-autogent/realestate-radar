@@ -184,7 +184,8 @@ export function transactionsRouter(): Router {
     try {
       const result = await query(
         `SELECT id, lon, lat, unit_price, total_price, area_ping,
-                building_type, transaction_date, address, city, district
+                building_type, transaction_date, address, city, district,
+                floor, floors_total, rooms, build_year
          FROM transactions
          WHERE ${conditions.join(" AND ")}
          ORDER BY transaction_date DESC
@@ -210,6 +211,10 @@ export function transactionsRouter(): Router {
             address: row.address,
             city: row.city,
             district: row.district,
+            floor: row.floor,
+            floorsTotal: row.floors_total,
+            rooms: row.rooms,
+            buildYear: row.build_year,
           },
         })),
       };

@@ -7,6 +7,17 @@
 
 <div id="map"></div>
 
+<!-- Transaction detail modal / bottom sheet -->
+<div id="tx-modal-backdrop" class="tx-modal-backdrop" hidden>
+  <div id="tx-modal" class="tx-modal" role="dialog" aria-modal="true" aria-labelledby="tx-modal-title">
+    <div class="tx-modal-header">
+      <div id="tx-modal-title" class="tx-modal-title"></div>
+      <button id="tx-modal-close" class="tx-modal-close" aria-label="關閉">✕</button>
+    </div>
+    <div id="tx-modal-body" class="tx-modal-body"></div>
+  </div>
+</div>
+
 <style is:global>
   /* Choropleth legend overlay */
   .choropleth-legend {
@@ -145,6 +156,106 @@
     color: #64748b;
     font-weight: 500;
     flex-shrink: 0;
+  }
+
+  /* ---- Transaction detail modal / bottom sheet ---- */
+  .tx-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tx-modal-backdrop[hidden] { display: none !important; }
+
+  .tx-modal {
+    background: #fff;
+    border-radius: 12px;
+    max-width: 440px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+    animation: tx-slide-up 0.18s ease;
+  }
+  @keyframes tx-slide-up {
+    from { transform: translateY(14px); opacity: 0.6; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  .tx-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .tx-modal-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.4;
+    flex: 1;
+  }
+  .tx-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .tx-modal-close:hover { color: #334155; }
+
+  .tx-modal-body { padding: 14px 20px 20px; }
+
+  .tx-detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 0;
+    border-bottom: 1px solid #f1f5f9;
+    gap: 8px;
+  }
+  .tx-detail-row:last-child { border-bottom: none; }
+  .tx-detail-label {
+    font-size: 0.78rem;
+    color: #64748b;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+  .tx-detail-value {
+    font-size: 0.85rem;
+    color: #1e293b;
+    font-weight: 500;
+    text-align: right;
+  }
+  .tx-detail-price {
+    font-size: 0.93rem;
+    color: #2563eb;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  /* Mobile: full-width bottom sheet */
+  @media (max-width: 640px) {
+    .tx-modal-backdrop { align-items: flex-end; }
+    .tx-modal {
+      width: 100%;
+      max-width: 100%;
+      border-radius: 16px 16px 0 0;
+      max-height: 75vh;
+      animation: tx-slide-sheet 0.22s ease;
+    }
+    @keyframes tx-slide-sheet {
+      from { transform: translateY(100%); }
+      to   { transform: translateY(0); }
+    }
   }
 </style>
 
@@ -748,41 +859,8 @@
   map.on("click", "transactions-circles", (e) => {
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
-    const coords = (e.features[0].geometry as GeoJSON.Point).coordinates.slice() as [number, number];
-    new maplibregl.Popup({ offset: 10 })
-      .setLngLat(coords)
-      .setHTML(`
-        <div class="popup-title">${props.address || "地址未登錄"}</div>
-        <div class="popup-row">
-          <span class="popup-label">單價</span>
-          <span class="popup-price">${formatPrice(props.unitPrice)}/</span>
-        </div>
-        <div class="popup-row">
-          <span class="popup-label">總價</span>
-          <span class="popup-value">${formatPrice(props.totalPrice)}</span>
-        </div>
-        <div class="popup-row">
-          <span class="popup-label">坪數</span>
-          <span class="popup-value">${props.areaPing ? Number(props.areaPing).toFixed(1) + " 坪" : "—"}</span>
-        </div>
-        <div class="popup-row">
-          <span class="popup-label">型態</span>
-          <span class="popup-value">${props.buildingType || "—"}</span>
-        </div>
-        <div class="popup-row">
-          <span class="popup-label">樓層</span>
-          <span class="popup-value">${props.floor && props.floorsTotal ? `${props.floor}F / ${props.floorsTotal}F` : "—"}</span>
-        </div>
-        <div class="popup-row">
-          <span class="popup-label">格局</span>
-          <span class="popup-value">${props.rooms ? `${props.rooms}房` : "—"}</span>
-        </div>
-        <div class="popup-row">
-          <span class="popup-label">交易日期</span>
-          <span class="popup-value">${props.date}</span>
-        </div>
-      `)
-      .addTo(map);
+
+    showTxModal(props);
 
     // Dispatch price-history trend for same district × building type
     const txDistrict = props.district as string | undefined;
@@ -795,14 +873,16 @@
         if (txType && f.properties.buildingType !== txType) continue;
         const p = f.properties.unitPrice as number | undefined;
         const d = f.properties.date as string | undefined;
+        if (!p || p <= 0 || !d) continue;
         const dt = new Date(d);
+        if (isNaN(dt.getTime())) continue;
         const q = Math.floor(dt.getMonth() / 3) + 1;
         const key = `${dt.getFullYear()}-Q${q}`;
-        quarterly[key].push(p);
+        (quarterly[key] ??= []).push(p);
       }
       const quarters = Object.keys(quarterly).sort();
       const medians = quarters.map((q) => {
-        const arr = quarterly[q].sort((a, b) => a - b);
+        const arr = [...quarterly[q]].sort((a, b) => a - b);
         return arr[Math.floor(arr.length / 2)];
       });
       document.dispatchEvent(
@@ -825,6 +905,74 @@
   function escHtml(s: string): string {
     return s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
   }
+
+  // ---- Transaction detail modal ----
+  function showTxModal(props: Record<string, any>): void {
+    const backdrop = document.getElementById("tx-modal-backdrop");
+    const titleEl  = document.getElementById("tx-modal-title");
+    const bodyEl   = document.getElementById("tx-modal-body");
+    if (!backdrop || !titleEl || !bodyEl) return;
+
+    titleEl.textContent = props.address || "地址未登錄";
+
+    const currentYear = new Date().getFullYear();
+    const buildYear   = props.buildYear ? Number(props.buildYear) : null;
+    const buildingAge = buildYear && buildYear > 1900
+      ? `${currentYear - buildYear} 年 (${buildYear} 年建)`
+      : "—";
+
+    const floorText = props.floor && props.floorsTotal
+      ? `${props.floor} 層 / 共 ${props.floorsTotal} 層`
+      : props.floor
+        ? `${props.floor} 層`
+        : "—";
+
+    const districtText = props.district
+      ? `${props.city ? escHtml(String(props.city)) + " " : ""}${escHtml(String(props.district))}`
+      : "—";
+
+    const rows: Array<{ label: string; value: string; price?: boolean }> = [
+      { label: "成交日期",   value: props.date ? String(props.date) : "—" },
+      { label: "總價",       value: props.totalPrice ? formatPrice(Number(props.totalPrice)) : "—", price: true },
+      { label: "單價／坪",   value: props.unitPrice   ? `${formatPrice(Number(props.unitPrice))} ／坪` : "—", price: true },
+      { label: "坪數",       value: props.areaPing    ? `${Number(props.areaPing).toFixed(1)} 坪` : "—" },
+      { label: "樓層",       value: floorText },
+      { label: "屋齡",       value: buildingAge },
+      { label: "建物型態",   value: props.buildingType ? String(props.buildingType) : "—" },
+      { label: "行政區",     value: "DISTRICT_RAW" },
+    ];
+
+    bodyEl.innerHTML = rows.map((row) => {
+      const safeVal = row.label === "行政區"
+        ? districtText
+        : escHtml(row.value);
+      return `<div class="tx-detail-row">
+        <span class="tx-detail-label">${escHtml(row.label)}</span>
+        <span class="${row.price ? "tx-detail-price" : "tx-detail-value"}">${safeVal}</span>
+      </div>`;
+    }).join("");
+
+    backdrop.removeAttribute("hidden");
+    document.getElementById("tx-modal-close")?.focus();
+  }
+
+  function closeTxModal(): void {
+    document.getElementById("tx-modal-backdrop")?.setAttribute("hidden", "");
+  }
+
+  // Close on backdrop click (outside modal card)
+  document.getElementById("tx-modal-backdrop")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeTxModal();
+  });
+  // Close on ✕ button
+  document.getElementById("tx-modal-close")?.addEventListener("click", closeTxModal);
+  // Close on Escape key
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const backdrop = document.getElementById("tx-modal-backdrop");
+      if (backdrop && !backdrop.hasAttribute("hidden")) closeTxModal();
+    }
+  });
 
   // ---- SVG sparkline helper ----
   /**

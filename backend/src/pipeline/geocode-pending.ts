@@ -45,7 +45,7 @@ async function main(): Promise<void> {
   console.log(`[geocode-pending] Starting (limit=${limit}${dryRun ? ", dry-run" : ""})`);
   console.log(`[geocode-pending] Cache has ${cacheSize()} entries`);
 
-  const { rows } = await query<PendingRow>(
+  const { rows } = await query(
     `SELECT id, address, city, district
      FROM transactions
      WHERE lat IS NULL
