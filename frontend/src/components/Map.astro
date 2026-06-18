@@ -399,36 +399,13 @@
         }
       }
 
-      // Dispatch histogram event
+      // Dispatch histogram event — pass raw prices in 万/坪; SVG renderer bins them at 5万 intervals
       const allPrices: number[] = (geojson.features ?? [])
         .map((f: any) => f.properties.unitPrice as number)
         .filter((p: any) => p != null && p > 0);
-
-      if (allPrices.length >= 3) {
-        const minP = Math.min(...allPrices);
-        const maxP = Math.max(...allPrices);
-        const binWidth = (maxP - minP) / 10;
-        const bins: string[] = [];
-        const counts: number[] = new Array(10).fill(0);
-        for (let i = 0; i < 10; i++) {
-          const lo = minP + i * binWidth;
-          const hi = minP + (i + 1) * binWidth;
-          bins.push(`${Math.round(lo / 10000)}-${Math.round(hi / 10000)}萬`);
-          for (const p of allPrices) {
-            if (i < 9 ? (p >= lo && p < hi) : (p >= lo && p <= hi)) counts[i]++;
-          }
-        }
-        const sorted = [...allPrices].sort((a, b) => a - b);
-        const medianWan = sorted[Math.floor(sorted.length / 2)] / 10000;
-        const avgWan = allPrices.reduce((s, p) => s + p, 0) / allPrices.length / 10000;
-        document.dispatchEvent(new CustomEvent("stats-histogram", {
-          detail: { bins, counts, median: medianWan, avg: avgWan },
-        }));
-      } else {
-        document.dispatchEvent(new CustomEvent("stats-histogram", {
-          detail: { bins: [], counts: [], median: 0, avg: 0 },
-        }));
-      }
+      document.dispatchEvent(new CustomEvent("stats-histogram", {
+        detail: { pricesWan: allPrices.map((p: number) => p / 10000) },
+      }));
     } catch (err) {
       console.error("Failed to update map layer:", err);
     }
@@ -717,6 +694,11 @@
     document.dispatchEvent(
       new CustomEvent("district-trend", { detail: { district, quarters: allSortedKeys, medians: trendMedians } })
     );
+
+    // Dispatch price histogram for the selected district; empty array clears the panel
+    document.dispatchEvent(new CustomEvent("stats-histogram", {
+      detail: { pricesWan: allPrices.map((p: number) => p / 10000), district },
+    }));
 
     // Build popup HTML
     const medianWan = medianPrice ? (medianPrice / 10_000).toFixed(1) : "—";

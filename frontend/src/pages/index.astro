@@ -179,8 +179,8 @@ import Map from "../components/Map.astro";
       </div>
 
       <div id="histogram-panel" class="histogram-panel" style="display:none">
-        <h3>單價分佈</h3>
-        <canvas id="histogram-chart" width="260" height="120"></canvas>
+        <h3>單價分佈 (萬/坪)</h3>
+        <div id="histogram-svg-container"></div>
       </div>
 
       <div id="transaction-list-panel" class="transaction-list-panel" style="display:none">
@@ -441,6 +441,7 @@ import Map from "../components/Map.astro";
     
     if (!total || !ping || ping <= 0) {
       budgetResultDiv.style.display = "none";
+      document.dispatchEvent(new CustomEvent("budget-threshold-changed", { detail: { thresholdWan: undefined } }));
       return;
     }
 
@@ -455,6 +456,9 @@ import Map from "../components/Map.astro";
     } else {
       affordableDistrictsP.textContent = "提示：先選擇縣市，再使用「單價」篩選來查看符合預算的區域。";
     }
+
+    // Notify histogram renderer to show affordability threshold line
+    document.dispatchEvent(new CustomEvent("budget-threshold-changed", { detail: { thresholdWan: maxUnitPrice } }));
   }
 
   budgetTotalInput?.addEventListener("input", calculateBudget);
@@ -1139,8 +1143,6 @@ import Map from "../components/Map.astro";
   // jsDelivr +esm transforms the auto entry to a valid ESM module
   let Chart: any = null;
   let trendChartInstance: any = null;
-  let histogramChartInstance: any = null;
-
   async function ensureChart() {
     if (Chart) return;
     // @ts-ignore — CDN ESM import, no type declarations needed
@@ -1221,70 +1223,87 @@ import Map from "../components/Map.astro";
     });
   });
 
-  document.addEventListener("stats-histogram", async (e: Event) => {
-    const { bins, counts } = (e as CustomEvent).detail as {
-      bins: string[];
-      counts: number[];
-      median: number;
-      avg: number;
-    };
+  // ---- Price Histogram (vanilla SVG — no external dep) ----
+  let currentPricesWan: number[] = [];
+  let currentThresholdWan: number | undefined;
 
+  function renderPriceHistogram(): void {
     const panel = document.getElementById("histogram-panel") as HTMLDivElement;
+    const container = document.getElementById("histogram-svg-container") as HTMLDivElement;
+    if (!panel || !container) return;
 
-    if (!bins.length) {
+    // Filter to finite positive values only; guard against NaN propagation
+    const prices = currentPricesWan.filter(p => Number.isFinite(p) && p > 0);
+    if (!prices.length) {
       panel.style.display = "none";
-      if (histogramChartInstance) {
-        histogramChartInstance.destroy();
-        histogramChartInstance = null;
-      }
       return;
     }
-
-    await ensureChart();
     panel.style.display = "block";
 
-    const canvas = document.getElementById("histogram-chart") as HTMLCanvasElement;
-    if (histogramChartInstance) {
-      histogramChartInstance.destroy();
-      histogramChartInstance = null;
+    const BIN = 5; // fixed 5万/坪 bin width
+    // Clip to 2nd–98th percentile to prevent outliers from generating huge SVGs
+    const s98 = [...prices].sort((a, b) => a - b);
+    const p2  = s98[Math.max(0, Math.floor(s98.length * 0.02))];
+    const p98 = s98[Math.min(s98.length - 1, Math.floor(s98.length * 0.98))];
+    const lo0 = Math.floor(p2 / BIN) * BIN;
+    // Ensure at least one bin even when all prices are the same exact BIN-multiple
+    const hiEff = Math.max(Math.ceil(p98 / BIN) * BIN, lo0 + BIN);
+    // Cap at 50 bins; recompute effective hi so threshold guard stays in-bounds
+    const nBins = Math.min(50, Math.max(1, (hiEff - lo0) / BIN));
+    const hi0 = lo0 + nBins * BIN;
+
+    const bins = Array.from({ length: nBins }, (_, i) => ({
+      lo: lo0 + i * BIN,
+      hi: lo0 + (i + 1) * BIN,
+      count: 0,
+    }));
+    for (const p of prices) {
+      // Drop values outside the effective range (outliers excluded by percentile clip)
+      if (p < lo0 || p > hi0) continue;
+      const idx = Math.min(nBins - 1, Math.max(0, Math.floor((p - lo0) / BIN)));
+      bins[idx].count++;
     }
 
-    histogramChartInstance = new Chart(canvas, {
-      type: "bar",
-      data: {
-        labels: bins,
-        datasets: [{
-          label: "筆數",
-          data: counts,
-          backgroundColor: "rgba(37, 99, 235, 0.7)",
-          borderColor: "rgba(37, 99, 235, 0.9)",
-          borderWidth: 1,
-        }],
-      },
-      options: {
-        responsive: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (ctx: any) => `${ctx.parsed.y} 筆`,
-            },
-          },
-        },
-        scales: {
-          x: {
-            ticks: { font: { size: 9 }, maxRotation: 45 },
-          },
-          y: {
-            beginAtZero: true,
-            ticks: {
-              font: { size: 9 },
-              stepSize: 1,
-              callback: (v: any) => Number.isInteger(Number(v)) ? v : null,
-            },
-          },
-        },
-      },
-    });
+    const maxCount = bins.reduce((a, b) => a > b.count ? a : b.count, 1);
+    const W = 260, LPAD = 52, RPAD = 28, BAR_W = W - LPAD - RPAD;
+    const ROW_H = 16, GAP = 2, TOP = 4;
+    const H = TOP + nBins * (ROW_H + GAP);
+    const thr = currentThresholdWan;
+
+    const rows = bins.map(({ lo, hi, count }, i) => {
+      const y = TOP + i * (ROW_H + GAP);
+      const bw = Math.round((count / maxCount) * BAR_W);
+      const fill = thr === undefined
+        ? "#3b82f6"
+        : hi <= thr ? "#22c55e"
+        : lo < thr ? "#f59e0b"
+        : "#94a3b8";
+      const countLabel = count > 0
+        ? `<text x="${LPAD + Math.max(bw, 2) + 3}" y="${ROW_H - 4}" font-size="9" fill="#475569">${count}</text>`
+        : "";
+      return `<g transform="translate(0,${y})"><text x="${LPAD - 4}" y="${ROW_H - 4}" text-anchor="end" font-size="9" fill="#64748b">${lo}–${hi}</text><rect x="${LPAD}" y="1" width="${Math.max(bw, count > 0 ? 2 : 0)}" height="${ROW_H - 2}" rx="2" fill="${fill}" opacity="0.85"><title>${count} 筆 (${lo}–${hi}萬/坪)</title></rect>${countLabel}</g>`;
+    }).join("");
+
+    let thrEl = "";
+    // Show threshold line whenever it's within the displayed price range (inclusive)
+    if (thr !== undefined && thr >= lo0 && thr <= hi0) {
+      const ly = TOP + ((thr - lo0) / BIN) * (ROW_H + GAP);
+      thrEl = `<line x1="${LPAD}" y1="${ly}" x2="${LPAD + BAR_W}" y2="${ly}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${LPAD + BAR_W - 2}" y="${ly - 2}" font-size="8" fill="#ef4444" text-anchor="end">預算 ${thr.toFixed(0)}萬</text>`;
+    }
+
+    container.innerHTML = `<svg width="100%" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible">${rows}${thrEl}</svg>`;
+  }
+
+  document.addEventListener("stats-histogram", (e: Event) => {
+    const { pricesWan } = (e as CustomEvent).detail as { pricesWan?: number[] };
+    currentPricesWan = pricesWan ?? [];
+    renderPriceHistogram();
   });
+
+  document.addEventListener("budget-threshold-changed", (e: Event) => {
+    const { thresholdWan } = (e as CustomEvent).detail as { thresholdWan?: number };
+    currentThresholdWan = thresholdWan;
+    renderPriceHistogram();
+  });
+
 </script>
