@@ -744,8 +744,12 @@ const isStale = !isPlaceholder && (() => {
   });
 
   // Share search button: copy current URL to clipboard
-  document.getElementById("share-search-btn")?.addEventListener("click", async () => {
-    const btn = document.getElementById("share-search-btn") as HTMLButtonElement;
+  const SHARE_BTN_LABEL = "🔗 分享此搜尋";
+  document.getElementById("share-search-btn")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    // Guard against re-entry during the 2s feedback window
+    if (btn.classList.contains("copied")) return;
+
     const url = window.location.href;
 
     let copied = false;
@@ -765,18 +769,21 @@ const isStale = !isPlaceholder && (() => {
       ta.style.opacity = "0";
       document.body.appendChild(ta);
       ta.select();
-      try { document.execCommand("copy"); copied = true; } catch { /* ignore */ }
+      try { copied = document.execCommand("copy"); } catch { /* ignore */ }
       document.body.removeChild(ta);
     }
 
     if (copied) {
-      const original = btn.textContent!;
       btn.textContent = "✓ 連結已複製";
       btn.classList.add("copied");
       setTimeout(() => {
-        btn.textContent = original;
+        btn.textContent = SHARE_BTN_LABEL;
         btn.classList.remove("copied");
       }, 2000);
+    } else {
+      // Both methods failed (e.g. non-HTTPS context) — prompt user to copy manually
+      btn.textContent = "⚠ 請手動複製網址";
+      setTimeout(() => { btn.textContent = SHARE_BTN_LABEL; }, 3000);
     }
   });
 
