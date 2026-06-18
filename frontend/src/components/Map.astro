@@ -156,7 +156,7 @@
   const STATIC_DATA_URL = `${BASE_URL}data/sample-transactions.json`;
   const MRT_STATIONS_URL = `${BASE_URL}data/mrt-stations.json`;
 
-  // ---- MRT station data (loaded once) ----
+  // ---- MRT station data (loaded once, concurrency-safe via promise cache) ----
   interface MrtStation {
     id: string;
     name: string;
@@ -166,15 +166,20 @@
     lineZh: string;
   }
   let mrtStations: MrtStation[] = [];
+  let _mrtLoadPromise: Promise<void> | null = null;
 
   async function loadMrtStations(): Promise<void> {
     if (mrtStations.length > 0) return;
-    try {
-      const res = await fetch(MRT_STATIONS_URL);
-      mrtStations = await res.json();
-    } catch (e) {
-      console.warn("[mrt] Failed to load mrt-stations.json:", e);
-    }
+    if (_mrtLoadPromise) return _mrtLoadPromise;
+    _mrtLoadPromise = (async () => {
+      try {
+        const res = await fetch(MRT_STATIONS_URL);
+        mrtStations = await res.json();
+      } catch (e) {
+        console.warn("[mrt] Failed to load mrt-stations.json:", e);
+      }
+    })();
+    return _mrtLoadPromise;
   }
 
   /** Haversine distance in metres between two lat/lng points. */
@@ -188,9 +193,13 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  /** Returns distance in metres from [lng, lat] to nearest MRT station. */
+  /**
+   * Returns straight-line distance in metres from [lng, lat] to nearest MRT station.
+   * Returns Infinity when station data is unavailable (fails closed — no false matches).
+   * Note: straight-line distance; actual walking distances may be longer near rivers/hills.
+   */
   function distToNearestMrt(lng: number, lat: number): number {
-    if (mrtStations.length === 0) return 0;
+    if (mrtStations.length === 0) return Infinity;
     let minDist = Infinity;
     for (const st of mrtStations) {
       const d = haversineMetres(lat, lng, st.lat, st.lng);
@@ -500,16 +509,19 @@
           return addr.includes(keyword);
         });
       }
-      // MRT proximity filter (Haversine distance to nearest station)
+      // MRT proximity filter (straight-line Haversine distance to nearest station)
       if (params.mrtWalkMin) {
         const walkMinutes = Number(params.mrtWalkMin);
-        // Walking speed ~80m/min => 5min=400m, 10min=800m, 15min=1200m
-        const maxMetres = walkMinutes * 80;
-        await loadMrtStations();
-        geojson.features = geojson.features.filter((f: any) => {
-          const [lng, lat] = f.geometry.coordinates as [number, number];
-          return distToNearestMrt(lng, lat) <= maxMetres;
-        });
+        // Guard against NaN from malformed URL params
+        if (!isNaN(walkMinutes) && walkMinutes > 0) {
+          // Walking speed ~80m/min => 5min=400m, 10min=800m, 15min=1200m
+          const maxMetres = walkMinutes * 80;
+          await loadMrtStations();
+          geojson.features = geojson.features.filter((f: any) => {
+            const [lng, lat] = f.geometry.coordinates as [number, number];
+            return distToNearestMrt(lng, lat) <= maxMetres;
+          });
+        }
       }
     }
 
@@ -701,7 +713,7 @@
       minzoom: 13,
     });
 
-    // 4. Inject legend into map container
+    // 5. Inject legend into map container
     const legend = document.createElement("div");
     legend.id = "choropleth-legend";
     legend.className = "choropleth-legend";
@@ -1134,6 +1146,13 @@
       affordabilityThreshold = 0;
       map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
       updateAffordabilityLegend(false);
+    }
+  });
+
+  // ---- MRT filter reset (from reset button) ----
+  document.addEventListener("mrt-filter-reset", () => {
+    for (const id of ["mrt-stations-circles", "mrt-stations-labels"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
     }
   });
 
