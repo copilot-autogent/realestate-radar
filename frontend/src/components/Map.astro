@@ -142,6 +142,24 @@
   .yoy-neutral { color: #a16207; background: #fefce8; border: 1px solid #fde047; }
   .yoy-seller  { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
   .yoy-insufficient { color: #94a3b8; font-size: 0.76rem; font-weight: 400; font-style: italic; }
+  /* ---- 交易量 Volume YoY badge ---- */
+  .volume-signal {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .volume-falling { color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .volume-rising  { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
+  .volume-flat    { color: #a16207; background: #fefce8; border: 1px solid #fde047; }
+  .volume-count-row {
+    font-size: 0.76rem;
+    color: #475569;
+  }
   .yoy-row {
     display: flex;
     align-items: center;
@@ -465,15 +483,91 @@
     }
   }
 
+  /**
+   * Computes rolling 12-month YoY transaction volume (count) change for a district.
+   * Anchors to the latest date present in rawAllFeatures for that district.
+   * Requires ≥10 transactions in both the recent and prior 12-month windows.
+   */
+  function computeVolumeYoYSignal(district: string, city?: string): {
+    tier: "falling" | "rising" | "flat" | "insufficient";
+    count12mo: number;
+    pct: number | null;
+    label: string;
+    arrow: string;
+  } {
+    const MIN_SAMPLES = 10;
+    const THRESHOLD_PCT = 5;
+
+    const features = rawAllFeatures.filter(
+      (f) =>
+        f.properties?.district === district &&
+        (!city || f.properties?.city === city)
+    );
+
+    const validTimes = features
+      .map((f) => new Date(f.properties.date as string).getTime())
+      .filter((t) => !isNaN(t));
+
+    if (validTimes.length === 0) {
+      return { tier: "insufficient", count12mo: 0, pct: null, label: "資料不足", arrow: "" };
+    }
+
+    const maxTime = validTimes.reduce((a, b) => (a > b ? a : b), -Infinity);
+
+    const cutRecent = new Date(maxTime);
+    cutRecent.setFullYear(cutRecent.getFullYear() - 1);
+
+    const cutPrior = new Date(maxTime);
+    cutPrior.setFullYear(cutPrior.getFullYear() - 2);
+
+    const toTime = (f: any) => new Date(f.properties.date as string).getTime();
+
+    const count12mo = features.filter(
+      (f) => { const t = toTime(f); return t > cutRecent.getTime() && t <= maxTime; }
+    ).length;
+
+    const countPrior12mo = features.filter(
+      (f) => { const t = toTime(f); return t > cutPrior.getTime() && t <= cutRecent.getTime(); }
+    ).length;
+
+    if (count12mo < MIN_SAMPLES || countPrior12mo < MIN_SAMPLES) {
+      return { tier: "insufficient", count12mo, pct: null, label: "資料不足", arrow: "" };
+    }
+
+    const pct = ((count12mo - countPrior12mo) / countPrior12mo) * 100;
+
+    if (pct < -THRESHOLD_PCT) {
+      return { tier: "falling", count12mo, pct, label: "成交量下降，議價空間擴大", arrow: "↓" };
+    } else if (pct > THRESHOLD_PCT) {
+      return { tier: "rising",  count12mo, pct, label: "成交量上升，買方競爭增加", arrow: "↑" };
+    } else {
+      return { tier: "flat",    count12mo, pct, label: "成交量持平",               arrow: pct >= 0 ? "↑" : "↓" };
+    }
+  }
+
   /** Renders the YoY signal as an HTML row string for use in popups and the stats panel. */
   function renderYoYHtml(district: string, city?: string): string {
     if (!rawAllFeatures.length) return "";
     const sig = computeYoYSignal(district, city);
-    if (sig.tier === "insufficient") {
-      return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-insufficient">資料不足</span></div>`;
+    const priceLine = sig.tier === "insufficient"
+      ? `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-insufficient">資料不足</span></div>`
+      : (() => {
+          const pctStr = Math.abs(sig.pct!).toFixed(1);
+          return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-signal yoy-${sig.tier}">${sig.badge} ${sig.label} ${sig.arrow}${pctStr}% YoY</span></div>`;
+        })();
+
+    const vol = computeVolumeYoYSignal(district, city);
+    let volumeLines = "";
+    if (vol.tier === "insufficient") {
+      volumeLines = `<div class="yoy-row"><span class="yoy-row-label">本區交易量 (近12個月)</span><span class="yoy-insufficient">資料不足</span></div>`;
+    } else {
+      const pctStr = (vol.pct! >= 0 ? "+" : "") + vol.pct!.toFixed(1);
+      volumeLines = `
+        <div class="yoy-row volume-count-row"><span class="yoy-row-label">本區交易量 (近12個月)</span><span>${vol.count12mo} 筆</span></div>
+        <div class="yoy-row"><span class="yoy-row-label">較去年同期</span><span class="volume-signal volume-${vol.tier}">${vol.arrow} ${pctStr}% ${vol.label}</span></div>`;
     }
-    const pctStr = Math.abs(sig.pct!).toFixed(1);
-    return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-signal yoy-${sig.tier}">${sig.badge} ${sig.label} ${sig.arrow}${pctStr}% YoY</span></div>`;
+
+    return priceLine + volumeLines;
   }
 
   // ---- Affordability overlay state ----
