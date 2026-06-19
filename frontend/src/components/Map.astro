@@ -160,6 +160,13 @@
     font-size: 0.76rem;
     color: #475569;
   }
+  .volume-interp {
+    font-size: 0.73rem;
+    color: #64748b;
+    font-style: italic;
+    margin-top: 2px;
+    padding-left: 2px;
+  }
   .yoy-row {
     display: flex;
     align-items: center;
@@ -485,7 +492,10 @@
 
   /**
    * Computes rolling 12-month YoY transaction volume (count) change for a district.
-   * Anchors to the latest date present in rawAllFeatures for that district.
+   * Scans rawAllFeatures (the full unfiltered dataset) so the signal reflects the
+   * true district market regardless of active price/date filters — consistent with
+   * the computeYoYSignal price approach.
+   * Anchors to the district's latest transaction date (same as computeYoYSignal).
    * Requires ≥10 transactions in both the recent and prior 12-month windows.
    */
   function computeVolumeYoYSignal(district: string, city?: string): {
@@ -514,20 +524,23 @@
 
     const maxTime = validTimes.reduce((a, b) => (a > b ? a : b), -Infinity);
 
+    // Subtract exactly 12/24 months via setMonth to avoid setFullYear leap-year skew
+    // (e.g. Feb 29 - 1 year via setFullYear → Feb 28; setMonth(-12) → Mar 1 on non-leap years,
+    // which is slightly more conservative but consistent across the date range).
     const cutRecent = new Date(maxTime);
-    cutRecent.setFullYear(cutRecent.getFullYear() - 1);
+    cutRecent.setMonth(cutRecent.getMonth() - 12);
 
     const cutPrior = new Date(maxTime);
-    cutPrior.setFullYear(cutPrior.getFullYear() - 2);
+    cutPrior.setMonth(cutPrior.getMonth() - 24);
 
     const toTime = (f: any) => new Date(f.properties.date as string).getTime();
 
     const count12mo = features.filter(
-      (f) => { const t = toTime(f); return t > cutRecent.getTime() && t <= maxTime; }
+      (f) => { const t = toTime(f); return !isNaN(t) && t > cutRecent.getTime() && t <= maxTime; }
     ).length;
 
     const countPrior12mo = features.filter(
-      (f) => { const t = toTime(f); return t > cutPrior.getTime() && t <= cutRecent.getTime(); }
+      (f) => { const t = toTime(f); return !isNaN(t) && t > cutPrior.getTime() && t <= cutRecent.getTime(); }
     ).length;
 
     if (count12mo < MIN_SAMPLES || countPrior12mo < MIN_SAMPLES) {
@@ -541,7 +554,7 @@
     } else if (pct > THRESHOLD_PCT) {
       return { tier: "rising",  count12mo, pct, label: "成交量上升，買方競爭增加", arrow: "↑" };
     } else {
-      return { tier: "flat",    count12mo, pct, label: "成交量持平",               arrow: pct >= 0 ? "↑" : "↓" };
+      return { tier: "flat",    count12mo, pct, label: "成交量持平",               arrow: "→" };
     }
   }
 
@@ -564,7 +577,8 @@
       const pctStr = (vol.pct! >= 0 ? "+" : "") + vol.pct!.toFixed(1);
       volumeLines = `
         <div class="yoy-row volume-count-row"><span class="yoy-row-label">本區交易量 (近12個月)</span><span>${vol.count12mo} 筆</span></div>
-        <div class="yoy-row"><span class="yoy-row-label">較去年同期</span><span class="volume-signal volume-${vol.tier}">${vol.arrow} ${pctStr}% ${vol.label}</span></div>`;
+        <div class="yoy-row"><span class="yoy-row-label">較去年同期</span><span class="volume-signal volume-${vol.tier}">${vol.arrow} ${pctStr}%</span></div>
+        <div class="volume-interp">${vol.label}</div>`;
     }
 
     return priceLine + volumeLines;
