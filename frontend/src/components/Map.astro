@@ -515,7 +515,7 @@
     );
 
     const validTimes = features
-      .map((f) => new Date(f.properties.date as string).getTime())
+      .map((f) => new Date((f.properties?.date as string) ?? "").getTime())
       .filter((t) => !isNaN(t));
 
     if (validTimes.length === 0) {
@@ -524,16 +524,15 @@
 
     const maxTime = validTimes.reduce((a, b) => (a > b ? a : b), -Infinity);
 
-    // Subtract exactly 12/24 months via setMonth to avoid setFullYear leap-year skew
-    // (e.g. Feb 29 - 1 year via setFullYear → Feb 28; setMonth(-12) → Mar 1 on non-leap years,
-    // which is slightly more conservative but consistent across the date range).
+    // Use setFullYear (conventional "same day N years ago") — matches computeYoYSignal.
+    // Both windows are relative to maxTime (district's latest tx), matching price-YoY anchor.
     const cutRecent = new Date(maxTime);
-    cutRecent.setMonth(cutRecent.getMonth() - 12);
+    cutRecent.setFullYear(cutRecent.getFullYear() - 1);
 
     const cutPrior = new Date(maxTime);
-    cutPrior.setMonth(cutPrior.getMonth() - 24);
+    cutPrior.setFullYear(cutPrior.getFullYear() - 2);
 
-    const toTime = (f: any) => new Date(f.properties.date as string).getTime();
+    const toTime = (f: any) => new Date((f.properties?.date as string) ?? "").getTime();
 
     const count12mo = features.filter(
       (f) => { const t = toTime(f); return !isNaN(t) && t > cutRecent.getTime() && t <= maxTime; }
@@ -558,30 +557,32 @@
     }
   }
 
-  /** Renders the YoY signal as an HTML row string for use in popups and the stats panel. */
+  /**
+   * Renders the volume YoY badge HTML for the stats panel (sidebar only — not used in popups).
+   * Called by callers that compose stats-panel HTML; renderYoYHtml stays price-only for popup use.
+   */
+  function renderVolumeHtml(district: string, city?: string): string {
+    if (!rawAllFeatures.length) return "";
+    const vol = computeVolumeYoYSignal(district, city);
+    if (vol.tier === "insufficient") {
+      return `<div class="yoy-row"><span class="yoy-row-label">本區交易量 (近12個月)</span><span class="yoy-insufficient">資料不足</span></div>`;
+    }
+    const pctStr = (vol.pct! >= 0 ? "+" : "") + vol.pct!.toFixed(1);
+    return `
+      <div class="yoy-row volume-count-row"><span class="yoy-row-label">本區交易量 (近12個月)</span><span>${vol.count12mo} 筆</span></div>
+      <div class="yoy-row"><span class="yoy-row-label">較去年同期</span><span class="volume-signal volume-${vol.tier}">${vol.arrow} ${pctStr}%</span></div>
+      <div class="volume-interp">${vol.label}</div>`;
+  }
+
+  /** Renders the price YoY signal as an HTML row string for use in popups and the stats panel. */
   function renderYoYHtml(district: string, city?: string): string {
     if (!rawAllFeatures.length) return "";
     const sig = computeYoYSignal(district, city);
-    const priceLine = sig.tier === "insufficient"
-      ? `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-insufficient">資料不足</span></div>`
-      : (() => {
-          const pctStr = Math.abs(sig.pct!).toFixed(1);
-          return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-signal yoy-${sig.tier}">${sig.badge} ${sig.label} ${sig.arrow}${pctStr}% YoY</span></div>`;
-        })();
-
-    const vol = computeVolumeYoYSignal(district, city);
-    let volumeLines = "";
-    if (vol.tier === "insufficient") {
-      volumeLines = `<div class="yoy-row"><span class="yoy-row-label">本區交易量 (近12個月)</span><span class="yoy-insufficient">資料不足</span></div>`;
-    } else {
-      const pctStr = (vol.pct! >= 0 ? "+" : "") + vol.pct!.toFixed(1);
-      volumeLines = `
-        <div class="yoy-row volume-count-row"><span class="yoy-row-label">本區交易量 (近12個月)</span><span>${vol.count12mo} 筆</span></div>
-        <div class="yoy-row"><span class="yoy-row-label">較去年同期</span><span class="volume-signal volume-${vol.tier}">${vol.arrow} ${pctStr}%</span></div>
-        <div class="volume-interp">${vol.label}</div>`;
+    if (sig.tier === "insufficient") {
+      return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-insufficient">資料不足</span></div>`;
     }
-
-    return priceLine + volumeLines;
+    const pctStr = Math.abs(sig.pct!).toFixed(1);
+    return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-signal yoy-${sig.tier}">${sig.badge} ${sig.label} ${sig.arrow}${pctStr}% YoY</span></div>`;
   }
 
   // ---- Affordability overlay state ----
@@ -825,9 +826,13 @@
 
       // Update #yoy-panel: populate when district filter active, clear otherwise.
       // Single render path avoids duplicate YoY display (popup vs inline stats).
+      // Stats panel gets both price YoY and volume badge; popups stay price-only via renderYoYHtml.
       document.dispatchEvent(new CustomEvent("yoy-signal", {
         detail: {
-          html: params.district ? renderYoYHtml(params.district, params.city || undefined) : "",
+          html: params.district
+            ? renderYoYHtml(params.district, params.city || undefined) +
+              renderVolumeHtml(params.district, params.city || undefined)
+            : "",
         },
       }));
 
@@ -1252,9 +1257,10 @@
       || undefined;
     const yoyHtml = renderYoYHtml(district, activeCity);
 
-    // Dispatch YoY signal so #yoy-panel in the stats card updates on district click
+    // Dispatch YoY+volume signal so #yoy-panel in the stats card updates on district click.
+    // The popup itself (below) uses yoyHtml (price-only) to keep popup size compact.
     document.dispatchEvent(new CustomEvent("yoy-signal", {
-      detail: { district, html: yoyHtml },
+      detail: { district, html: yoyHtml + renderVolumeHtml(district, activeCity) },
     }));
 
     // Build popup HTML
