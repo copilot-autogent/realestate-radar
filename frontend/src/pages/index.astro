@@ -55,7 +55,7 @@ const isStale = !isPlaceholder && (() => {
       <div id="qingan-banner" class="qingan-banner" role="alert" style="display:none">
         <button id="qingan-dismiss" class="qingan-dismiss" aria-label="關閉提醒">✕</button>
         <p class="qingan-text">
-          ⚠️ <strong>青安貸款換約提醒</strong>：2026年7月起，利率從1.775%調升至2.3%，每月還款約多 2,706 元。
+          ⚠️ <strong>青安貸款換約提醒</strong>：2026年7月起，利率從1.775%調升至2.3%（1,000萬40年期每月約多2,706元）。
         </p>
         <a href="#mortgage-calculator" class="qingan-cta">把握現行優惠期限，點此試算 →</a>
       </div>
@@ -1510,7 +1510,8 @@ const isStale = !isPlaceholder && (() => {
 
   // ---- 青安貸款換約提醒 banner ----
   (function initQinganBanner(): void {
-    const DEADLINE = new Date("2026-07-01");
+    // Use local-timezone construction (avoids UTC-parse skew with ISO string)
+    const DEADLINE = new Date(2026, 6, 1); // July 1, 2026 local time
     const DISMISS_KEY = "qingan_banner_dismissed";
     const WINDOW_DAYS = 60;
 
@@ -1521,21 +1522,28 @@ const isStale = !isPlaceholder && (() => {
     const msLeft = DEADLINE.getTime() - now.getTime();
     const daysLeft = msLeft / (1000 * 60 * 60 * 24);
 
-    // Show only within the 60-day window before deadline; hide on/after July 1 2026
+    // Show when within the 60-day window (inclusive of day 60); hide on/after July 1 2026
     if (daysLeft <= 0 || daysLeft > WINDOW_DAYS) return;
-    if (localStorage.getItem(DISMISS_KEY) === "true") return;
+
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(DISMISS_KEY) === "true"; } catch { /* storage blocked */ }
+    if (dismissed) return;
 
     banner.style.display = "block";
 
     document.getElementById("qingan-dismiss")?.addEventListener("click", () => {
       banner.style.display = "none";
-      localStorage.setItem(DISMISS_KEY, "true");
+      try { localStorage.setItem(DISMISS_KEY, "true"); } catch { /* storage blocked */ }
     });
 
-    // Smooth-scroll the mortgage calculator into view when the CTA link is clicked
+    // Smooth-scroll the mortgage calculator into view when the CTA link is clicked;
+    // fall back to default anchor navigation if the target element is missing.
     banner.querySelector<HTMLAnchorElement>(".qingan-cta")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      document.getElementById("mortgage-calculator")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const target = document.getElementById("mortgage-calculator");
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     });
   })();
 
