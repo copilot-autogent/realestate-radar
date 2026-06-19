@@ -51,6 +51,15 @@ const isStale = !isPlaceholder && (() => {
     <aside class="sidebar">
       <button id="sidebar-close-btn" class="sidebar-close-btn" aria-label="關閉篩選">✕</button>
 
+      <!-- 青安貸款換約提醒 banner (shown client-side when within 60 days of 2026-07-01) -->
+      <div id="qingan-banner" class="qingan-banner" role="alert" style="display:none">
+        <button id="qingan-dismiss" class="qingan-dismiss" aria-label="關閉提醒">✕</button>
+        <p class="qingan-text">
+          ⚠️ <strong>青安貸款換約提醒</strong>：2026年7月起，利率從1.775%調升至2.3%（1,000萬40年期每月約多2,706元）。
+        </p>
+        <a href="#mortgage-calculator" class="qingan-cta">把握現行優惠期限，點此試算 →</a>
+      </div>
+
       <div class="filter-group">
         <label for="address-search">地址搜尋</label>
         <div class="search-input-wrapper">
@@ -845,6 +854,47 @@ const isStale = !isPlaceholder && (() => {
   .search-input-wrapper {
     position: relative;
   }
+
+  /* ---- 青安貸款換約提醒 banner ---- */
+  .qingan-banner {
+    position: relative;
+    margin-bottom: 12px;
+    padding: 10px 32px 10px 12px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+  .qingan-dismiss {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: #92400e;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    line-height: 1;
+    opacity: 0.7;
+  }
+  .qingan-dismiss:hover { opacity: 1; }
+  .qingan-text {
+    margin: 0 0 6px;
+    color: #78350f;
+  }
+  .qingan-cta {
+    display: inline-block;
+    color: #b45309;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .qingan-cta:hover { color: #92400e; }
+
+
   .search-input-wrapper input {
     width: 100%;
     padding: 8px 32px 8px 12px;
@@ -1457,5 +1507,44 @@ const isStale = !isPlaceholder && (() => {
       panel.style.display = "none";
     }
   });
+
+  // ---- 青安貸款換約提醒 banner ----
+  (function initQinganBanner(): void {
+    // Use local-timezone construction (avoids UTC-parse skew with ISO string)
+    const DEADLINE = new Date(2026, 6, 1); // July 1, 2026 local time
+    const DISMISS_KEY = "qingan_banner_dismissed";
+    const WINDOW_DAYS = 60;
+
+    const banner = document.getElementById("qingan-banner");
+    if (!banner) return;
+
+    const now = new Date();
+    const msLeft = DEADLINE.getTime() - now.getTime();
+    const daysLeft = msLeft / (1000 * 60 * 60 * 24);
+
+    // Show when within the 60-day window (inclusive of day 60); hide on/after July 1 2026
+    if (daysLeft <= 0 || daysLeft > WINDOW_DAYS) return;
+
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(DISMISS_KEY) === "true"; } catch { /* storage blocked */ }
+    if (dismissed) return;
+
+    banner.style.display = "block";
+
+    document.getElementById("qingan-dismiss")?.addEventListener("click", () => {
+      banner.style.display = "none";
+      try { localStorage.setItem(DISMISS_KEY, "true"); } catch { /* storage blocked */ }
+    });
+
+    // Smooth-scroll the mortgage calculator into view when the CTA link is clicked;
+    // fall back to default anchor navigation if the target element is missing.
+    banner.querySelector<HTMLAnchorElement>(".qingan-cta")?.addEventListener("click", (e) => {
+      const target = document.getElementById("mortgage-calculator");
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  })();
 
 </script>
