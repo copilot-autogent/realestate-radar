@@ -12,18 +12,18 @@
  *
  * Granularity: 縣市 (city level). Quarterly (latest: 114Q4 = Q4 2025).
  *
- * District allocation: pip.moi.gov.tw provides city-level totals only.
- * District-level data uses the proportional model from E5010 (future work).
+ * Note: E3030 CSV exports may be Big5 encoded. This script detects charset
+ * from the Content-Type header and falls back to iconv-lite for Big5 decoding.
  *
- * Usage:
- *   cd backend && tsx ../scripts/ingest-permits.ts [--dry-run] [--output path]
+ * Usage (run from project root):
+ *   tsx scripts/ingest-permits.ts [--dry-run] [--output path]
  *   --dry-run   Fetch and parse but do not write to DB
  *   --output    Write parsed JSON to file (for frontend static data)
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { query, close } from "../backend/src/db/connection.js";
+import { query, close } from "./backend/src/db/connection.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -43,20 +43,20 @@ const PERMIT_TYPES = {
 
 type PermitKind = keyof typeof PERMIT_TYPES;
 
-/** 6 major cities + their common alt-spellings for normalisation */
+/** City name normalisation (臺 → 台 variants) */
 const CITY_ALIASES: Record<string, string> = {
   "臺北市": "台北市",
   "台北市": "台北市",
   "新北市": "新北市",
   "桃園市": "桃園市",
-  "臺中市": "台中市",
+",  "臺中市": "台中
   "台中市": "台中市",
   "臺南市": "台南市",
   "台南市": "台南市",
   "高雄市": "高雄市",
 };
 
-const SIX_CITIES = ["台北市", "新北市", "桃園市", "台中市", "台南市", "高雄市"] as const;
+const "] as const;SIX_CITIES = ["台北市", "新北市", "桃園市", "台中市", "台南市", "
 type City = typeof SIX_CITIES[number];
 
 // ---------------------------------------------------------------------------
@@ -65,8 +65,8 @@ type City = typeof SIX_CITIES[number];
 
 export interface PermitRecord {
   city: string;
-  district: string | null;  // null = city-level aggregate
-  quarter: string;          // e.g. "2024Q1"
+  district: string;   // '' = city-level aggregate (NOT NULL)
+  quarter: string;    // e.g. "2024Q1"
   building_permits: number;
   occupancy_permits: number;
   starts: number;
@@ -125,13 +125,58 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Decode an HTTP response body, handling Big5/BIG5 charset from Content-Type.
+ * Falls back to UTF-8 when charset is absent or UTF-8.
+ */
+async function decodeResponseBody(res: Response): Promise<string> {
+  const contentType = res.headers.get("content-type") ?? "";
+  const charsetMatch = contentType.match(/charset\s*=\s*([^\s;]+)/i);
+  const charset = charsetMatch ? charsetMatch[1].toLowerCase() : "utf-8";
+
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+
+  if (charset === "big5" || charset === "big5-hkscs" || charset === "csbig5") {
+    try {
+      // iconv-lite is available in backend/node_modules — require dynamically
+      // so missing package degrades gracefully to UTF-8 with a warning.
+      const iconv = await import("iconv-lite");
+      return iconv.decode(Buffer.from(bytes), "big5");
+    } catch {
+      console.warn("[encode] iconv-lite unavailable; decoding Big5 as UTF-8 (may mojibake)");
+    }
+  }
+
+  // Default: UTF-8 (strip BOM if present)
+  const text = new TextDecoder("utf-8").decode(bytes);
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 // ---------------------------------------------------------------------------
 // E3030 session & CSRF token acquisition
 // ---------------------------------------------------------------------------
 
 interface E3030Session {
-  cookies: string;
+  /** Parsed `name=value` cookie pairs ready for Cookie header. */
+  cookieHeader: string;
   csrfToken: string;
+}
+
+/**
+ * Parse raw Set-Cookie header(s) into a Cookie header value.
+ * Extracts only `name=value` pairs, discarding Path/Expires/HttpOnly etc.
+ */
+function parseCookies(rawSetCookie: string | null): string {
+  if (!rawSetCookie) return "";
+  // Set-Cookie values can be comma-separated when multiple cookies are returned
+  // in a single header (non-standard but common on .NET). Split on `,` only
+  // when followed by a space and a cookie name (i.e., not inside an Expires value).
+  const cookieParts = rawSetCookie.split(/,\s*(?=[A-Za-z_][^=]+=)/);
+  return cookieParts
+    .map(part => part.split(";")[0].trim())  // take name=value portion only
+    .filter(Boolean)
+    .join("; ");
 }
 
 /**
@@ -141,8 +186,9 @@ interface E3030Session {
 async function acquireE3030Session(): Promise<E3030Session | null> {
   try {
     const res = await fetchWithRetry(BASE_URL);
-    const cookies = res.headers.get("set-cookie") ?? "";
-    const html = await res.text();
+    const rawCookie = res.headers.get("set-cookie");
+    const cookieHeader = parseCookies(rawCookie);
+    const html = await decodeResponseBody(res);
 
     // Extract __RequestVerificationToken from hidden input or meta tag
     const tokenMatch =
@@ -152,10 +198,10 @@ async function acquireE3030Session(): Promise<E3030Session | null> {
 
     if (!tokenMatch) {
       console.warn("[e3030] Could not extract CSRF token — proceeding without it");
-      return { cookies, csrfToken: "" };
+      return { cookieHeader, csrfToken: "" };
     }
 
-    return { cookies, csrfToken: tokenMatch[1] };
+    return { cookieHeader, csrfToken: tokenMatch[1] };
   } catch (err) {
     console.error("[e3030] Session acquisition failed:", (err as Error).message);
     return null;
@@ -174,14 +220,14 @@ async function acquireE3030Session(): Promise<E3030Session | null> {
  *   k = sub-type (3 = 開工數, 4 = 執照數)
  *   n = field selector (1 = 建照宅數, 3 = 使照宅數, 2 = 開工宅數)
  *
- * Returns raw CSV text or null on failure.
+ * Returns decoded CSV text or null on failure.
  */
 async function downloadE3030Csv(
   session: E3030Session,
   kind: PermitKind,
 ): Promise<string | null> {
   const params = PERMIT_TYPES[kind];
-  const body = new URLSearchParams({
+  const bodyParams = new URLSearchParams({
     t: params.t,
     k: params.k,
     n: params.n,
@@ -196,11 +242,12 @@ async function downloadE3030Csv(
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        ...(session.cookies ? { Cookie: session.cookies } : {}),
+        ...(session.cookieHeader ? { Cookie: session.cookieHeader } : {}),
       },
-      body: body.toString(),
+      body: bodyParams.toString(),
     });
-    const text = await res.text();
+
+    const text = await decodeResponseBody(res);
     if (text.trim().length === 0) {
       console.warn(`[e3030] Empty response for ${kind}`);
       return null;
@@ -217,15 +264,15 @@ async function downloadE3030Csv(
 // ---------------------------------------------------------------------------
 
 interface RawE3030Row {
-  quarter: string;        // e.g. "2021Q1"
-  city: string;           // normalised city name
-  value: number;          // unit count
+  quarter: string;   // e.g. "2021Q1"
+  city: string;      // normalised city name
+  value: number;     // unit count
 }
 
 /**
  * Parse E3030 CSV.
  *
- * Expected format (BIG5 or UTF-8, with BOM):
+ * Expected format (UTF-8 or Big5, may have BOM):
  *   年季,縣市,宅數
  *   1101,台北市,3000
  *   ...
@@ -299,11 +346,7 @@ function parseRocQuarter(raw: string): string | null {
 // Data assembly
 // ---------------------------------------------------------------------------
 
-/**
- * Generate quarters list from 2021Q1 to 2028Q4.
- * Historical: 2021Q1–latest actuals (2025Q4 per issue context).
- * Projected: 2026Q1–2028Q4.
- */
+/** Generate quarters list from `from` to `to` (inclusive). */
 function buildQuartersList(from = "2021Q1", to = "2028Q4"): string[] {
   const quarters: string[] = [];
   const [fromYear, fromQ] = parseQuarterParts(from);
@@ -325,35 +368,38 @@ function parseQuarterParts(q: string): [number, number] {
 }
 
 /**
- * Build projected occupancy_permits using a simple lag model:
- * - 建照 units from Q-{LAG_MIN} to Q-{LAG_MAX} ago → expected completions
+ * Project occupancy_permits using a lag model:
+ * - 建照 units from Q-{LAG_MIN} to Q-{LAG_MAX} historical quarters → expected completions
  * - Apply ~75% conversion rate (some projects stall/cancel)
- * - Spread linearly across the projection window
+ *
+ * historicalOp: actual occupancy_permits for indices < projIdx (used for fallback only)
+ * bp: building_permits time series (historical only relevant; projection slots are ignored)
  */
 function projectOccupancyPermits(
   allQuarters: string[],
-  building_permits: number[],
-  first_projected_quarter: string,
+  bp: number[],
+  historicalOp: number[],
+  firstProjectedQuarter: string,
 ): number[] {
-  const LAG_MIN = 12; // quarters
+  const LAG_MIN = 12;
   const LAG_MAX = 16;
   const CONVERSION = 0.75;
 
-  const projIdx = allQuarters.indexOf(first_projected_quarter);
-  const result: number[] = [...building_permits]; // copy actuals
+  const projIdx = allQuarters.indexOf(firstProjectedQuarter);
+  const result: number[] = [...historicalOp]; // start from actual historical values
 
   for (let i = projIdx; i < allQuarters.length; i++) {
-    // Average building_permits from LAG_MIN to LAG_MAX quarters ago
+    // Average building_permits from LAG_MIN to LAG_MAX quarters ago (historical only)
     const samples: number[] = [];
     for (let lag = LAG_MIN; lag <= LAG_MAX; lag++) {
       const srcIdx = i - lag;
       if (srcIdx >= 0 && srcIdx < projIdx) {
-        samples.push(building_permits[srcIdx]);
+        samples.push(bp[srcIdx]);
       }
     }
     const avg = samples.length > 0
       ? samples.reduce((a, b) => a + b, 0) / samples.length
-      : (result[projIdx - 1] ?? 3000); // fallback: last known value
+      : (historicalOp[projIdx - 1] ?? 0); // fallback: last known occupancy value, not bp
     result[i] = Math.round(avg * CONVERSION);
   }
 
@@ -387,33 +433,28 @@ function assemblePermitsJson(
   const projIdx = allQuarters.indexOf(firstProjectedQuarter);
 
   for (const city of SIX_CITIES) {
-    const bp = allQuarters.map((q, i) => {
-      if (i < projIdx) {
-        return lookup.building_permits[city]?.[q] ?? 0;
-      }
-      // For projection quarters, keep building_permits as 0 (not projected)
-      return 0;
-    });
+    // Historical building permits (0 for projection quarters — not projected)
+    const bp: number[] = allQuarters.map((q, i) =>
+      i < projIdx ? (lookup.building_permits[city]?.[q] ?? 0) : 0
+    );
 
-    // For occupancy_permits: use actuals where available, project the rest
-    const op = projectOccupancyPermits(allQuarters, bp, firstProjectedQuarter);
-    // Use actual occupancy values for historical quarters
-    for (let i = 0; i < projIdx; i++) {
-      op[i] = lookup.occupancy_permits[city]?.[allQuarters[i]] ?? op[i];
-    }
+    // Historical occupancy permits (used as base for projection)
+    const historicalOp: number[] = allQuarters.map((q, i) =>
+      i < projIdx ? (lookup.occupancy_permits[city]?.[q] ?? 0) : 0
+    );
 
-    const st = allQuarters.map((q, i) => {
-      if (i < projIdx) {
-        return lookup.starts[city]?.[q] ?? 0;
-      }
-      return 0;
-    });
+    const op = projectOccupancyPermits(allQuarters, bp, historicalOp, firstProjectedQuarter);
+
+    // Historical starts (0 for projection quarters)
+    const st: number[] = allQuarters.map((q, i) =>
+      i < projIdx ? (lookup.starts[city]?.[q] ?? 0) : 0
+    );
 
     cities[city] = { building_permits: bp, occupancy_permits: op, starts: st };
   }
 
   return {
-    _comment: "內政部不動產資訊平台 E3030 解析資料。2026-2028 為模型推估預測值。",
+            {                 echo ___BEGIN___COMMAND_OUTPUT_MARKER___;                 PS1="";PS2="";unset HISTFILE;                 EC=$?;                 echo "___BEGIN___COMMAND_DONE_MARKER___$EC";             ",}
     generated: new Date().toISOString().slice(0, 10),
     source: "內政部不動產資訊平台 E3030（建照/使照/開工，縣市層級）",
     note: "2026-2028 為依建照核發量推估之預測值（建照到使照平均時差約12-16季，轉換率約75%）。",
@@ -432,24 +473,24 @@ async function ensurePermitsTable(): Promise<void> {
     CREATE TABLE IF NOT EXISTS permit_records (
       id SERIAL PRIMARY KEY,
       city TEXT NOT NULL,
-      district TEXT,
-      quarter TEXT NOT NULL,               -- e.g. '2024Q1'
-      quarter_year INTEGER NOT NULL,       -- AD year
-      quarter_num SMALLINT NOT NULL,       -- 1-4
+      district TEXT NOT NULL DEFAULT '',
+      quarter TEXT NOT NULL,
+      quarter_year INTEGER NOT NULL,
+      quarter_num SMALLINT NOT NULL,
       building_permits INTEGER NOT NULL DEFAULT 0,
       occupancy_permits INTEGER NOT NULL DEFAULT 0,
       starts INTEGER NOT NULL DEFAULT 0,
       is_projected BOOLEAN NOT NULL DEFAULT FALSE,
       source TEXT,
       imported_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(city, COALESCE(district, ''), quarter)
+      UNIQUE(city, district, quarter)
     );
     CREATE INDEX IF NOT EXISTS idx_permit_records_city_quarter
       ON permit_records(city, quarter);
   `);
 }
 
-async function upsertPermitRecords(records: PermitRecord[], isProjected = false): Promise<number> {
+async function upsertPermitRecords(records: PermitRecord[], isProjected: boolean): Promise<number> {
   let upserted = 0;
   for (const rec of records) {
     const [year, q] = parseQuarterParts(rec.quarter);
@@ -458,7 +499,7 @@ async function upsertPermitRecords(records: PermitRecord[], isProjected = false)
          (city, district, quarter, quarter_year, quarter_num,
           building_permits, occupancy_permits, starts, is_projected, source)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       ON CONFLICT (city, COALESCE(district, ''), quarter)
+       ON CONFLICT (city, district, quarter)
        DO UPDATE SET
          building_permits = EXCLUDED.building_permits,
          occupancy_permits = EXCLUDED.occupancy_permits,
@@ -466,7 +507,7 @@ async function upsertPermitRecords(records: PermitRecord[], isProjected = false)
          is_projected = EXCLUDED.is_projected,
          imported_at = NOW()`,
       [
-        rec.city, rec.district ?? null, rec.quarter, year, q,
+        rec.city, rec.district, rec.quarter, year, q,
         rec.building_permits, rec.occupancy_permits, rec.starts,
         isProjected, "pip.moi.gov.tw/E3030",
       ]
@@ -491,26 +532,29 @@ async function main(): Promise<void> {
   const allQuarters = buildQuartersList("2021Q1", "2028Q4");
   const firstProjectedQuarter = "2026Q1";
 
-  console.log("🏗️  E3030 Permit Ingest — 內政部不動產資訊平台");
+  console.log("🏗  E3030 Permit Ingest — 內政部不動產資訊平台");
   console.log(`   Quarters: ${allQuarters[0]} → ${allQuarters[allQuarters.length - 1]}`);
   console.log(`   First projected quarter: ${firstProjectedQuarter}`);
+  if (isDryRun) console.log("   Mode: dry-run (no DB writes)");
 
   // ── Step 1: acquire session ────────────────────────────────────────────
   console.log("\n[1/4] Acquiring E3030 session…");
   const session = await acquireE3030Session();
 
-  // ── Step 2: download all 3 permit kinds ───────────────────────────────
+  // ── Step 2: download all 3 permit kinds ───────────────────────────
   console.log("\n[2/4] Downloading permit data…");
   const rawByKind: Partial<Record<PermitKind, RawE3030Row[]>> = {};
+  let anyDownloadSucceeded = false;
 
   if (session) {
     for (const kind of Object.keys(PERMIT_TYPES) as PermitKind[]) {
-      await sleep(500); // polite crawl delay
+      await sleep(800); // polite crawl delay (>500ms between requests)
       const csv = await downloadE3030Csv(session, kind);
       if (csv) {
         const rows = parseE3030Csv(csv);
         console.log(`   ${kind}: ${rows.length} rows parsed`);
         rawByKind[kind] = rows;
+        if (rows.length > 0) anyDownloadSucceeded = true;
       } else {
         console.warn(`   ${kind}: download failed — using empty data`);
         rawByKind[kind] = [];
@@ -531,47 +575,51 @@ async function main(): Promise<void> {
     firstProjectedQuarter,
   );
 
-  // ── Step 4: persist / output ──────────────────────────────────────────
   if (outputPath) {
-    await mkdir(path.dirname(outputPath), { recursive: true });
+    await mkdir(path.dirname(path.resolve(outputPath)), { recursive: true });
     await writeFile(outputPath, JSON.stringify(permitsJson, null, 2), "utf-8");
     console.log(`\n✅ Written to ${outputPath}`);
   }
 
+  // ── Step 4: persist to DB ─────────────────────────────────────────────
   if (!isDryRun) {
-    console.log("\n[4/4] Writing to database…");
-    await ensurePermitsTable();
-
-    // Flatten PermitsJson → PermitRecord[] for DB upsert
-    const records: PermitRecord[] = [];
-    for (const city of SIX_CITIES) {
-      const cityData = permitsJson.cities[city];
-      const projIdx = allQuarters.indexOf(firstProjectedQuarter);
-      for (let i = 0; i < allQuarters.length; i++) {
-        records.push({
-          city,
-          district: null,
-          quarter: allQuarters[i],
-          building_permits: cityData.building_permits[i],
-          occupancy_permits: cityData.occupancy_permits[i],
-          starts: cityData.starts[i],
-        });
-      }
+    // Guard: do not overwrite existing data with all-zero sets when all downloads fail
+    if (!anyDownloadSucceeded && session !== null) {
+      console.error("\n❌ All permit downloads failed; refusing to overwrite DB with zero data.");
+      console.error("   Verify E3030 endpoint availability and re-run.");
+      process.exit(1);
     }
 
-    const histRecs = records.filter(r => {
-      const idx = allQuarters.indexOf(r.quarter);
-      return idx < allQuarters.indexOf(firstProjectedQuarter);
-    });
-    const projRecs = records.filter(r => {
-      const idx = allQuarters.indexOf(r.quarter);
-      return idx >= allQuarters.indexOf(firstProjectedQuarter);
-    });
+    console.log("\n[4/4] Writing to database…");
+    try {
+      await ensurePermitsTable();
 
-    const histCount = await upsertPermitRecords(histRecs, false);
-    const projCount = await upsertPermitRecords(projRecs, true);
-    console.log(`   Upserted ${histCount} historical + ${projCount} projected records`);
-    await close();
+      const projIdx = allQuarters.indexOf(firstProjectedQuarter);
+      const histRecs: PermitRecord[] = [];
+      const projRecs: PermitRecord[] = [];
+
+      for (const city of SIX_CITIES) {
+        const cityData = permitsJson.cities[city];
+        for (let i = 0; i < allQuarters.length; i++) {
+          const rec: PermitRecord = {
+            city,
+            district: "",
+            quarter: allQuarters[i],
+            building_permits: cityData.building_permits[i],
+            occupancy_permits: cityData.occupancy_permits[i],
+            starts: cityData.starts[i],
+          };
+          if (i < projIdx) histRecs.push(rec);
+          else projRecs.push(rec);
+        }
+      }
+
+      const histCount = await upsertPermitRecords(histRecs, false);
+      const projCount = await upsertPermitRecords(projRecs, true);
+      console.log(`   Upserted ${histCount} historical + ${projCount} projected records`);
+    } finally {
+      await close();
+    }
   } else {
     console.log("\n[4/4] Dry run — skipping database write");
   }
