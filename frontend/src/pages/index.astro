@@ -31,10 +31,15 @@ const isStale = !isPlaceholder && (() => {
   return DATA_AS_OF < cutoffStr;
 })();
 
-/** Year derived from DATA_AS_OF (or current year in placeholder/dev mode) for buyer's-market copy. */
-const dataYear = isPlaceholder
-  ? new Date().getFullYear()
-  : Number(DATA_AS_OF.slice(0, 4));
+/** Year derived from DATA_AS_OF for buyer's-market copy. Null in dev/placeholder or on malformed date. */
+const dataYear = (() => {
+  if (isPlaceholder) return null;
+  const y = Number(DATA_AS_OF.slice(0, 4));
+  return isNaN(y) ? null : y;
+})();
+
+/** Show buyer's-market copy only when data is fresh and a valid year is known. */
+const showBuyersMarket = !isStale && dataYear !== null;
 ---
 
 <Layout title="實價登錄雷達 — Real Price Radar">
@@ -46,7 +51,7 @@ const dataYear = isPlaceholder
   <header class="header">
     <h1>🏠 實價登錄雷達</h1>
     <p class="subtitle">台灣不動產實價資訊平台</p>
-    <p class="buyers-market-tagline">📉 行情下行，掌握議價優勢</p>
+    {showBuyersMarket && <p class="buyers-market-tagline">📉 行情下行，掌握議價優勢</p>}
     <span class="data-freshness-badge" title={`資料來源最新交易日期：${DATA_AS_OF}`}>
       資料更新至 {dataAsOfLabel}
     </span>
@@ -242,7 +247,7 @@ const dataYear = isPlaceholder
 
       <div id="stats-panel" class="stats-panel">
         <h3>統計資訊</h3>
-        {!isStale && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
+        {showBuyersMarket && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
         <div id="stats-content">
           <p class="placeholder">選擇條件後按搜尋</p>
         </div>
@@ -314,9 +319,11 @@ const dataYear = isPlaceholder
     </div>
   </main>
   <button id="filter-toggle-btn" class="filter-toggle-btn" aria-label="開啟篩選">☰ 篩選</button>
+  {showBuyersMarket && (
   <footer class="site-footer">
     <p>本工具無仲介費用衝突，呈現市場真實成交行情，協助首購族掌握議價時機。資料來源：<a href="https://lvr.land.moi.gov.tw/" target="_blank" rel="noopener">內政部實價登錄</a>。</p>
   </footer>
+  )}
 </Layout>
 
 <script>
