@@ -703,7 +703,7 @@
     if (!cityData) return {};
     const qi = permitsData.quarters.indexOf(permitsData.first_projected_quarter);
     // Use the most recent 4 historical quarters (rolling annual)
-    const histEnd = qi > 0 ? qi : permitsData.quarters.length;
+    const histEnd = qi >= 0 ? qi : permitsData.quarters.length;
     const histStart = Math.max(0, histEnd - 4);
     const cityTotal = cityData.occupancy_permits
       .slice(histStart, histEnd)
@@ -1578,7 +1578,15 @@
     } else {
       completionActive = false;
       completionByDistrict = {};
-      map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+      // Re-run updateChoropleth to strip stale completionCount from feature properties
+      // (so popup no longer shows "📦 完工供給" rows after overlay is turned off)
+      updateChoropleth();
+      // Restore active fill (affordability or default price)
+      if (affordabilityActive && affordabilityThreshold > 0) {
+        map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
+      } else {
+        map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+      }
       updateCompletionLegend(false);
     }
   });

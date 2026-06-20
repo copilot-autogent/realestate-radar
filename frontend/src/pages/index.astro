@@ -1759,14 +1759,15 @@ const isStale = !isPlaceholder && (() => {
             data: op.map((v, i) => (i < safeProjIdx ? v : null)),
             backgroundColor: color,
             borderColor: "transparent",
-            stack: city, // per-city stack so cities are stacked but projected/actual share same bar
+            // All cities share the same stack key so they stack on top of each other
+            stack: "all",
           },
           {
             label: `${city}（預測）`,
             data: op.map((v, i) => (i >= safeProjIdx ? v : null)),
             backgroundColor: color + "55",
             borderColor: "transparent",
-            stack: city,
+            stack: "all",
           },
         ];
       });
