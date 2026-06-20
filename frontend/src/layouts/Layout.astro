@@ -276,13 +276,21 @@
         .sidebar input[type="text"],
         .sidebar input[type="number"],
         .sidebar input[type="date"],
+        .sidebar input[type="datetime-local"],
+        .sidebar input[type="time"],
         .sidebar input[type="email"],
         .sidebar input[type="tel"],
+        .sidebar input[type="url"],
         .sidebar input[type="search"],
+        .sidebar input[type="password"],
+        .sidebar input:not([type]),
         .sidebar textarea,
         .sidebar select {
           min-height: 44px;
-          font-size: 16px; /* prevents iOS auto-zoom on focus */
+          /* 16px prevents iOS Safari auto-zoom on focus;
+             note: min-height on <select> is ignored by iOS native picker,
+             but is honoured on Android/desktop browsers */
+          font-size: 16px;
         }
       }
     </style>
