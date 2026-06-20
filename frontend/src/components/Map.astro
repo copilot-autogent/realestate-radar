@@ -689,7 +689,8 @@
         </div>
         <div style="font-size:0.62rem;color:#94a3b8;margin-top:5px">買方市場信號：紅色區域供給最強</div>`;
     } else {
-      updateAffordabilityLegend(false);
+      // Restore to whichever legend is currently active (affordability or default price)
+      updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
     }
   }
 
@@ -745,14 +746,20 @@
     const medians = computeDistrictMedians(currentTxGeojson.features ?? []);
     const updated = {
       ...districtGeoJSON,
-      features: districtGeoJSON.features.map((f: any) => ({
-        ...f,
-        properties: {
-          ...f.properties,
-          medianPrice: medians[f.properties.district] ?? -1,
-          completionCount: completionByDistrict[f.properties.district] ?? -1,
-        },
-      })),
+      features: districtGeoJSON.features.map((f: any) => {
+        const district = f.properties.district as string;
+        const completionCount = completionByDistrict[district];
+        return {
+          ...f,
+          properties: {
+            ...f.properties,
+            medianPrice: medians[district] ?? -1,
+            // Only add completionCount when present so ["has","completionCount"] is a
+            // reliable test — omitting it means the gray "資料不足" swatch is reachable
+            ...(completionCount !== undefined ? { completionCount } : {}),
+          },
+        };
+      }),
     };
     src.setData(updated);
     // Re-apply completion fill if that mode is still active
@@ -1557,20 +1564,8 @@
       completionByDistrict = buildCompletionByDistrict(currentCity, detail.permitsData);
 
       // Join completionCount into district GeoJSON and update source
-      const src = map.getSource("districts") as maplibregl.GeoJSONSource | undefined;
-      if (src && districtGeoJSON) {
-        const updated = {
-          ...districtGeoJSON,
-          features: districtGeoJSON.features.map((f: any) => ({
-            ...f,
-            properties: {
-              ...f.properties,
-              completionCount: completionByDistrict[f.properties.district] ?? -1,
-            },
-          })),
-        };
-        src.setData(updated);
-      }
+      // Use updateChoropleth() to keep medianPrice and completionCount in sync
+      updateChoropleth();
 
       map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
       for (const id of ["districts-fill", "districts-line"]) {

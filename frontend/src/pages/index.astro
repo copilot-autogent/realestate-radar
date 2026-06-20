@@ -1680,17 +1680,27 @@ const isStale = !isPlaceholder && (() => {
 
   let completionChartInstance: any = null;
 
+  /** In-flight fetch promise to avoid duplicate concurrent requests. */
+  let _permitsLoadPromise: Promise<typeof permitsData> | null = null;
+
   async function loadPermitsData(): Promise<typeof permitsData> {
     if (permitsData) return permitsData;
-    try {
-      const url = BASE_URL_CWC.replace(/\/$/, "") + "/data/permits.json";
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      permitsData = await res.json();
-    } catch (err) {
-      console.warn("[completion-wave] failed to load permits.json:", err);
-    }
-    return permitsData;
+    if (_permitsLoadPromise) return _permitsLoadPromise;
+    _permitsLoadPromise = (async () => {
+      try {
+        const url = BASE_URL_CWC.replace(/\/$/, "") + "/data/permits.json";
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        permitsData = await res.json();
+      } catch (err) {
+        console.warn("[completion-wave] failed to load permits.json:", err);
+        permitsData = null;
+      } finally {
+        _permitsLoadPromise = null;
+      }
+      return permitsData;
+    })();
+    return _permitsLoadPromise;
   }
 
   async function renderCompletionWaveChart(selectedCity: string): Promise<void> {
@@ -1708,40 +1718,37 @@ const isStale = !isPlaceholder && (() => {
     }
 
     const { quarters, first_projected_quarter, cities } = data;
+    // Guard against first_projected_quarter not found in quarters array
     const projIdx = quarters.indexOf(first_projected_quarter);
+    const safeProjIdx = projIdx >= 0 ? projIdx : quarters.length; // fallback: no projection
 
-    // Build datasets
     let datasets: any[];
-    let labels = quarters;
+    const labels = quarters;
 
     if (selectedCity !== "all") {
-      // Single city — show 使照 only, projected vs actual split
+      // Single city — single stack, two datasets for color split at projection boundary
       const cityData = cities[selectedCity];
       if (!cityData) return;
+      const color = CITY_COLORS[selectedCity] ?? "#6366f1";
 
       datasets = [
         {
-          label: `${selectedCity} 使照（完工）`,
-          data: cityData.occupancy_permits.slice(0, projIdx),
-          backgroundColor: CITY_COLORS[selectedCity] ?? "#6366f1",
+          label: `${selectedCity} 使照（實績）`,
+          data: cityData.occupancy_permits.map((v, i) => (i < safeProjIdx ? v : null)),
+          backgroundColor: color,
           borderColor: "transparent",
           stack: "op",
         },
         {
           label: `${selectedCity} 使照（預測）`,
-          data: [
-            ...Array(projIdx).fill(null),
-            ...cityData.occupancy_permits.slice(projIdx),
-          ],
-          backgroundColor: (CITY_COLORS[selectedCity] ?? "#6366f1") + "66",
-          borderColor: CITY_COLORS[selectedCity] ?? "#6366f1",
-          borderWidth: 1,
-          borderDash: [4, 3],
+          data: cityData.occupancy_permits.map((v, i) => (i >= safeProjIdx ? v : null)),
+          backgroundColor: color + "66",
+          borderColor: "transparent",
           stack: "op",
         },
       ];
     } else {
-      // All cities stacked — historical bars (solid) + projected (lighter, separate stack)
+      // All cities — single stack per city, two datasets per city for color split
       const cityList = Object.keys(cities);
       datasets = cityList.flatMap((city) => {
         const color = CITY_COLORS[city] ?? "#6366f1";
@@ -1749,32 +1756,24 @@ const isStale = !isPlaceholder && (() => {
         return [
           {
             label: `${city}（實績）`,
-            data: [...op.slice(0, projIdx), ...Array(quarters.length - projIdx).fill(null)],
+            data: op.map((v, i) => (i < safeProjIdx ? v : null)),
             backgroundColor: color,
             borderColor: "transparent",
-            stack: "actual",
+            stack: city, // per-city stack so cities are stacked but projected/actual share same bar
           },
           {
             label: `${city}（預測）`,
-            data: [...Array(projIdx).fill(null), ...op.slice(projIdx)],
+            data: op.map((v, i) => (i >= safeProjIdx ? v : null)),
             backgroundColor: color + "55",
-            borderColor: color,
-            borderWidth: 1,
-            stack: "projected",
+            borderColor: "transparent",
+            stack: city,
           },
         ];
       });
     }
 
-    // Show every 4th quarter label (one per year) to avoid clutter
-    const labelStep = 4;
-    const displayLabels = labels.map((q, i) => (i % labelStep === 0 ? q : ""));
-
-    // Draw projection boundary line via annotation plugin (not available on CDN build;
-    // fall back to a dataset annotation using a dummy dataset with borderDash).
-    // Instead, shade the chart background by adding a vertical highlight band via the
-    // Chart.js afterDraw hook (pure canvas).
-    const projectionStart = projIdx; // quarter index where projection begins
+    // Show one label per year (every 4th quarter)
+    const displayLabels = labels.map((q, i) => (i % 4 === 0 ? q : ""));
 
     completionChartInstance = new Chart(canvas, {
       type: "bar",
@@ -1787,7 +1786,13 @@ const isStale = !isPlaceholder && (() => {
           legend: {
             display: selectedCity === "all",
             position: "bottom" as const,
-            labels: { font: { size: 9 }, boxWidth: 10, padding: 6 },
+            labels: {
+              font: { size: 9 },
+              boxWidth: 10,
+              padding: 6,
+              // Show only the city name (first dataset per city), not "（預測）" duplicates
+              filter: (item: any) => !item.text.includes("（預測）"),
+            },
           },
           tooltip: {
             callbacks: {
@@ -1824,10 +1829,11 @@ const isStale = !isPlaceholder && (() => {
         {
           id: "projection-shading",
           beforeDraw(chart: any) {
-            if (projectionStart <= 0 || projectionStart >= labels.length) return;
+            if (safeProjIdx <= 0 || safeProjIdx >= labels.length) return;
             const { ctx, chartArea, scales } = chart;
-            if (!chartArea) return;
-            const x = scales.x.getPixelForTick(projectionStart - 0.5);
+            if (!chartArea || !scales.x) return;
+            // Use integer tick index to get pixel for left edge of the projection bar
+            const x = scales.x.getPixelForValue(safeProjIdx - 0.5);
             ctx.save();
             ctx.fillStyle = "rgba(250,204,21,0.08)";
             ctx.fillRect(x, chartArea.top, chartArea.right - x, chartArea.bottom - chartArea.top);
@@ -1864,22 +1870,39 @@ const isStale = !isPlaceholder && (() => {
 
   async function updateCompletionOverlay(): Promise<void> {
     const enabled = completionOverlayToggle?.checked ?? false;
-    const data = enabled ? await loadPermitsData() : null;
 
-    document.dispatchEvent(new CustomEvent("completion-mode-change", {
-      detail: { enabled, permitsData: data },
-    }));
-
-    // When completion overlay is on, ensure choropleth districts are visible
     if (enabled) {
+      // Ensure choropleth districts are visible BEFORE dispatching, so Map.astro's
+      // guard on districts-fill layer doesn't bail out on the first click
       const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
       if (choroplethToggle && !choroplethToggle.checked) {
         choroplethToggle.checked = true;
         choroplethToggle.dispatchEvent(new Event("change"));
       }
+
+      const data = await loadPermitsData();
+      if (!data) {
+        // Revert toggle on load failure
+        if (completionOverlayToggle) completionOverlayToggle.checked = false;
+        return;
+      }
+      document.dispatchEvent(new CustomEvent("completion-mode-change", {
+        detail: { enabled: true, permitsData: data },
+      }));
+    } else {
+      document.dispatchEvent(new CustomEvent("completion-mode-change", {
+        detail: { enabled: false, permitsData: null },
+      }));
     }
   }
 
   completionOverlayToggle?.addEventListener("change", updateCompletionOverlay);
+
+  // Re-fire completion overlay when city changes (so district allocation stays fresh)
+  document.getElementById("city-select")?.addEventListener("change", async () => {
+    if (completionOverlayToggle?.checked) {
+      await updateCompletionOverlay();
+    }
+  });
 
 </script>
