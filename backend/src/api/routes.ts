@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { transactionsRouter } from "./transactions.js";
+import { permitsRouter } from "./permits.js";
 
 export function createApiRouter(): Router {
   const router = Router();
@@ -9,6 +10,7 @@ export function createApiRouter(): Router {
   });
 
   router.use("/transactions", transactionsRouter());
+  router.use("/permits", permitsRouter());
 
   return router;
 }

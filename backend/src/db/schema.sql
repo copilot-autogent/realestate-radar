@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   transaction_type TEXT NOT NULL,      -- 交易標的 (房地, 土地, 建物, 車位)
   total_price BIGINT NOT NULL,         -- 總價元
   unit_price INTEGER,                  -- 單價元/坪
-  area_sqm NUMERIC(10,2),             -- 建物移轉總面積(平方公尺)
+  area_sqm NUMERIC(10,2),             -- (平方公尺)
   area_ping NUMERIC(10,2) GENERATED ALWAYS AS (area_sqm * 0.3025) STORED,
 
   -- Building info
@@ -111,3 +111,29 @@ GROUP BY city, district;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_district_stats_city_district
   ON district_price_stats(city, district);
+
+-- Permit time series: 建照/使照/開工 (from 內政部不動產資訊平台 E3030)
+-- City-level granularity; district column uses '' for city-level aggregates.
+-- district = '' means city-level; a non-empty value means district-level (future work).
+CREATE TABLE IF NOT EXISTS permit_records (
+  id SERIAL PRIMARY KEY,
+  city TEXT NOT NULL,                         -- 縣市 e.g. 台北市
+  district TEXT NOT NULL DEFAULT '',          -- '' = city-level aggregate; 鄉鎮市區 otherwise
+  quarter TEXT NOT NULL,                      -- e.g. '2024Q1'
+  quarter_year INTEGER NOT NULL,             -- AD year
+  quarter_num SMALLINT NOT NULL,             -- 1–4
+  building_permits INTEGER NOT NULL DEFAULT 0,   -- 建造執照總宅數
+  occupancy_permits INTEGER NOT NULL DEFAULT 0,  -- 使用執照總宅數
+  starts INTEGER NOT NULL DEFAULT 0,             -- 建物開工總宅數
+  is_projected BOOLEAN NOT NULL DEFAULT FALSE,   -- TRUE for model-derived future values
+  source TEXT,                               -- e.g. 'pip.moi.gov.tw/E3030'
+  imported_at TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(city, district, quarter)
+);
+
+CREATE INDEX IF NOT EXISTS idx_permit_records_city_quarter
+  ON permit_records(city, quarter);
+
+CREATE INDEX IF NOT EXISTS idx_permit_records_quarter_year
+  ON permit_records(quarter_year, quarter_num);
