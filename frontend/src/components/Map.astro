@@ -591,7 +591,7 @@
 
   // ---- Completion overlay state ----
   let completionActive = false;
-  /** District-level rolling-annual completion counts (uses proportional city allocation). */
+  /** District-level rolling-annual completion counts (uniform city allocation — all districts equal). */
   let completionByDistrict: Record<string, number> = {};
 
   const DEFAULT_FILL_COLOR: any = [
@@ -687,14 +687,19 @@
           <div class="legend-item"><span class="legend-swatch" style="background:#7f1d1d"></span>極高（>${k(maxUnits * 0.75)} 宅）</div>
           <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
         </div>
-        <div style="font-size:0.62rem;color:#94a3b8;margin-top:5px">買方市場信號：紅色區域供給最強</div>`;
+        <div style="font-size:0.62rem;color:#94a3b8;margin-top:5px">各區均分（城市層級資料）</div>`;
     } else {
       // Restore to whichever legend is currently active (affordability or default price)
       updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
     }
   }
 
-  /** Compute per-district completion counts using proportional city allocation. */
+  /**
+   * Distributes city-level rolling-annual 使照 units uniformly across all districts.
+   * NOTE: E3030 only provides city-level data; all districts within a city receive an
+   * equal share (cityTotal ÷ numDistricts). District-level variation requires the weighted
+   * allocation model from E5010, which is future work once the ingest backend ships (#57).
+   */
   function buildCompletionByDistrict(
     city: string,
     permitsData: { quarters: string[]; first_projected_quarter: string; cities: Record<string, { occupancy_permits: number[] }> }
@@ -1553,21 +1558,20 @@
       } | null;
     };
 
-    if (!map.getLayer("districts-fill")) return;
-
+    // Set state first so late-arriving district loads (via updateChoropleth guard) apply
+    // the correct fill even if districts-fill layer doesn't exist yet on this tick.
     if (detail.enabled && detail.permitsData) {
-      // Determine which city is currently shown on the map
       const citySelect = document.getElementById("city-select") as HTMLSelectElement | null;
       const currentCity = citySelect?.value || "台北市";
 
       completionActive = true;
       completionByDistrict = buildCompletionByDistrict(currentCity, detail.permitsData);
 
-      // Join completionCount into district GeoJSON and update source
-      // Use updateChoropleth() to keep medianPrice and completionCount in sync
-      updateChoropleth();
+      if (!map.getLayer("districts-fill")) return; // layer not ready yet; updateChoropleth() will reapply on next data load
 
-      map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
+      // Join completionCount into district GeoJSON, update source, and repaint.
+      // updateChoropleth() internally re-applies completion fill (via completionActive guard).
+      updateChoropleth();
       for (const id of ["districts-fill", "districts-line"]) {
         if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
       }
@@ -1578,10 +1582,9 @@
     } else {
       completionActive = false;
       completionByDistrict = {};
-      // Re-run updateChoropleth to strip stale completionCount from feature properties
-      // (so popup no longer shows "📦 完工供給" rows after overlay is turned off)
+      if (!map.getLayer("districts-fill")) return;
+      // Strip stale completionCount and restore prior fill
       updateChoropleth();
-      // Restore active fill (affordability or default price)
       if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
       } else {
