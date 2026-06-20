@@ -34,11 +34,12 @@ const isStale = !isPlaceholder && (() => {
 /** Year derived from DATA_AS_OF for buyer's-market copy. Null in dev/placeholder or on malformed date. */
 const dataYear = (() => {
   if (isPlaceholder) return null;
+  if (!/^\d{4}-\d{2}-\d{2}/.test(DATA_AS_OF)) return null;
   const y = Number(DATA_AS_OF.slice(0, 4));
-  return isNaN(y) ? null : y;
+  return isNaN(y) || y === 0 ? null : y;
 })();
 
-/** Show buyer's-market copy only when data is fresh and a valid year is known. */
+/** Show buyer's-market trend copy only when data is fresh and a valid year is known. */
 const showBuyersMarket = !isStale && dataYear !== null;
 ---
 
@@ -319,11 +320,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
     </div>
   </main>
   <button id="filter-toggle-btn" class="filter-toggle-btn" aria-label="開啟篩選">☰ 篩選</button>
-  {showBuyersMarket && (
   <footer class="site-footer">
-    <p>本工具無仲介費用衝突，呈現市場真實成交行情，協助首購族掌握議價時機。資料來源：<a href="https://lvr.land.moi.gov.tw/" target="_blank" rel="noopener">內政部實價登錄</a>。</p>
+    <p>本工具無仲介費用衝突，提供市場真實成交資訊。資料來源：<a href="https://lvr.land.moi.gov.tw/" target="_blank" rel="noopener noreferrer">內政部實價登錄</a>。</p>
   </footer>
-  )}
 </Layout>
 
 <script>
