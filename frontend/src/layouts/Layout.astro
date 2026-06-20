@@ -273,7 +273,13 @@
           justify-content: center;
           padding: 10px;
         }
-        .sidebar input:not([type="checkbox"]):not([type="radio"]),
+        .sidebar input[type="text"],
+        .sidebar input[type="number"],
+        .sidebar input[type="date"],
+        .sidebar input[type="email"],
+        .sidebar input[type="tel"],
+        .sidebar input[type="search"],
+        .sidebar textarea,
         .sidebar select {
           min-height: 44px;
           font-size: 16px; /* prevents iOS auto-zoom on focus */
