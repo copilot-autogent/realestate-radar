@@ -41,6 +41,7 @@ const isStale = !isPlaceholder && (() => {
   <header class="header">
     <h1>🏠 實價登錄雷達</h1>
     <p class="subtitle">台灣不動產實價資訊平台</p>
+    <p class="buyers-market-tagline">📉 行情下行，掌握議價優勢</p>
     <span class="data-freshness-badge" title={`資料來源最新交易日期：${DATA_AS_OF}`}>
       資料更新至 {dataAsOfLabel}
     </span>
@@ -236,6 +237,7 @@ const isStale = !isPlaceholder && (() => {
 
       <div id="stats-panel" class="stats-panel">
         <h3>統計資訊</h3>
+        <p class="buyers-market-context">📉 2026年行情下行中 — 首購族議價空間擴大</p>
         <div id="stats-content">
           <p class="placeholder">選擇條件後按搜尋</p>
         </div>
@@ -307,6 +309,9 @@ const isStale = !isPlaceholder && (() => {
     </div>
   </main>
   <button id="filter-toggle-btn" class="filter-toggle-btn" aria-label="開啟篩選">☰ 篩選</button>
+  <footer class="site-footer">
+    <p>本工具無仲介費用衝突，呈現市場真實成交行情，協助首購族掌握議價時機。資料來源：<a href="https://lvr.land.moi.gov.tw/" target="_blank" rel="noopener">內政部實價登錄</a>。</p>
+  </footer>
 </Layout>
 
 <script>
@@ -1433,6 +1438,40 @@ const isStale = !isPlaceholder && (() => {
     color: #94a3b8;
     margin: 6px 0 0;
     text-align: right;
+  }
+
+  /* ---- Buyer's-market messaging (issue #54) ---- */
+  .buyers-market-tagline {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #0f766e;
+    margin: 2px 0 4px;
+    letter-spacing: 0.01em;
+  }
+  .buyers-market-context {
+    font-size: 0.75rem;
+    color: #0f766e;
+    margin: 0 0 8px;
+    padding: 4px 8px;
+    background: #f0fdfa;
+    border-left: 3px solid #0d9488;
+    border-radius: 4px;
+  }
+  .site-footer {
+    padding: 12px 16px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    color: #64748b;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .site-footer a {
+    color: #0d9488;
+    text-decoration: none;
+  }
+  .site-footer a:hover {
+    text-decoration: underline;
   }
 </style>
 
