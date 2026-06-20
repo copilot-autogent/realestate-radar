@@ -23,6 +23,16 @@ function cmpQuarter(a: string, b: string): number {
   return ay !== by ? ay - by : aq - bq;
 }
 
+/** Normalise 臺/台 city-name variants to match ingest canonical form. */
+const CITY_NORMALISE: Record<string, string> = {
+  "\u81fa\u5317\u5e02": "\u53f0\u5317\u5e02",
+  "\u81fa\u4e2d\u5e02": "\u53f0\u4e2d\u5e02",
+  "\u81fa\u5357\u5e02": "\u53f0\u5357\u5e02",
+};
+function normaliseCity(c: string): string {
+  return CITY_NORMALISE[c] ?? c;
+}
+
 export function permitsRouter(): Router {
   const router = Router();
 
@@ -56,7 +66,7 @@ export function permitsRouter(): Router {
       return;
     }
 
-    const cityFilter = city === "all" ? null : city;
+    const cityFilter = city === "all" ? null : normaliseCity(city);
 
     try {
       const result = await query<{
@@ -179,6 +189,8 @@ export function permitsRouter(): Router {
       return;
     }
 
+    const cityN = normaliseCity(city);
+
     try {
       const result = await query<{
         quarter: string;
@@ -195,7 +207,7 @@ export function permitsRouter(): Router {
            AND (quarter_year < $5 OR (quarter_year = $5 AND quarter_num <= $6))
          ORDER BY quarter_year, quarter_num`,
         [
-          city, district,
+          cityN, district,
           parseInt(from.slice(0, 4), 10), parseInt(from.slice(5), 10),
           parseInt(to.slice(0, 4), 10), parseInt(to.slice(5), 10),
         ]

@@ -23,7 +23,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { query, close } from "./backend/src/db/connection.js";
+import { getPool, close } from "../backend/src/db/connection.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -389,7 +389,8 @@ function assemblePermitsJson(
 // ---------------------------------------------------------------------------
 
 async function ensurePermitsTable(): Promise<void> {
-  await query(\`
+  const pool = getPool();
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS permit_records (
       id SERIAL PRIMARY KEY,
       city TEXT NOT NULL,
@@ -409,17 +410,19 @@ async function ensurePermitsTable(): Promise<void> {
       ON permit_records(city, quarter);
     CREATE INDEX IF NOT EXISTS idx_permit_records_quarter_year
       ON permit_records(quarter_year, quarter_num);
-  \`);
+  `);
 }
 
 async function upsertPermitRecords(records: PermitRecord[], isProjected: boolean): Promise<number> {
   if (!records.length) return 0;
-  await query("BEGIN");
+  // Use a dedicated client so BEGIN/COMMIT/ROLLBACK are all on the same connection.
+  const client = await getPool().connect();
   try {
+    await client.query("BEGIN");
     for (const rec of records) {
       const [year, q] = parseQuarterParts(rec.quarter);
-      await query(
-        \`INSERT INTO permit_records
+      await client.query(
+        `INSERT INTO permit_records
            (city, district, quarter, quarter_year, quarter_num,
             building_permits, occupancy_permits, starts, is_projected, source)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
@@ -429,16 +432,18 @@ async function upsertPermitRecords(records: PermitRecord[], isProjected: boolean
            occupancy_permits = EXCLUDED.occupancy_permits,
            starts            = EXCLUDED.starts,
            is_projected      = EXCLUDED.is_projected,
-           imported_at       = NOW()\`,
+           imported_at       = NOW()`,
         [rec.city, rec.district, rec.quarter, year, q,
          rec.building_permits, rec.occupancy_permits, rec.starts,
          isProjected, "pip.moi.gov.tw/E3030"]
       );
     }
-    await query("COMMIT");
+    await client.query("COMMIT");
   } catch (err) {
-    await query("ROLLBACK");
+    await client.query("ROLLBACK");
     throw err;
+  } finally {
+    client.release();
   }
   return records.length;
 }
@@ -487,26 +492,20 @@ async function main(): Promise<void> {
     for (const kind of Object.keys(PERMIT_TYPES) as PermitKind[]) rawByKind[kind] = [];
   }
 
-  console.log("\\n[3/4] Assembling permits JSON...");
+  console.log("\n[3/4] Assembling permits JSON...");
   const permitsJson = assemblePermitsJson(
     rawByKind as Record<PermitKind, RawE3030Row[]>,
     allQuarters,
     firstProjectedQuarter,
   );
 
-  if (outputPath) {
-    await mkdir(path.dirname(path.resolve(outputPath)), { recursive: true });
-    await writeFile(outputPath, JSON.stringify(permitsJson, null, 2), "utf-8");
-    console.log(\`\\nWritten to \${outputPath}\`);
-  }
-
   if (!isDryRun) {
     // Refuse to overwrite existing DB data when all downloads fail
     if (!anyDownloadSucceeded) {
-      console.error("\\nAll permit downloads failed; refusing to overwrite DB with zero data.");
+      console.error("\nAll permit downloads failed; refusing to overwrite DB with zero data.");
       process.exit(1);
     }
-    console.log("\\n[4/4] Writing to database...");
+    console.log("\n[4/4] Writing to database...");
     try {
       await ensurePermitsTable();
       const projIdx = allQuarters.indexOf(firstProjectedQuarter);
@@ -525,12 +524,23 @@ async function main(): Promise<void> {
       }
       const h = await upsertPermitRecords(histRecs, false);
       const p = await upsertPermitRecords(projRecs, true);
-      console.log(\`   Upserted \${h} historical + \${p} projected records\`);
+      console.log(`   Upserted ${h} historical + ${p} projected records`);
     } finally {
       await close();
     }
   } else {
-    console.log("\\n[4/4] Dry run -- skipping database write");
+    console.log("\n[4/4] Dry run -- skipping database write");
+  }
+
+  // Write output file after success checks (not before) to prevent publishing zero data
+  if (outputPath) {
+    if (!anyDownloadSucceeded) {
+      console.error("\nSkipping --output: all downloads failed; refusing to write zero-data file.");
+      process.exit(1);
+    }
+    await mkdir(path.dirname(path.resolve(outputPath)), { recursive: true });
+    await writeFile(outputPath, JSON.stringify(permitsJson, null, 2), "utf-8");
+    console.log(`\nWritten to ${outputPath}`);
   }
 
   console.log("\\nDone.");
