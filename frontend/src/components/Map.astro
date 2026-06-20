@@ -589,6 +589,11 @@
   let affordabilityActive = false;
   let affordabilityThreshold = 0; // TWD per ping
 
+  // ---- Completion overlay state ----
+  let completionActive = false;
+  /** District-level rolling-annual completion counts (uses proportional city allocation). */
+  let completionByDistrict: Record<string, number> = {};
+
   const DEFAULT_FILL_COLOR: any = [
     "case",
     ["<", ["coalesce", ["get", "medianPrice"], -1], 0],
@@ -643,6 +648,77 @@
     }
   }
 
+  /** Build a MapLibre fill-color expression from completionByDistrict counts. */
+  function getCompletionFillColor(): any {
+    if (!Object.keys(completionByDistrict).length) return "#d1d5db";
+    const counts = Object.values(completionByDistrict);
+    const max = Math.max(...counts, 1);
+    const p25 = max * 0.25;
+    const p50 = max * 0.5;
+    const p75 = max * 0.75;
+    return [
+      "case",
+      ["has", "completionCount"],
+      [
+        "interpolate", ["linear"],
+        ["get", "completionCount"],
+        0,    "#f0fdf4",
+        p25,  "#86efac",
+        p50,  "#f97316",
+        p75,  "#ef4444",
+        max,  "#7f1d1d",
+      ],
+      "#d1d5db",
+    ];
+  }
+
+  function updateCompletionLegend(active: boolean, maxUnits?: number): void {
+    const legend = document.getElementById("choropleth-legend");
+    if (!legend) return;
+    if (active && maxUnits) {
+      const k = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(Math.round(v));
+      legend.innerHTML = `
+        <div class="legend-title">📦 完工供給（近4季合計）</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="legend-swatch" style="background:#f0fdf4"></span>0（無完工）</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#86efac"></span>低（≤${k(maxUnits * 0.25)} 宅）</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f97316"></span>中（≤${k(maxUnits * 0.5)} 宅）</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>高（≤${k(maxUnits * 0.75)} 宅）</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#7f1d1d"></span>極高（>${k(maxUnits * 0.75)} 宅）</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
+        </div>
+        <div style="font-size:0.62rem;color:#94a3b8;margin-top:5px">買方市場信號：紅色區域供給最強</div>`;
+    } else {
+      updateAffordabilityLegend(false);
+    }
+  }
+
+  /** Compute per-district completion counts using proportional city allocation. */
+  function buildCompletionByDistrict(
+    city: string,
+    permitsData: { quarters: string[]; first_projected_quarter: string; cities: Record<string, { occupancy_permits: number[] }> }
+  ): Record<string, number> {
+    const cityData = permitsData.cities[city];
+    if (!cityData) return {};
+    const qi = permitsData.quarters.indexOf(permitsData.first_projected_quarter);
+    // Use the most recent 4 historical quarters (rolling annual)
+    const histEnd = qi > 0 ? qi : permitsData.quarters.length;
+    const histStart = Math.max(0, histEnd - 4);
+    const cityTotal = cityData.occupancy_permits
+      .slice(histStart, histEnd)
+      .reduce((a, b) => a + b, 0);
+    // Distribute proportionally among known districts for this city
+    if (!districtGeoJSON?.features?.length) return {};
+    const districtNames: string[] = districtGeoJSON.features.map(
+      (f: any) => f.properties?.district as string
+    ).filter(Boolean);
+    const numDistricts = districtNames.length || 1;
+    const perDistrict = Math.round(cityTotal / numDistricts);
+    const result: Record<string, number> = {};
+    for (const d of districtNames) result[d] = perDistrict;
+    return result;
+  }
+
   /** Compute median unit price per district from transaction features. */
   function computeDistrictMedians(features: any[]): Record<string, number> {
     const byDistrict: Record<string, number[]> = {};
@@ -674,10 +750,15 @@
         properties: {
           ...f.properties,
           medianPrice: medians[f.properties.district] ?? -1,
+          completionCount: completionByDistrict[f.properties.district] ?? -1,
         },
       })),
     };
     src.setData(updated);
+    // Re-apply completion fill if that mode is still active
+    if (completionActive && map.getLayer("districts-fill")) {
+      map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
+    }
   }
 
   /** Load district boundary GeoJSON for the given city. */
@@ -1342,9 +1423,12 @@
             return baseHtml;
           })()
         : `<div class="popup-row"><span class="popup-label">資料不足</span></div>`;
+    const completionHtml = completionActive && props.completionCount > 0
+      ? `<div class="popup-row" style="margin-top:4px"><span class="popup-label">📦 完工供給（近4季）</span><span class="popup-price">${(props.completionCount as number).toLocaleString()} 宅</span></div>`
+      : "";
     districtHover
       .setLngLat(e.lngLat)
-      .setHTML(`<div class="popup-title">${props.district}</div>${priceHtml}`)
+      .setHTML(`<div class="popup-title">${props.district}</div>${priceHtml}${completionHtml}`)
       .addTo(map);
   });
 
@@ -1448,6 +1532,59 @@
       affordabilityThreshold = 0;
       map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
       updateAffordabilityLegend(false);
+    }
+  });
+
+  // ---- Completion overlay ----
+  document.addEventListener("completion-mode-change", (e: Event) => {
+    const detail = (e as CustomEvent).detail as {
+      enabled: boolean;
+      permitsData?: {
+        quarters: string[];
+        first_projected_quarter: string;
+        cities: Record<string, { occupancy_permits: number[] }>;
+      } | null;
+    };
+
+    if (!map.getLayer("districts-fill")) return;
+
+    if (detail.enabled && detail.permitsData) {
+      // Determine which city is currently shown on the map
+      const citySelect = document.getElementById("city-select") as HTMLSelectElement | null;
+      const currentCity = citySelect?.value || "台北市";
+
+      completionActive = true;
+      completionByDistrict = buildCompletionByDistrict(currentCity, detail.permitsData);
+
+      // Join completionCount into district GeoJSON and update source
+      const src = map.getSource("districts") as maplibregl.GeoJSONSource | undefined;
+      if (src && districtGeoJSON) {
+        const updated = {
+          ...districtGeoJSON,
+          features: districtGeoJSON.features.map((f: any) => ({
+            ...f,
+            properties: {
+              ...f.properties,
+              completionCount: completionByDistrict[f.properties.district] ?? -1,
+            },
+          })),
+        };
+        src.setData(updated);
+      }
+
+      map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
+      for (const id of ["districts-fill", "districts-line"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      }
+      const maxUnits = Math.max(...Object.values(completionByDistrict), 1);
+      updateCompletionLegend(true, maxUnits);
+      const legend = document.getElementById("choropleth-legend");
+      if (legend) legend.style.opacity = "1";
+    } else {
+      completionActive = false;
+      completionByDistrict = {};
+      map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+      updateCompletionLegend(false);
     }
   });
 

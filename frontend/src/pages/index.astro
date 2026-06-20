@@ -158,6 +158,12 @@ const isStale = !isPlaceholder && (() => {
         <label for="choropleth-toggle">顯示行政區熱力圖</label>
       </div>
 
+      <!-- Completion supply overlay toggle -->
+      <div class="toggle-row">
+        <input type="checkbox" id="completion-overlay-toggle" />
+        <label for="completion-overlay-toggle">📦 完工供給強度</label>
+      </div>
+
       <!-- MRT stations layer toggle (shown when MRT filter active) -->
       <div class="toggle-row" id="mrt-layer-toggle-row" style="display:none">
         <input type="checkbox" id="mrt-layer-toggle" checked />
@@ -263,6 +269,35 @@ const isStale = !isPlaceholder && (() => {
           </div>
         </div>
         <div id="transaction-list-content" class="transaction-list-content"></div>
+      </div>
+
+      <!-- ── Completion Wave Panel ── -->
+      <div id="completion-wave-panel" class="completion-wave-panel">
+        <div class="completion-wave-header">
+          <h3>📦 建造完工供給波浪</h3>
+          <span class="completion-wave-badge projected-badge">2026–2028 預測</span>
+        </div>
+        <p class="completion-wave-desc">
+          各縣市季度使用執照核發數（建築完工）。2026–2028 為依建照推估之預測值。
+        </p>
+        <div class="completion-city-select-row">
+          <label for="completion-city-select">縣市</label>
+          <select id="completion-city-select">
+            <option value="all">全部六都</option>
+            <option value="台北市">台北市</option>
+            <option value="新北市">新北市</option>
+            <option value="桃園市">桃園市</option>
+            <option value="台中市">台中市</option>
+            <option value="台南市">台南市</option>
+            <option value="高雄市">高雄市</option>
+          </select>
+        </div>
+        <div class="completion-chart-wrap">
+          <canvas id="completion-wave-chart" width="260" height="200" aria-label="完工供給波浪圖"></canvas>
+        </div>
+        <p class="completion-wave-note" id="completion-wave-note">
+          資料來源：內政部不動產資訊平台 E3030（示範資料）
+        </p>
       </div>
     </aside>
 
@@ -1325,6 +1360,80 @@ const isStale = !isPlaceholder && (() => {
     flex-shrink: 0;
   }
   .ss-alert-close:hover { background: #fef3c7; }
+
+  /* ── Completion wave panel ── */
+  .completion-wave-panel {
+    margin-top: 14px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .completion-wave-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .completion-wave-header h3 {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #334155;
+    margin: 0;
+  }
+  .completion-wave-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+  .projected-badge {
+    background: #fef9c3;
+    color: #854d0e;
+    border: 1px solid #fde68a;
+  }
+  .completion-wave-desc {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin: 0 0 8px;
+    line-height: 1.4;
+  }
+  .completion-city-select-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .completion-city-select-row label {
+    font-size: 0.72rem;
+    color: #475569;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .completion-city-select-row select {
+    font-size: 0.72rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    padding: 3px 6px;
+    color: #334155;
+    background: #f8fafc;
+    flex: 1;
+  }
+  .completion-chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 200px;
+  }
+  .completion-chart-wrap canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .completion-wave-note {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin: 6px 0 0;
+    text-align: right;
+  }
 </style>
 
 <script>
@@ -1546,5 +1655,231 @@ const isStale = !isPlaceholder && (() => {
       }
     });
   })();
+
+  // ── Completion Wave Chart ──────────────────────────────────────────────────
+  // Loads frontend/public/data/permits.json and renders a stacked bar chart
+  // (quarterly 使照 completions) using Chart.js.  The "📦 完工供給強度" checkbox
+  // also dispatches a completion-mode-change event to Map.astro.
+
+  const BASE_URL_CWC = (import.meta as any).env?.BASE_URL ?? "/realestate-radar/";
+
+  const CITY_COLORS: Record<string, string> = {
+    "台北市": "#1d4ed8",
+    "新北市": "#0891b2",
+    "桃園市": "#16a34a",
+    "台中市": "#ca8a04",
+    "台南市": "#ea580c",
+    "高雄市": "#dc2626",
+  };
+
+  let permitsData: {
+    quarters: string[];
+    first_projected_quarter: string;
+    cities: Record<string, { building_permits: number[]; occupancy_permits: number[]; starts: number[] }>;
+  } | null = null;
+
+  let completionChartInstance: any = null;
+
+  async function loadPermitsData(): Promise<typeof permitsData> {
+    if (permitsData) return permitsData;
+    try {
+      const url = BASE_URL_CWC.replace(/\/$/, "") + "/data/permits.json";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      permitsData = await res.json();
+    } catch (err) {
+      console.warn("[completion-wave] failed to load permits.json:", err);
+    }
+    return permitsData;
+  }
+
+  async function renderCompletionWaveChart(selectedCity: string): Promise<void> {
+    const data = await loadPermitsData();
+    if (!data) return;
+
+    await ensureChart(); // reuse the existing Chart.js loader
+
+    const canvas = document.getElementById("completion-wave-chart") as HTMLCanvasElement | null;
+    if (!canvas) return;
+
+    if (completionChartInstance) {
+      completionChartInstance.destroy();
+      completionChartInstance = null;
+    }
+
+    const { quarters, first_projected_quarter, cities } = data;
+    const projIdx = quarters.indexOf(first_projected_quarter);
+
+    // Build datasets
+    let datasets: any[];
+    let labels = quarters;
+
+    if (selectedCity !== "all") {
+      // Single city — show 使照 only, projected vs actual split
+      const cityData = cities[selectedCity];
+      if (!cityData) return;
+
+      datasets = [
+        {
+          label: `${selectedCity} 使照（完工）`,
+          data: cityData.occupancy_permits.slice(0, projIdx),
+          backgroundColor: CITY_COLORS[selectedCity] ?? "#6366f1",
+          borderColor: "transparent",
+          stack: "op",
+        },
+        {
+          label: `${selectedCity} 使照（預測）`,
+          data: [
+            ...Array(projIdx).fill(null),
+            ...cityData.occupancy_permits.slice(projIdx),
+          ],
+          backgroundColor: (CITY_COLORS[selectedCity] ?? "#6366f1") + "66",
+          borderColor: CITY_COLORS[selectedCity] ?? "#6366f1",
+          borderWidth: 1,
+          borderDash: [4, 3],
+          stack: "op",
+        },
+      ];
+    } else {
+      // All cities stacked — historical bars (solid) + projected (lighter, separate stack)
+      const cityList = Object.keys(cities);
+      datasets = cityList.flatMap((city) => {
+        const color = CITY_COLORS[city] ?? "#6366f1";
+        const op = cities[city].occupancy_permits;
+        return [
+          {
+            label: `${city}（實績）`,
+            data: [...op.slice(0, projIdx), ...Array(quarters.length - projIdx).fill(null)],
+            backgroundColor: color,
+            borderColor: "transparent",
+            stack: "actual",
+          },
+          {
+            label: `${city}（預測）`,
+            data: [...Array(projIdx).fill(null), ...op.slice(projIdx)],
+            backgroundColor: color + "55",
+            borderColor: color,
+            borderWidth: 1,
+            stack: "projected",
+          },
+        ];
+      });
+    }
+
+    // Show every 4th quarter label (one per year) to avoid clutter
+    const labelStep = 4;
+    const displayLabels = labels.map((q, i) => (i % labelStep === 0 ? q : ""));
+
+    // Draw projection boundary line via annotation plugin (not available on CDN build;
+    // fall back to a dataset annotation using a dummy dataset with borderDash).
+    // Instead, shade the chart background by adding a vertical highlight band via the
+    // Chart.js afterDraw hook (pure canvas).
+    const projectionStart = projIdx; // quarter index where projection begins
+
+    completionChartInstance = new Chart(canvas, {
+      type: "bar",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 300 },
+        plugins: {
+          legend: {
+            display: selectedCity === "all",
+            position: "bottom" as const,
+            labels: { font: { size: 9 }, boxWidth: 10, padding: 6 },
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => `${ctx.dataset.label}: ${ctx.parsed.y?.toLocaleString() ?? "–"} 宅`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            stacked: true,
+            ticks: {
+              font: { size: 8 },
+              maxRotation: 45,
+              callback: (_val: any, i: number) => displayLabels[i],
+            },
+            grid: { display: false },
+          },
+          y: {
+            stacked: true,
+            ticks: {
+              font: { size: 8 },
+              callback: (v: any) => (v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v),
+            },
+            title: {
+              display: true,
+              text: "使照核發數（宅）",
+              font: { size: 8 },
+              color: "#64748b",
+            },
+          },
+        },
+      },
+      plugins: [
+        {
+          id: "projection-shading",
+          beforeDraw(chart: any) {
+            if (projectionStart <= 0 || projectionStart >= labels.length) return;
+            const { ctx, chartArea, scales } = chart;
+            if (!chartArea) return;
+            const x = scales.x.getPixelForTick(projectionStart - 0.5);
+            ctx.save();
+            ctx.fillStyle = "rgba(250,204,21,0.08)";
+            ctx.fillRect(x, chartArea.top, chartArea.right - x, chartArea.bottom - chartArea.top);
+            ctx.strokeStyle = "#eab308";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(x, chartArea.top);
+            ctx.lineTo(x, chartArea.bottom);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.font = "bold 8px sans-serif";
+            ctx.fillStyle = "#92400e";
+            ctx.fillText("預測 →", x + 3, chartArea.top + 10);
+            ctx.restore();
+          },
+        },
+      ],
+    });
+  }
+
+  // Initial render (all cities)
+  (async () => {
+    await renderCompletionWaveChart("all");
+  })();
+
+  document.getElementById("completion-city-select")?.addEventListener("change", async (e) => {
+    const city = (e.target as HTMLSelectElement).value;
+    await renderCompletionWaveChart(city);
+  });
+
+  // ── Completion overlay toggle → dispatch to Map.astro ──────────────────────
+  const completionOverlayToggle = document.getElementById("completion-overlay-toggle") as HTMLInputElement | null;
+
+  async function updateCompletionOverlay(): Promise<void> {
+    const enabled = completionOverlayToggle?.checked ?? false;
+    const data = enabled ? await loadPermitsData() : null;
+
+    document.dispatchEvent(new CustomEvent("completion-mode-change", {
+      detail: { enabled, permitsData: data },
+    }));
+
+    // When completion overlay is on, ensure choropleth districts are visible
+    if (enabled) {
+      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethToggle && !choroplethToggle.checked) {
+        choroplethToggle.checked = true;
+        choroplethToggle.dispatchEvent(new Event("change"));
+      }
+    }
+  }
+
+  completionOverlayToggle?.addEventListener("change", updateCompletionOverlay);
 
 </script>
