@@ -932,6 +932,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
     opacity: 0.7;
   }
   .qingan-dismiss:hover { opacity: 1; }
+  @media (max-width: 768px) {
+    .qingan-dismiss {
+      min-width: 44px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+    }
+  }
   .qingan-text {
     margin: 0 0 6px;
     color: #78350f;
