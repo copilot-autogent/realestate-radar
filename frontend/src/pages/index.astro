@@ -30,6 +30,11 @@ const isStale = !isPlaceholder && (() => {
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   return DATA_AS_OF < cutoffStr;
 })();
+
+/** Year derived from DATA_AS_OF (or current year in placeholder/dev mode) for buyer's-market copy. */
+const dataYear = isPlaceholder
+  ? new Date().getFullYear()
+  : Number(DATA_AS_OF.slice(0, 4));
 ---
 
 <Layout title="實價登錄雷達 — Real Price Radar">
@@ -237,7 +242,7 @@ const isStale = !isPlaceholder && (() => {
 
       <div id="stats-panel" class="stats-panel">
         <h3>統計資訊</h3>
-        <p class="buyers-market-context">📉 2026年行情下行中 — 首購族議價空間擴大</p>
+        {!isStale && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
         <div id="stats-content">
           <p class="placeholder">選擇條件後按搜尋</p>
         </div>
