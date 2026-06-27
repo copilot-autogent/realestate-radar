@@ -119,6 +119,9 @@
   }
 
   /* ---- District sparkline popup ---- */
+  .district-sparkline-popup {
+    z-index: 1000;
+  }
   .district-sparkline-popup .maplibregl-popup-content {
     padding: 10px 13px 10px;
     min-width: 210px;
@@ -326,7 +329,7 @@
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 1100;
+    z-index: 900;
     background: #fff;
     border-top: 2px solid #2563eb;
     box-shadow: 0 -4px 24px rgba(0,0,0,0.13);
@@ -2088,7 +2091,10 @@
     }
   });
 
-  // ---- Comparison panel controls ----
+    if (legend) legend.style.opacity = on ? "1" : "0";
+  });
+
+  // ---- Comparison panel controls (registered once at top level, not inside any callback) ----
   document.getElementById("comparison-clear-btn")?.addEventListener("click", (e) => {
     e.stopPropagation();
     pinnedDistricts = [];
@@ -2100,12 +2106,10 @@
     document.getElementById("comparison-panel")?.classList.toggle("collapsed");
   });
 
-  // Clicking the header also toggles collapse
-  document.querySelector(".comparison-panel-header")?.addEventListener("click", () => {
+  // Clicking the header (but not its children) also toggles collapse
+  document.querySelector(".comparison-panel-header")?.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest("button")) return;
     document.getElementById("comparison-panel")?.classList.toggle("collapsed");
-  });
-
-    if (legend) legend.style.opacity = on ? "1" : "0";
   });
 
   // Initial load
