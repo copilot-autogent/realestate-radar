@@ -697,6 +697,7 @@
     }
 
     panel.style.display = "block";
+    panel.classList.remove("collapsed");  // clear stale collapsed state when re-opening
     if (hint) hint.style.display = pinnedDistricts.length < MAX_PINS ? "block" : "none";
 
     const metrics = pinnedDistricts.map((p) => computeDistrictMetrics(p.district, p.city));
@@ -772,8 +773,8 @@
     const c = btn.dataset.city     ?? "";
     const isPinned = pinnedDistricts.some((p) => p.district === d && p.city === c);
     const atCap    = !isPinned && pinnedDistricts.length >= MAX_PINS;
-    btn.textContent = isPinned ? "✕ 移除比較" : atCap ? "📌 已達上限 (最多3個)" : "📌 加入比較";
-    btn.className   = `popup-pin-btn${isPinned ? " pinned" : ""}`;
+    btn.textContent = isPinned ? "✕ 移除比較" : atCap ? `📌 已達上限 (最多${MAX_PINS}個)` : "📌 加入比較";
+    btn.classList.toggle("pinned", isPinned);
     btn.disabled    = atCap;
   }
 
@@ -1733,7 +1734,7 @@
     const pinCity = activeCity || "";
     const isPinned = pinnedDistricts.some((p) => p.district === district && p.city === pinCity);
     const atCap    = !isPinned && pinnedDistricts.length >= MAX_PINS;
-    const pinBtnLabel = isPinned ? "✕ 移除比較" : atCap ? "📌 已達上限 (最多3個)" : "📌 加入比較";
+    const pinBtnLabel = isPinned ? "✕ 移除比較" : atCap ? `📌 已達上限 (最多${MAX_PINS}個)` : "📌 加入比較";
     const pinBtnClass = `popup-pin-btn${isPinned ? " pinned" : ""}`;
     const pinBtnDisabled = atCap ? "disabled" : "";
 
@@ -1765,7 +1766,8 @@
     // Wire pin button inside popup (after addTo — DOM is now live)
     const pinBtn = districtClickPopup.getElement()?.querySelector<HTMLButtonElement>(".popup-pin-btn");
     if (pinBtn) {
-      pinBtn.addEventListener("click", () => {
+      pinBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // prevent click bubbling to map (would close/replace the popup)
         const d = pinBtn.dataset.district ?? district;
         const c = pinBtn.dataset.city     ?? pinCity;
         togglePin(d, c);
