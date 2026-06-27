@@ -1271,7 +1271,9 @@
   function updateBuyerScoreLegend(active: boolean): void {
     const legend = document.getElementById("choropleth-legend");
     if (!legend) return;
-    if (active) {
+    if (active && !completionActive) {
+      // Only show buyer-score legend when completion overlay isn't also active
+      // (completion fill takes priority — show its legend to avoid mismatch)
       legend.innerHTML = `
         <div class="legend-title">🎯 買方時機分</div>
         <div class="legend-items">
@@ -1280,10 +1282,15 @@
           <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>🔴 0–39 賣方市場</div>
           <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
         </div>`;
-    } else {
-      // Restore to whatever legend is currently active
+    } else if (!active) {
+      // Restore to the actually-active overlay's legend
+      if (completionActive) {
+        // Let the completion legend remain (don't clobber it)
+        return;
+      }
       updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
     }
+    // active && completionActive → completion fill is showing; don't override its legend
   }
 
   function updateAffordabilityLegend(active: boolean, thresholdWan?: number): void {
@@ -2158,8 +2165,9 @@
     let buyerScoreHtml = "";
     if (buyerScoreActive) {
       const district = props.district as string;
-      const cityFromData = rawAllFeatures.find((f) => f.properties?.district === district)?.properties?.city as string | undefined;
-      const score = computeBuyerTimingScore(district, cityFromData);
+      // Use city-select dropdown value (consistent with click popup fallback path)
+      const activeCity = (document.getElementById("city-select") as HTMLSelectElement | null)?.value || undefined;
+      const score = computeBuyerTimingScore(district, activeCity);
       if (score === null) {
         buyerScoreHtml = `<div class="popup-row" style="margin-top:4px"><span class="popup-label">買方時機分</span><span class="buyer-score-insufficient">資料不足</span></div>`;
       } else {
@@ -2481,23 +2489,29 @@
       const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
       if (choroplethToggle) choroplethToggle.checked = true;
 
-      // Recompute buyer scores and apply fill
+      // Recompute buyer scores and join into GeoJSON; apply fill only when
+      // completion overlay is not active (completion fill takes priority)
       updateChoropleth();
-      updateBuyerScoreLegend(true);
+      if (!completionActive) {
+        // updateChoropleth already applied buyer score fill; just update legend
+        updateBuyerScoreLegend(true);
+      }
+      // (if completionActive: completion fill + legend stay, buyer score data is
+      //  still joined so hover popups show the score badge correctly)
       const legend = document.getElementById("choropleth-legend");
       if (legend) legend.style.opacity = "1";
     } else {
-      // Restore default price choropleth (or whichever mode was active before)
+      // Restore fill for whichever overlay is still active
       updateChoropleth();
       if (completionActive) {
         map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
-        updateBuyerScoreLegend(false);
+        // Completion legend is already showing; don't clobber it
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
-        updateBuyerScoreLegend(false);
+        updateAffordabilityLegend(true, affordabilityThreshold / 10000);
       } else {
         map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
-        updateBuyerScoreLegend(false);
+        updateAffordabilityLegend(false);
       }
     }
   });

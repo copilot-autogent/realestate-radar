@@ -1977,16 +1977,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   function updateBuyerScoreOverlay(): void {
     const enabled = buyerScoreToggle?.checked ?? false;
-
-    if (enabled) {
-      // Ensure choropleth districts are visible
-      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
-      if (choroplethToggle && !choroplethToggle.checked) {
-        choroplethToggle.checked = true;
-        choroplethToggle.dispatchEvent(new Event("change"));
-      }
-    }
-
+    // Map.astro's buyer-score-mode-change handler enables choropleth districts itself;
+    // no need to fire choropleth change event here (avoids a DEFAULT_FILL_COLOR flash)
     document.dispatchEvent(new CustomEvent("buyer-score-mode-change", {
       detail: { enabled },
     }));
