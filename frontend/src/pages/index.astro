@@ -305,7 +305,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
                   <td id="qc-monthly-post">—</td>
                 </tr>
                 <tr>
-                  <td>30年總利息</td>
+                  <td id="qc-interest-label">30年總利息</td>
                   <td id="qc-interest-qingan">—</td>
                   <td id="qc-interest-post">—</td>
                 </tr>
@@ -766,7 +766,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
   // ============================================================
 
   const QINGAN_RATE = 1.775; // fixed 青安 rate %
-  const DEADLINE_DATE = new Date(2026, 6, 31); // 2026-07-31 local time
+  // Use August 1 00:00 as deadline boundary so the CTA is visible for all of July 31
+  const DEADLINE_DATE = new Date(2026, 7, 1); // 2026-08-01 local time
 
   const qinganToggle = document.getElementById("qingan-compare-toggle") as HTMLButtonElement;
   const qinganPanel = document.getElementById("qingan-compare-panel") as HTMLDivElement;
@@ -775,6 +776,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   const qinganPostRateInput = document.getElementById("qingan-post-rate") as HTMLInputElement;
 
   function computeMonthlyPayment(loanWan: number, ratePercent: number, years: number): number {
+    if (ratePercent <= 0 || loanWan <= 0 || years <= 0) return 0;
     const r = ratePercent / 100 / 12;
     const n = years * 12;
     return loanWan * 10000 * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
@@ -798,22 +800,34 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   function calculateQinganCompare(): void {
     if (!qinganBody || !qinganHint) return;
+    // Skip computation when panel is hidden to avoid unnecessary DOM updates
+    if (qinganPanel?.style.display === "none") return;
 
     const totalPrice = parseFloat(mortgageTotalInput?.value ?? "");
     const downPercent = parseFloat(mortgageDownInput?.value ?? "");
-    const years = parseInt(mortgageYearsSelect?.value ?? "30");
+    const years = parseInt(mortgageYearsSelect?.value ?? "30", 10);
     const postRate = parseFloat(qinganPostRateInput?.value ?? "2.5");
 
     const qcPostRateDisplay = document.getElementById("qc-post-rate-display") as HTMLTableCellElement;
     if (qcPostRateDisplay) qcPostRateDisplay.textContent = `${postRate}%`;
 
-    if (!totalPrice || !downPercent || !years || !postRate) {
+    // Require a positive total price and valid years; down payment of 0 and post rate of 0 are
+    // technically valid inputs but 0 post-rate causes divide-by-zero, so guard with > 0.
+    if (!Number.isFinite(totalPrice) || totalPrice <= 0 ||
+        !Number.isFinite(downPercent) || downPercent < 0 ||
+        !Number.isFinite(years) || years <= 0 ||
+        !Number.isFinite(postRate) || postRate <= 0) {
       qinganBody.style.display = "none";
       qinganHint.style.display = "block";
       return;
     }
 
     const loanWan = totalPrice * (1 - downPercent / 100);
+    if (loanWan <= 0) {
+      qinganBody.style.display = "none";
+      qinganHint.style.display = "block";
+      return;
+    }
 
     // 青安 rate calculations (always use 1.775%, ignore rate input for comparison)
     const monthlyQingan = computeMonthlyPayment(loanWan, QINGAN_RATE, years);
@@ -826,6 +840,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     // Fill in table
     const qcMonthlyQingan = document.getElementById("qc-monthly-qingan") as HTMLTableCellElement;
     const qcMonthlyPost = document.getElementById("qc-monthly-post") as HTMLTableCellElement;
+    const qcInterestLabel = document.getElementById("qc-interest-label") as HTMLTableCellElement;
     const qcInterestQingan = document.getElementById("qc-interest-qingan") as HTMLTableCellElement;
     const qcInterestPost = document.getElementById("qc-interest-post") as HTMLTableCellElement;
     const qcDiff = document.getElementById("qc-diff") as HTMLTableCellElement;
@@ -833,20 +848,31 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     if (qcMonthlyQingan) qcMonthlyQingan.textContent = formatTWD(monthlyQingan);
     if (qcMonthlyPost) qcMonthlyPost.textContent = formatTWD(monthlyPost);
+    if (qcInterestLabel) qcInterestLabel.textContent = `${years}年總利息`;
     if (qcInterestQingan) qcInterestQingan.textContent = formatWan(totalInterestQingan);
     if (qcInterestPost) qcInterestPost.textContent = formatWan(totalInterestPost);
 
     const monthlyDiff = monthlyPost - monthlyQingan;
     const totalInterestDiff = totalInterestPost - totalInterestQingan;
+    const absDiff = Math.abs(Math.round(monthlyDiff));
 
     if (qcDiff) {
-      qcDiff.textContent = `+${Math.round(monthlyDiff).toLocaleString("zh-TW")} 元/月（總利息多 ${formatWan(totalInterestDiff)}）`;
+      if (monthlyDiff > 0) {
+        qcDiff.textContent = `+${absDiff.toLocaleString("zh-TW")} 元/月（總利息多 ${formatWan(totalInterestDiff)}）`;
+      } else if (monthlyDiff < 0) {
+        qcDiff.textContent = `−${absDiff.toLocaleString("zh-TW")} 元/月（總利息省 ${formatWan(-totalInterestDiff)}）`;
+      } else {
+        qcDiff.textContent = "相同";
+      }
     }
 
-    // Highlight diff row: amber when diff < 5000, red when >= 5000
+    // Highlight diff row: amber when post rate is higher (small diff), red for large increase;
+    // use green class when post rate is actually lower than 青安 rate (savings scenario)
     if (diffRow) {
       diffRow.classList.remove("qingan-diff-amber", "qingan-diff-red");
-      diffRow.classList.add(monthlyDiff >= 5000 ? "qingan-diff-red" : "qingan-diff-amber");
+      if (monthlyDiff > 0) {
+        diffRow.classList.add(monthlyDiff >= 5000 ? "qingan-diff-red" : "qingan-diff-amber");
+      }
     }
 
     qinganBody.style.display = "block";
@@ -855,6 +881,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   qinganToggle?.addEventListener("click", () => {
+    if (!qinganPanel) return;
     const isOpen = qinganPanel.style.display !== "none";
     qinganPanel.style.display = isOpen ? "none" : "block";
     qinganToggle.setAttribute("aria-expanded", String(!isOpen));
