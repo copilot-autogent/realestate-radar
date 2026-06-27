@@ -140,6 +140,23 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </div>
 
       <div class="filter-group">
+        <label for="build-age-range">屋齡範圍</label>
+        <select id="build-age-range">
+          <option value="">全部</option>
+          <option value="0-5">0–5年（新屋）</option>
+          <option value="5-20">5–20年</option>
+          <option value="20-40">20–40年</option>
+          <option value="40+">40年以上</option>
+        </select>
+      </div>
+
+      <!-- 921後興建 toggle -->
+      <div class="toggle-row">
+        <input type="checkbox" id="post921-toggle" />
+        <label for="post921-toggle">🏗️ 921後興建（2000年後完工）</label>
+      </div>
+
+      <div class="filter-group">
         <label>交易期間</label>
         <div class="date-presets">
           <button class="preset-btn active" data-months="0">全部</button>
@@ -415,6 +432,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (dateTo)   params.dateTo   = dateTo;
     const mrtWalkMin = (document.getElementById("mrt-walk-min") as HTMLSelectElement)?.value;
     if (mrtWalkMin) params.mrtWalkMin = mrtWalkMin;
+    const buildAgeRange = (document.getElementById("build-age-range") as HTMLSelectElement)?.value;
+    if (buildAgeRange) params.buildAgeRange = buildAgeRange;
+    const post921 = (document.getElementById("post921-toggle") as HTMLInputElement)?.checked;
+    if (post921) params.post921 = "1";
     return params;
   }
 
@@ -447,6 +468,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
     set("date-to",         "dateTo");
     set("address-search",  "address");
     set("mrt-walk-min",    "mrtWalkMin");
+    set("build-age-range", "buildAgeRange");
+    const post921Val = sp.get("post921");
+    if (post921Val === "1") {
+      const post921El = document.getElementById("post921-toggle") as HTMLInputElement | null;
+      if (post921El) post921El.checked = true;
+    }
     // Show clear button if address has value
     if (sp.get("address")) {
       addressClearBtn.style.display = "block";
@@ -474,6 +501,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     (document.getElementById("address-search") as HTMLInputElement).value = "";
     addressClearBtn.style.display = "none";
     (document.getElementById("mrt-walk-min") as HTMLSelectElement).value = "";
+    (document.getElementById("build-age-range") as HTMLSelectElement).value = "";
+    (document.getElementById("post921-toggle") as HTMLInputElement).checked = false;
     // Hide MRT layer toggle row on reset and restore checkbox default state
     const mrtToggleRow = document.getElementById("mrt-layer-toggle-row");
     if (mrtToggleRow) mrtToggleRow.style.display = "none";
