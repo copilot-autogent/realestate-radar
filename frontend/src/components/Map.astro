@@ -1473,8 +1473,12 @@
         result[key] = { medianAge: -1, pctUnder20: -1, hasPartialMissing: totalFeatures > 0 };
         continue;
       }
+      // True median: average the two middle values for even-length arrays
       const sorted = [...ages].sort((a, b) => a - b);
-      const medianAge = sorted[Math.floor(sorted.length / 2)];
+      const mid = Math.floor(sorted.length / 2);
+      const medianAge = sorted.length % 2 === 0
+        ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+        : sorted[mid];
       const pctUnder20 = Math.round((ages.filter((a) => a < 20).length / ages.length) * 100);
       const hasPartialMissing = ages.length < totalFeatures;
       result[key] = { medianAge, pctUnder20, hasPartialMissing };
@@ -1597,32 +1601,33 @@
         });
       }
       // Building age filter (屋齡篩選)
-      if (params.buildAgeRange) {
-        const currentYear = new Date().getFullYear();
-        geojson.features = geojson.features.filter((f: any) => {
-          const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
-          if (!rawBY || rawBY <= 0) return false; // exclude records without buildYear when filter active
-          const by = rawBY < 200 ? rawBY + 1911 : rawBY; // ROC → Western year
-          const age = currentYear - by;
-          if (age < 0 || age >= 200) return false;
-          switch (params.buildAgeRange) {
-            case "0-5":   return age <= 5;
-            case "5-20":  return age > 5  && age <= 20;
-            case "20-40": return age > 20 && age < 40;  // excludes 40; "40+" is ≥40
-            case "40+":   return age >= 40;              // 40年以上 includes exactly 40
-            default:      return true;
-          }
-        });
-      }
-      // 921後興建 toggle: only show buildings completed in 2000+
-      if (params.post921 === "1") {
-        const currentYear = new Date().getFullYear();
-        geojson.features = geojson.features.filter((f: any) => {
-          const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
-          if (!rawBY || rawBY <= 0) return false;
-          const by = rawBY < 200 ? rawBY + 1911 : rawBY;
-          return by >= 2000 && by <= currentYear;
-        });
+      if (params.buildAgeRange || params.post921 === "1") {
+        const currentYear = new Date().getFullYear(); // computed once for both age filters
+        if (params.buildAgeRange) {
+          geojson.features = geojson.features.filter((f: any) => {
+            const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
+            if (!rawBY || rawBY <= 0) return false; // exclude records without buildYear when filter active
+            const by = rawBY < 200 ? rawBY + 1911 : rawBY; // ROC → Western year
+            const age = currentYear - by;
+            if (age < 0 || age >= 200) return false;
+            switch (params.buildAgeRange) {
+              case "0-5":   return age <= 5;
+              case "5-20":  return age > 5  && age <= 20;
+              case "20-40": return age > 20 && age < 40;  // excludes 40; "40+" is ≥40
+              case "40+":   return age >= 40;              // 40年以上 includes exactly 40
+              default:      return true;
+            }
+          });
+        }
+        // 921後興建 toggle: only show buildings completed in 2000+
+        if (params.post921 === "1") {
+          geojson.features = geojson.features.filter((f: any) => {
+            const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
+            if (!rawBY || rawBY <= 0) return false;
+            const by = rawBY < 200 ? rawBY + 1911 : rawBY;
+            return by >= 2000 && by <= currentYear;
+          });
+        }
       }
       // MRT proximity filter (straight-line Haversine distance to nearest station)
       if (params.mrtWalkMin) {
@@ -2177,14 +2182,13 @@
       : "";
 
     // Building age stats for click popup — use the district feature's own city for cache lookup
-    // (more reliable than activeCity which may be missing if city dropdown is blank)
+    // (more reliable than activeCity which may be missing if city dropdown is blank).
+    // No cross-city fallback: if the exact city:district key misses, skip the age block rather
+    // than silently showing another city's stats for a same-name district.
     let ageClickHtml = "";
     {
       const featureCity = (e.features[0].properties.city as string | undefined) ?? activeCity ?? "";
-      const ageKey = `${featureCity}:${district}`;
-      // Fallback: if direct key misses, try any entry matching this district name
-      const ageStat = cachedDistrictAgeStatsMap[ageKey]
-        ?? Object.entries(cachedDistrictAgeStatsMap).find(([k]) => k.endsWith(`:${district}`))?.[1];
+      const ageStat = cachedDistrictAgeStatsMap[`${featureCity}:${district}`];
       if (ageStat && ageStat.medianAge >= 0) {
         const missingNote = ageStat.hasPartialMissing ? ` <span class="age-missing-note">部分資料缺失</span>` : "";
         ageClickHtml = `
