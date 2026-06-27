@@ -735,8 +735,8 @@
           (p) => !(p.district === district && p.city === city)
         );
         renderComparisonPanel();
-        // Refresh open popup pin button state if still open
-        syncPopupPinButton(district, city);
+        // Refresh the currently open popup's pin button state (cap may have freed up)
+        syncOpenPopupPinButton();
       });
     });
   }
@@ -758,19 +758,24 @@
     return true; // pinned
   }
 
-  /** Update the pin button text/state inside an open popup (if matching district/city). */
-  function syncPopupPinButton(district: string, city: string): void {
-    const btn = document.querySelector<HTMLButtonElement>(
-      `.popup-pin-btn[data-district="${CSS.escape(district)}"][data-city="${CSS.escape(city)}"]`
-    );
+  /**
+   * Refresh pin button state in the currently open district click popup.
+   * Finds the button by reading its own data-district/data-city attributes —
+   * avoids CSS.escape/escHtml mismatch for attribute selectors.
+   * Called after any state change (pin, unpin, clear all) to prevent staleness.
+   */
+  function syncOpenPopupPinButton(): void {
+    if (!districtClickPopup) return;
+    const btn = districtClickPopup.getElement()?.querySelector<HTMLButtonElement>(".popup-pin-btn");
     if (!btn) return;
-    const isPinned = pinnedDistricts.some((p) => p.district === district && p.city === city);
+    const d = btn.dataset.district ?? "";
+    const c = btn.dataset.city     ?? "";
+    const isPinned = pinnedDistricts.some((p) => p.district === d && p.city === c);
     const atCap    = !isPinned && pinnedDistricts.length >= MAX_PINS;
     btn.textContent = isPinned ? "✕ 移除比較" : atCap ? "📌 已達上限 (最多3個)" : "📌 加入比較";
     btn.className   = `popup-pin-btn${isPinned ? " pinned" : ""}`;
     btn.disabled    = atCap;
   }
-
 
   /**
    * Computes rolling 12-month YoY median unit-price change for a district.
@@ -1764,7 +1769,7 @@
         const d = pinBtn.dataset.district ?? district;
         const c = pinBtn.dataset.city     ?? pinCity;
         togglePin(d, c);
-        syncPopupPinButton(d, c);
+        syncOpenPopupPinButton();
       });
     }
 
@@ -2099,6 +2104,8 @@
     e.stopPropagation();
     pinnedDistricts = [];
     renderComparisonPanel();
+    // Refresh the open popup's pin button (may have been showing "移除比較" or disabled)
+    syncOpenPopupPinButton();
   });
 
   document.getElementById("comparison-toggle-btn")?.addEventListener("click", (e) => {
