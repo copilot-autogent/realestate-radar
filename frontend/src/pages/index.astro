@@ -767,7 +767,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   const QINGAN_RATE = 1.775; // fixed 青安 rate %
   // Use August 1 00:00 as deadline boundary so the CTA is visible for all of July 31
-  const DEADLINE_DATE = new Date(2026, 7, 1); // 2026-08-01 local time
+  // Use explicit UTC offset for Taiwan (UTC+8): CTA hides after 2026-07-31 23:59 TST
+  const DEADLINE_DATE = new Date("2026-08-01T00:00:00+08:00");
 
   const qinganToggle = document.getElementById("qingan-compare-toggle") as HTMLButtonElement;
   const qinganPanel = document.getElementById("qingan-compare-panel") as HTMLDivElement;
@@ -806,7 +807,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const totalPrice = parseFloat(mortgageTotalInput?.value ?? "");
     const downPercent = parseFloat(mortgageDownInput?.value ?? "");
     const years = parseInt(mortgageYearsSelect?.value ?? "30", 10);
-    const postRate = parseFloat(qinganPostRateInput?.value) || 2.5;
+    // Guard: parseFloat returns NaN for blank/invalid input; fall back to default 2.5%.
+    // Use ?? "" so null element path is also handled (postRate <= 0 guard below catches NaN).
+    const postRate = parseFloat(qinganPostRateInput?.value ?? "") || 2.5;
 
     const qcPostRateDisplay = document.getElementById("qc-post-rate-display") as HTMLTableCellElement;
     if (qcPostRateDisplay) qcPostRateDisplay.textContent = `${postRate}%`;
