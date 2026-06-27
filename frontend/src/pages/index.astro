@@ -267,6 +267,63 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <p>每月還款：<strong id="monthly-payment">0</strong> 元</p>
           <p class="mortgage-detail">貸款總額：<span id="total-payment">0</span> 萬</p>
         </div>
+
+        <!-- 青安利率到期影響試算 toggle -->
+        <button id="qingan-compare-toggle" class="qingan-compare-toggle" aria-expanded="false">
+          📊 比較青安利率影響
+        </button>
+
+        <!-- Rate Sensitivity Panel -->
+        <div id="qingan-compare-panel" class="qingan-compare-panel" style="display:none" aria-hidden="true">
+          <div class="qingan-compare-header">
+            <span class="qingan-compare-title">青安利率到期影響試算</span>
+            <div class="qingan-compare-rate-row">
+              <label for="qingan-post-rate" class="qingan-post-rate-label">青安到期後利率 (%)</label>
+              <input type="number" id="qingan-post-rate" class="qingan-post-rate-input"
+                value="2.5" min="0" max="10" step="0.05" />
+            </div>
+          </div>
+
+          <div id="qingan-compare-body" class="qingan-compare-body" style="display:none">
+            <table class="qingan-compare-table" aria-label="青安利率與到期後利率每月還款比較">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>青安期間</th>
+                  <th>青安到期後</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>利率</td>
+                  <td>1.775%</td>
+                  <td id="qc-post-rate-display">2.5%</td>
+                </tr>
+                <tr>
+                  <td>每月還款</td>
+                  <td id="qc-monthly-qingan">—</td>
+                  <td id="qc-monthly-post">—</td>
+                </tr>
+                <tr>
+                  <td id="qc-interest-label">30年總利息</td>
+                  <td id="qc-interest-qingan">—</td>
+                  <td id="qc-interest-post">—</td>
+                </tr>
+                <tr class="qingan-diff-row" id="qingan-diff-row">
+                  <td>差額</td>
+                  <td>—</td>
+                  <td id="qc-diff">—</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div id="qingan-deadline-cta" class="qingan-deadline-cta">
+              申請截止日：2026年7月31日 — 把握最後機會
+            </div>
+          </div>
+
+          <p id="qingan-compare-hint" class="qingan-compare-hint">請先輸入總價以查看比較結果</p>
+        </div>
       </div>
 
       <div id="stats-panel" class="stats-panel">
@@ -703,6 +760,146 @@ const showBuyersMarket = !isStale && dataYear !== null;
   mortgageDownInput?.addEventListener("input", calculateMortgage);
   mortgageYearsSelect?.addEventListener("change", calculateMortgage);
   mortgageRateInput?.addEventListener("input", calculateMortgage);
+
+  // ============================================================
+  // ---- 青安利率到期影響試算 (Rate Sensitivity Panel) -----------
+  // ============================================================
+
+  const QINGAN_RATE = 1.775; // fixed 青安 rate %
+  // Use August 1 00:00 as deadline boundary so the CTA is visible for all of July 31
+  // Use explicit UTC offset for Taiwan (UTC+8): CTA hides after 2026-07-31 23:59 TST
+  const DEADLINE_DATE = new Date("2026-08-01T00:00:00+08:00");
+
+  const qinganToggle = document.getElementById("qingan-compare-toggle") as HTMLButtonElement;
+  const qinganPanel = document.getElementById("qingan-compare-panel") as HTMLDivElement;
+  const qinganBody = document.getElementById("qingan-compare-body") as HTMLDivElement;
+  const qinganHint = document.getElementById("qingan-compare-hint") as HTMLParagraphElement;
+  const qinganPostRateInput = document.getElementById("qingan-post-rate") as HTMLInputElement;
+
+  function computeMonthlyPayment(loanWan: number, ratePercent: number, years: number): number {
+    if (ratePercent <= 0 || loanWan <= 0 || years <= 0) return 0;
+    const r = ratePercent / 100 / 12;
+    const n = years * 12;
+    return loanWan * 10000 * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  }
+
+  function formatTWD(amount: number): string {
+    return Math.round(amount).toLocaleString("zh-TW") + " 元";
+  }
+
+  function formatWan(amount: number): string {
+    return Math.abs(amount / 10000).toFixed(0) + " 萬";
+  }
+
+  function updateQinganDeadlineCta(): void {
+    const ctaEl = document.getElementById("qingan-deadline-cta") as HTMLDivElement | null;
+    if (!ctaEl) return;
+    const now = new Date();
+    // Hide CTA after the deadline
+    ctaEl.style.display = now > DEADLINE_DATE ? "none" : "block";
+  }
+
+  function calculateQinganCompare(): void {
+    if (!qinganBody || !qinganHint) return;
+    // Skip computation when panel is hidden to avoid unnecessary DOM updates
+    if (qinganPanel?.style.display === "none") return;
+
+    const totalPrice = parseFloat(mortgageTotalInput?.value ?? "");
+    const downPercent = parseFloat(mortgageDownInput?.value ?? "");
+    const years = parseInt(mortgageYearsSelect?.value ?? "30", 10);
+    // Guard: parseFloat returns NaN for blank/invalid input; fall back to default 2.5%.
+    // Use ?? "" so null element path is also handled (postRate <= 0 guard below catches NaN).
+    const postRate = parseFloat(qinganPostRateInput?.value ?? "") || 2.5;
+
+    const qcPostRateDisplay = document.getElementById("qc-post-rate-display") as HTMLTableCellElement;
+    if (qcPostRateDisplay) qcPostRateDisplay.textContent = `${postRate}%`;
+
+    // Require a positive total price and valid years; down payment of 0 and post rate of 0 are
+    // technically valid inputs but 0 post-rate causes divide-by-zero, so guard with > 0.
+    if (!Number.isFinite(totalPrice) || totalPrice <= 0 ||
+        !Number.isFinite(downPercent) || downPercent < 0 ||
+        !Number.isFinite(years) || years <= 0 ||
+        !Number.isFinite(postRate) || postRate <= 0) {
+      qinganBody.style.display = "none";
+      qinganHint.style.display = "block";
+      return;
+    }
+
+    const loanWan = totalPrice * (1 - downPercent / 100);
+    if (loanWan <= 0) {
+      qinganBody.style.display = "none";
+      qinganHint.style.display = "block";
+      return;
+    }
+
+    // 青安 rate calculations (always use 1.775%, ignore rate input for comparison)
+    const monthlyQingan = computeMonthlyPayment(loanWan, QINGAN_RATE, years);
+    const totalInterestQingan = monthlyQingan * years * 12 - loanWan * 10000;
+
+    // Post-phase-out rate calculations
+    const monthlyPost = computeMonthlyPayment(loanWan, postRate, years);
+    const totalInterestPost = monthlyPost * years * 12 - loanWan * 10000;
+
+    // Fill in table
+    const qcMonthlyQingan = document.getElementById("qc-monthly-qingan") as HTMLTableCellElement;
+    const qcMonthlyPost = document.getElementById("qc-monthly-post") as HTMLTableCellElement;
+    const qcInterestLabel = document.getElementById("qc-interest-label") as HTMLTableCellElement;
+    const qcInterestQingan = document.getElementById("qc-interest-qingan") as HTMLTableCellElement;
+    const qcInterestPost = document.getElementById("qc-interest-post") as HTMLTableCellElement;
+    const qcDiff = document.getElementById("qc-diff") as HTMLTableCellElement;
+    const diffRow = document.getElementById("qingan-diff-row") as HTMLTableRowElement;
+
+    if (qcMonthlyQingan) qcMonthlyQingan.textContent = formatTWD(monthlyQingan);
+    if (qcMonthlyPost) qcMonthlyPost.textContent = formatTWD(monthlyPost);
+    if (qcInterestLabel) qcInterestLabel.textContent = `${years}年總利息`;
+    if (qcInterestQingan) qcInterestQingan.textContent = formatWan(totalInterestQingan);
+    if (qcInterestPost) qcInterestPost.textContent = formatWan(totalInterestPost);
+
+    const monthlyDiff = monthlyPost - monthlyQingan;
+    const totalInterestDiff = totalInterestPost - totalInterestQingan;
+    // Round first, then take abs — avoids "+0 元/月" for tiny nonzero diffs
+    const roundedDiff = Math.round(monthlyDiff);
+    const absDiff = Math.abs(roundedDiff);
+
+    if (qcDiff) {
+      if (roundedDiff > 0) {
+        qcDiff.textContent = `+${absDiff.toLocaleString("zh-TW")} 元/月（總利息多 ${formatWan(totalInterestDiff)}）`;
+      } else if (roundedDiff < 0) {
+        qcDiff.textContent = `−${absDiff.toLocaleString("zh-TW")} 元/月（總利息省 ${formatWan(totalInterestDiff)}）`;
+      } else {
+        qcDiff.textContent = "相同";
+      }
+    }
+
+    // Highlight diff row: amber when post rate is slightly higher, red for large increase (≥5000/mo)
+    if (diffRow) {
+      diffRow.classList.remove("qingan-diff-amber", "qingan-diff-red");
+      if (roundedDiff > 0) {
+        diffRow.classList.add(roundedDiff >= 5000 ? "qingan-diff-red" : "qingan-diff-amber");
+      }
+    }
+
+    qinganBody.style.display = "block";
+    qinganHint.style.display = "none";
+    updateQinganDeadlineCta();
+  }
+
+  qinganToggle?.addEventListener("click", () => {
+    if (!qinganPanel) return;
+    const isOpen = qinganPanel.style.display !== "none";
+    qinganPanel.style.display = isOpen ? "none" : "block";
+    qinganToggle.setAttribute("aria-expanded", String(!isOpen));
+    qinganPanel.setAttribute("aria-hidden", String(isOpen));
+    if (!isOpen) calculateQinganCompare();
+  });
+
+  // Recalculate comparison whenever mortgage inputs change
+  mortgageTotalInput?.addEventListener("input", calculateQinganCompare);
+  mortgageDownInput?.addEventListener("input", calculateQinganCompare);
+  mortgageYearsSelect?.addEventListener("change", calculateQinganCompare);
+  qinganPostRateInput?.addEventListener("input", calculateQinganCompare);
+  // Triggered by banner CTA auto-open
+  qinganPanel?.addEventListener("qingan-open", calculateQinganCompare);
 
   // ============================================================
   // ---- Saved Search Feature ----------------------------------
@@ -1282,6 +1479,123 @@ const showBuyersMarket = !isStale && dataYear !== null;
     margin-top: 4px !important;
   }
 
+  /* ---- 青安利率到期影響試算 panel ---- */
+  .qingan-compare-toggle {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 7px 12px;
+    background: #d1fae5;
+    border: 1px solid #34d399;
+    border-radius: 6px;
+    color: #065f46;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .qingan-compare-toggle:hover {
+    background: #a7f3d0;
+  }
+  .qingan-compare-panel {
+    margin-top: 10px;
+    padding: 12px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-left: 3px solid #f59e0b;
+    border-radius: 8px;
+  }
+  .qingan-compare-header {
+    margin-bottom: 10px;
+  }
+  .qingan-compare-title {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #92400e;
+    margin-bottom: 8px;
+  }
+  .qingan-compare-rate-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .qingan-post-rate-label {
+    font-size: 0.78rem;
+    color: #78350f;
+    white-space: nowrap;
+  }
+  .qingan-post-rate-input {
+    width: 80px;
+    padding: 4px 6px;
+    border: 1px solid #fcd34d;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    background: #fff;
+    color: #1a1a1a;
+  }
+  .qingan-compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+  }
+  .qingan-compare-table th {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #78350f;
+    padding: 4px 6px;
+    border-bottom: 1px solid #fcd34d;
+    text-align: center;
+  }
+  .qingan-compare-table th:first-child { text-align: left; }
+  .qingan-compare-table td {
+    padding: 5px 6px;
+    color: #1a1a1a;
+    border-bottom: 1px solid #fef3c7;
+    text-align: center;
+  }
+  .qingan-compare-table td:first-child {
+    text-align: left;
+    color: #78350f;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .qingan-diff-row td {
+    font-weight: 700;
+  }
+  .qingan-diff-amber {
+    background: #fffbeb;
+  }
+  .qingan-diff-amber td {
+    color: #b45309 !important;
+  }
+  .qingan-diff-red {
+    background: #fff1f2;
+  }
+  .qingan-diff-red td {
+    color: #be123c !important;
+  }
+  .qingan-deadline-cta {
+    padding: 8px 10px;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #92400e;
+    text-align: center;
+    margin-top: 4px;
+  }
+  .qingan-compare-hint {
+    font-size: 0.78rem;
+    color: #92400e;
+    margin: 4px 0 0;
+    font-style: italic;
+  }
+
   /* Alert banner (overlaid on map) */
   .ss-alert-banner {
     position: absolute;
@@ -1742,11 +2056,22 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     // Smooth-scroll the mortgage calculator into view when the CTA link is clicked;
     // fall back to default anchor navigation if the target element is missing.
+    // Also auto-opens the 青安利率影響試算 panel so the user lands on it directly.
     banner.querySelector<HTMLAnchorElement>(".qingan-cta")?.addEventListener("click", (e) => {
       const target = document.getElementById("mortgage-calculator");
       if (target) {
         e.preventDefault();
         target.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Auto-open the comparison panel if not already open
+        const comparePanel = document.getElementById("qingan-compare-panel") as HTMLDivElement | null;
+        const compareToggle = document.getElementById("qingan-compare-toggle") as HTMLButtonElement | null;
+        if (comparePanel && comparePanel.style.display === "none") {
+          comparePanel.style.display = "block";
+          comparePanel.setAttribute("aria-hidden", "false");
+          compareToggle?.setAttribute("aria-expanded", "true");
+          // trigger recalculation
+          comparePanel.dispatchEvent(new CustomEvent("qingan-open"));
+        }
       }
     });
   })();
