@@ -176,6 +176,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <label for="completion-overlay-toggle">📦 完工供給強度</label>
       </div>
 
+      <!-- Buyer timing score overlay toggle -->
+      <div class="toggle-row">
+        <input type="checkbox" id="buyer-score-toggle" />
+        <label for="buyer-score-toggle">🎯 顯示買方時機分</label>
+      </div>
+
       <!-- MRT stations layer toggle (shown when MRT filter active) -->
       <div class="toggle-row" id="mrt-layer-toggle-row" style="display:none">
         <input type="checkbox" id="mrt-layer-toggle" checked />
@@ -1965,5 +1971,27 @@ const showBuyersMarket = !isStale && dataYear !== null;
       await updateCompletionOverlay();
     }
   });
+
+  // ── Buyer timing score toggle → dispatch to Map.astro ───────────────────────
+  const buyerScoreToggle = document.getElementById("buyer-score-toggle") as HTMLInputElement | null;
+
+  function updateBuyerScoreOverlay(): void {
+    const enabled = buyerScoreToggle?.checked ?? false;
+
+    if (enabled) {
+      // Ensure choropleth districts are visible
+      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethToggle && !choroplethToggle.checked) {
+        choroplethToggle.checked = true;
+        choroplethToggle.dispatchEvent(new Event("change"));
+      }
+    }
+
+    document.dispatchEvent(new CustomEvent("buyer-score-mode-change", {
+      detail: { enabled },
+    }));
+  }
+
+  buyerScoreToggle?.addEventListener("change", updateBuyerScoreOverlay);
 
 </script>

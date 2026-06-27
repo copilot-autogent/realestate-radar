@@ -45,6 +45,28 @@
   </div>
 </div>
 
+<!-- Buyer timing score methodology tooltip backdrop + popup (hidden by default) -->
+<div id="buyer-score-tooltip-backdrop" class="buyer-score-tooltip-backdrop" hidden></div>
+<div id="buyer-score-tooltip" class="buyer-score-tooltip" hidden>
+  <h4>🧮 買方時機分 — 計算方法</h4>
+  <table>
+    <thead><tr><th>指標</th><th>權重</th><th>買方優勢條件</th></tr></thead>
+    <tbody>
+      <tr><td>房價年增率 (YoY)</td><td>40%</td><td>房價下跌 → 高分</td></tr>
+      <tr><td>交易量年增率 (YoY)</td><td>30%</td><td>成交量萎縮 → 高分 (競爭少)</td></tr>
+      <tr><td>現價 vs 3年均價</td><td>20%</td><td>低於歷史均價 → 高分</td></tr>
+      <tr><td>距高峰月數</td><td>10%</td><td>高峰後越久 → 高分</td></tr>
+    </tbody>
+  </table>
+  <div style="font-size:0.74rem;color:#64748b;margin-bottom:8px">
+    🟢 70–100：強烈買方優勢（議價空間大）<br>
+    🟡 40–69：均衡市場（有限議價空間）<br>
+    🔴 0–39：賣方市場（買方不利）<br>
+    <em>資料不足：近12個月成交量不足10筆</em>
+  </div>
+  <button class="close-tooltip-btn" id="close-buyer-score-tooltip">關閉</button>
+</div>
+
 <style is:global>
   /* Choropleth legend overlay */
   .choropleth-legend {
@@ -196,6 +218,91 @@
     font-style: italic;
     margin-top: 2px;
     padding-left: 2px;
+  }
+
+  /* ---- 買方時機分 Buyer Timing Score ---- */
+  .buyer-score-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .buyer-score-green  { color: #15803d; background: #f0fdf4; border: 1px solid #86efac; }
+  .buyer-score-yellow { color: #a16207; background: #fefce8; border: 1px solid #fde047; }
+  .buyer-score-red    { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
+  .buyer-score-insufficient { color: #94a3b8; font-size: 0.76rem; font-weight: 400; font-style: italic; }
+  .buyer-score-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+    gap: 8px;
+  }
+  .buyer-score-row-label {
+    font-size: 0.76rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+  /* Methodology tooltip popup */
+  .buyer-score-tooltip {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 18px 20px;
+    max-width: 340px;
+    width: 92vw;
+    z-index: 3000;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    font-size: 0.82rem;
+    color: #334155;
+  }
+  .buyer-score-tooltip h4 {
+    margin: 0 0 10px;
+    font-size: 0.88rem;
+    color: #1e293b;
+  }
+  .buyer-score-tooltip table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+  }
+  .buyer-score-tooltip th {
+    background: #f8fafc;
+    padding: 4px 6px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+    font-weight: 600;
+  }
+  .buyer-score-tooltip td {
+    padding: 4px 6px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
+  }
+  .buyer-score-tooltip .close-tooltip-btn {
+    display: block;
+    margin: 8px 0 0 auto;
+    padding: 5px 14px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .buyer-score-tooltip-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.22);
+    z-index: 2999;
   }
   .yoy-row {
     display: flex;
@@ -479,6 +586,26 @@
     color: #94a3b8;
     cursor: not-allowed;
   }
+
+  /* Buyer score "?" help button inline in popup */
+  .buyer-score-help-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    border-radius: 50%;
+    border: 1px solid #93c5fd;
+    background: #eff6ff;
+    color: #2563eb;
+    cursor: pointer;
+    vertical-align: middle;
+    padding: 0;
+    line-height: 1;
+  }
+  .buyer-score-help-btn:hover { background: #dbeafe; }
 
   @media (max-width: 640px) {
     .comparison-panel-body { max-height: 200px; }
@@ -947,14 +1074,153 @@
     return `<div class="yoy-row"><span class="yoy-row-label">議價時機</span><span class="yoy-signal yoy-${sig.tier}">${sig.badge} ${sig.label} ${sig.arrow}${pctStr}% YoY</span></div>`;
   }
 
+  /**
+   * Computes the Buyer Timing Score (買方時機分) for a district.
+   * Formula (all from rawAllFeatures):
+   *   40% YoY median price change (declining → higher score)
+   *   30% YoY transaction volume change (declining → higher score)
+   *   20% Current price vs 3-yr district average (below avg → higher score)
+   *   10% Months since local price peak (longer → higher score)
+   *
+   * Minimum data threshold: ≥10 transactions in past 12 months.
+   * Returns null when data is insufficient.
+   */
+  function computeBuyerTimingScore(district: string, city?: string): number | null {
+    const MIN_TX_12MO = 10;
+
+    const features = rawAllFeatures.filter(
+      (f) =>
+        f.properties?.district === district &&
+        (f.properties?.unitPrice as number) > 0 &&
+        (!city || f.properties?.city === city)
+    );
+
+    const validTimes = features
+      .map((f) => new Date((f.properties?.date as string) ?? "").getTime())
+      .filter((t) => !isNaN(t));
+
+    if (validTimes.length === 0) return null;
+
+    const maxTime = validTimes.reduce((a, b) => (a > b ? a : b), -Infinity);
+
+    // Window anchors
+    const cut12mo = new Date(maxTime);
+    cut12mo.setFullYear(cut12mo.getFullYear() - 1);
+    const cut24mo = new Date(maxTime);
+    cut24mo.setFullYear(cut24mo.getFullYear() - 2);
+    const cut36mo = new Date(maxTime);
+    cut36mo.setFullYear(cut36mo.getFullYear() - 3);
+
+    const toTime = (f: any) => new Date((f.properties?.date as string) ?? "").getTime();
+
+    // Gate on minimum transaction count in recent 12 months
+    const recent12 = features.filter((f) => { const t = toTime(f); return !isNaN(t) && t > cut12mo.getTime() && t <= maxTime; });
+    if (recent12.length < MIN_TX_12MO) return null;
+
+    const prior12 = features.filter((f) => { const t = toTime(f); return !isNaN(t) && t > cut24mo.getTime() && t <= cut12mo.getTime(); });
+
+    const median = (arr: number[]) => {
+      const s = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
+    };
+
+    // Helper: map a percentage change to 0–100 sub-score (declining = high score)
+    // Range: pct ≤ -20% → 100, pct ≥ +20% → 0
+    const clamp = (v: number) => Math.max(0, Math.min(100, v));
+    const pctToScore = (pct: number) => clamp((-pct + 20) / 40 * 100);
+
+    // ── Signal 1: YoY median price change (40%) ──
+    let s1 = 50; // neutral fallback
+    if (prior12.length >= 3 && recent12.length >= 3) {
+      const priorPrices  = prior12.map((f) => f.properties.unitPrice as number);
+      const recentPrices = recent12.map((f) => f.properties.unitPrice as number);
+      const pct = ((median(recentPrices) - median(priorPrices)) / median(priorPrices)) * 100;
+      s1 = pctToScore(pct);
+    }
+
+    // ── Signal 2: YoY transaction volume change (30%) ──
+    let s2 = 50; // neutral fallback
+    if (prior12.length >= 3) {
+      const pct = ((recent12.length - prior12.length) / prior12.length) * 100;
+      s2 = pctToScore(pct);
+    }
+
+    // ── Signal 3: Current price vs 3-yr district average (20%) ──
+    let s3 = 50; // neutral fallback
+    const all3yr = features.filter((f) => { const t = toTime(f); return !isNaN(t) && t > cut36mo.getTime() && t <= maxTime; });
+    if (all3yr.length >= 10) {
+      const recentPrices = recent12.map((f) => f.properties.unitPrice as number);
+      const avg3yr       = all3yr.map((f) => f.properties.unitPrice as number).reduce((a, b) => a + b, 0) / all3yr.length;
+      const recentMedian = median(recentPrices);
+      const deviation    = ((recentMedian - avg3yr) / avg3yr) * 100;
+      s3 = pctToScore(deviation);
+    }
+
+    // ── Signal 4: Months since local price peak (10%) ──
+    let s4 = 50; // neutral fallback
+    if (all3yr.length >= 5) {
+      // Bucket by quarter and find the quarter with the highest median
+      const qBuckets: Record<string, number[]> = {};
+      for (const f of all3yr) {
+        const t = toTime(f);
+        if (isNaN(t)) continue;
+        const dt = new Date(t);
+        const q = Math.floor(dt.getMonth() / 3) + 1;
+        const key = `${dt.getFullYear()}-Q${q}`;
+        (qBuckets[key] ??= []).push(f.properties.unitPrice as number);
+      }
+      const sortedQKeys = Object.keys(qBuckets).sort();
+      // Need at least 2 quarters to identify a peak
+      if (sortedQKeys.length >= 2) {
+        let peakMedian = -Infinity;
+        let peakQKey = sortedQKeys[0];
+        for (const k of sortedQKeys) {
+          const m = median(qBuckets[k]);
+          if (m > peakMedian) { peakMedian = m; peakQKey = k; }
+        }
+        // Compute months from peak quarter midpoint to maxTime
+        const [yr, qStr] = peakQKey.split("-Q");
+        const peakDate = new Date(Number(yr), (Number(qStr) - 1) * 3 + 1, 15); // mid-quarter
+        const monthsSincePeak = (maxTime - peakDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+        s4 = clamp(monthsSincePeak / 36 * 100);
+      }
+    }
+
+    const score = 0.4 * s1 + 0.3 * s2 + 0.2 * s3 + 0.1 * s4;
+    return Math.round(score);
+  }
+
+  /** Returns score bucket info: label, CSS class, emoji. */
+  function buyerScoreBucket(score: number): { label: string; cls: string; emoji: string } {
+    if (score >= 70) return { label: "買方優勢", cls: "buyer-score-green",  emoji: "🟢" };
+    if (score >= 40) return { label: "均衡市場", cls: "buyer-score-yellow", emoji: "🟡" };
+    return               { label: "賣方市場", cls: "buyer-score-red",    emoji: "🔴" };
+  }
+
+  /** Renders buyer score badge HTML for use in popups. */
+  function renderBuyerScoreBadgeHtml(district: string, city?: string): string {
+    if (!rawAllFeatures.length) return "";
+    const score = computeBuyerTimingScore(district, city);
+    if (score === null) {
+      return `<div class="buyer-score-row"><span class="buyer-score-row-label">買方時機分</span><span class="buyer-score-insufficient">資料不足</span></div>`;
+    }
+    const { label, cls, emoji } = buyerScoreBucket(score);
+    return `<div class="buyer-score-row"><span class="buyer-score-row-label">買方時機分 <button class="buyer-score-help-btn" title="查看計算方法" aria-label="買方時機分計算方法">?</button></span><span class="buyer-score-badge ${cls}">${emoji} ${label} ${score}/100</span></div>`;
+  }
+
   // ---- Affordability overlay state ----
   let affordabilityActive = false;
   let affordabilityThreshold = 0; // TWD per ping
+
+  // ---- Buyer timing score overlay state ----
+  let buyerScoreActive = false;
 
   // ---- Completion overlay state ----
   let completionActive = false;
   /** District-level rolling-annual completion counts (uniform city allocation — all districts equal). */
   let completionByDistrict: Record<string, number> = {};
+
 
   const DEFAULT_FILL_COLOR: any = [
     "case",
@@ -980,6 +1246,44 @@
       ["<=", ["get", "medianPrice"], threshold * 1.2], "#eab308",
       "#ef4444",
     ];
+  }
+
+  /** Build a MapLibre fill-color expression from pre-joined buyerScore feature properties. */
+  function getBuyerScoreFillColor(): any {
+    return [
+      "case",
+      // -1 sentinel = insufficient data → gray
+      ["<", ["coalesce", ["get", "buyerScore"], -1], 0], "#d1d5db",
+      [
+        "interpolate", ["linear"],
+        ["get", "buyerScore"],
+        0,   "#7f1d1d",
+        20,  "#ef4444",
+        39,  "#f97316",
+        40,  "#fde047",
+        69,  "#a3e635",
+        70,  "#22c55e",
+        100, "#14532d",
+      ],
+    ];
+  }
+
+  function updateBuyerScoreLegend(active: boolean): void {
+    const legend = document.getElementById("choropleth-legend");
+    if (!legend) return;
+    if (active) {
+      legend.innerHTML = `
+        <div class="legend-title">🎯 買方時機分</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="legend-swatch" style="background:#22c55e"></span>🟢 70–100 買方優勢</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#fde047"></span>🟡 40–69 均衡市場</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>🔴 0–39 賣方市場</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
+        </div>`;
+    } else {
+      // Restore to whatever legend is currently active
+      updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
+    }
   }
 
   function updateAffordabilityLegend(active: boolean, thresholdWan?: number): void {
@@ -1111,27 +1415,42 @@
     const src = map.getSource("districts") as maplibregl.GeoJSONSource | undefined;
     if (!src || !districtGeoJSON || !currentTxGeojson) return;
     const medians = computeDistrictMedians(currentTxGeojson.features ?? []);
+
+    // Pre-compute buyer scores for all districts (uses rawAllFeatures — unfiltered)
+    const buyerScores: Record<string, number> = {};
+    if (buyerScoreActive) {
+      for (const f of districtGeoJSON.features) {
+        const district = f.properties.district as string;
+        const city = f.properties.city as string | undefined;
+        const score = computeBuyerTimingScore(district, city);
+        buyerScores[district] = score !== null ? score : -1;
+      }
+    }
+
     const updated = {
       ...districtGeoJSON,
       features: districtGeoJSON.features.map((f: any) => {
         const district = f.properties.district as string;
         const completionCount = completionByDistrict[district];
-        return {
-          ...f,
-          properties: {
-            ...f.properties,
-            medianPrice: medians[district] ?? -1,
-            // Only add completionCount when present so ["has","completionCount"] is a
-            // reliable test — omitting it means the gray "資料不足" swatch is reachable
-            ...(completionCount !== undefined ? { completionCount } : {}),
-          },
+        const props: Record<string, any> = {
+          ...f.properties,
+          medianPrice: medians[district] ?? -1,
+          // Only add completionCount when present so ["has","completionCount"] is a
+          // reliable test — omitting it means the gray "資料不足" swatch is reachable
+          ...(completionCount !== undefined ? { completionCount } : {}),
         };
+        if (buyerScoreActive) {
+          props.buyerScore = buyerScores[district] ?? -1;
+        }
+        return { ...f, properties: props };
       }),
     };
     src.setData(updated);
-    // Re-apply completion fill if that mode is still active
+    // Re-apply overlay fill in priority order: completion > buyer-score > affordability > default
     if (completionActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
+    } else if (buyerScoreActive && map.getLayer("districts-fill")) {
+      map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
     }
   }
 
@@ -1738,6 +2057,11 @@
     const pinBtnClass = `popup-pin-btn${isPinned ? " pinned" : ""}`;
     const pinBtnDisabled = atCap ? "disabled" : "";
 
+    // Buyer score badge — always shown in click popup (badge row only shown when mode active)
+    const buyerScoreClickHtml = buyerScoreActive
+      ? renderBuyerScoreBadgeHtml(district, activeCity)
+      : "";
+
     districtClickPopup?.remove();
     districtClickPopup = new maplibregl.Popup({
       closeButton: true,
@@ -1754,6 +2078,7 @@
            <span class="popup-price">${medianWan} 萬/坪</span>
          </div>
          ${yoyHtml}
+         ${buyerScoreClickHtml}
          ${sparkSection}
          <div class="popup-row" style="margin-top:6px">
            <span class="popup-label">近半年成交</span>
@@ -1774,6 +2099,14 @@
         syncOpenPopupPinButton();
       });
     }
+
+    // Wire "?" help button inside popup to open methodology tooltip
+    districtClickPopup.getElement()?.querySelectorAll<HTMLButtonElement>(".buyer-score-help-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openBuyerScoreTooltip();
+      });
+    });
 
     // Null the reference when the popup is dismissed via its own ✕ button
     districtClickPopup.on("close", () => { districtClickPopup = null; });
@@ -1821,9 +2154,22 @@
     const completionHtml = completionActive && props.completionCount > 0
       ? `<div class="popup-row" style="margin-top:4px"><span class="popup-label">📦 完工供給（近4季）</span><span class="popup-price">${(props.completionCount as number).toLocaleString()} 宅</span></div>`
       : "";
+    // Buyer score badge on hover when mode is active
+    let buyerScoreHtml = "";
+    if (buyerScoreActive) {
+      const district = props.district as string;
+      const cityFromData = rawAllFeatures.find((f) => f.properties?.district === district)?.properties?.city as string | undefined;
+      const score = computeBuyerTimingScore(district, cityFromData);
+      if (score === null) {
+        buyerScoreHtml = `<div class="popup-row" style="margin-top:4px"><span class="popup-label">買方時機分</span><span class="buyer-score-insufficient">資料不足</span></div>`;
+      } else {
+        const { label, cls, emoji } = buyerScoreBucket(score);
+        buyerScoreHtml = `<div class="popup-row" style="margin-top:4px"><span class="popup-label">買方時機分</span><span class="buyer-score-badge ${cls}">${emoji} ${label} ${score}/100</span></div>`;
+      }
+    }
     districtHover
       .setLngLat(e.lngLat)
-      .setHTML(`<div class="popup-title">${props.district}</div>${priceHtml}${completionHtml}`)
+      .setHTML(`<div class="popup-title">${props.district}</div>${priceHtml}${completionHtml}${buyerScoreHtml}`)
       .addTo(map);
   });
 
@@ -2099,6 +2445,61 @@
   });
 
     if (legend) legend.style.opacity = on ? "1" : "0";
+  });
+
+  // ---- Buyer score methodology tooltip ----
+  function openBuyerScoreTooltip(): void {
+    const backdrop = document.getElementById("buyer-score-tooltip-backdrop");
+    const tooltip  = document.getElementById("buyer-score-tooltip");
+    if (backdrop) backdrop.removeAttribute("hidden");
+    if (tooltip)  tooltip.removeAttribute("hidden");
+  }
+
+  function closeBuyerScoreTooltip(): void {
+    const backdrop = document.getElementById("buyer-score-tooltip-backdrop");
+    const tooltip  = document.getElementById("buyer-score-tooltip");
+    if (backdrop) backdrop.setAttribute("hidden", "");
+    if (tooltip)  tooltip.setAttribute("hidden", "");
+  }
+
+  document.getElementById("close-buyer-score-tooltip")?.addEventListener("click", closeBuyerScoreTooltip);
+  document.getElementById("buyer-score-tooltip-backdrop")?.addEventListener("click", closeBuyerScoreTooltip);
+
+  // ---- Buyer timing score mode change (dispatched from index.astro toggle) ----
+  document.addEventListener("buyer-score-mode-change", (e: Event) => {
+    const detail = (e as CustomEvent).detail as { enabled: boolean };
+
+    buyerScoreActive = detail.enabled;
+
+    if (!map.getLayer("districts-fill")) return;
+
+    if (buyerScoreActive) {
+      // Ensure district layers are visible
+      for (const id of ["districts-fill", "districts-line"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      }
+      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethToggle) choroplethToggle.checked = true;
+
+      // Recompute buyer scores and apply fill
+      updateChoropleth();
+      updateBuyerScoreLegend(true);
+      const legend = document.getElementById("choropleth-legend");
+      if (legend) legend.style.opacity = "1";
+    } else {
+      // Restore default price choropleth (or whichever mode was active before)
+      updateChoropleth();
+      if (completionActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
+        updateBuyerScoreLegend(false);
+      } else if (affordabilityActive && affordabilityThreshold > 0) {
+        map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
+        updateBuyerScoreLegend(false);
+      } else {
+        map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+        updateBuyerScoreLegend(false);
+      }
+    }
   });
 
   // ---- Comparison panel controls (registered once at top level, not inside any callback) ----
