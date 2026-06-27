@@ -320,6 +320,34 @@
     flex-shrink: 0;
   }
 
+  /* ---- 屋齡 age badge + missing note ---- */
+  .age-dist-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.74rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+    white-space: nowrap;
+    margin-left: 4px;
+  }
+  .age-missing-note {
+    display: inline-flex;
+    font-size: 0.68rem;
+    color: #94a3b8;
+    font-style: italic;
+    margin-left: 4px;
+  }
+  .age-row .popup-value {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+
   /* ---- Transaction detail modal / bottom sheet ---- */
   .tx-modal-backdrop {
     position: fixed;
@@ -1417,6 +1445,40 @@
     return medians;
   }
 
+  /**
+   * Compute building age statistics per district from rawAllFeatures.
+   * Returns medianAge (-1 = no data), pctUnder20, hasPartialMissing.
+   * Uses rawAllFeatures so stats reflect overall district character regardless of active price/age filters.
+   */
+  function computeDistrictAgeStatsMap(): Record<string, { medianAge: number; pctUnder20: number; hasPartialMissing: boolean }> {
+    const currentYear = new Date().getFullYear();
+    const byDistrict: Record<string, { ages: number[]; totalFeatures: number }> = {};
+    for (const f of rawAllFeatures) {
+      const d = f.properties?.district as string | undefined;
+      if (!d) continue;
+      if (!byDistrict[d]) byDistrict[d] = { ages: [], totalFeatures: 0 };
+      byDistrict[d].totalFeatures++;
+      const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
+      if (!rawBY || rawBY <= 0) continue;
+      const by = rawBY < 200 ? rawBY + 1911 : rawBY;
+      const age = currentYear - by;
+      if (age >= 0 && age < 200) byDistrict[d].ages.push(age);
+    }
+    const result: Record<string, { medianAge: number; pctUnder20: number; hasPartialMissing: boolean }> = {};
+    for (const [d, { ages, totalFeatures }] of Object.entries(byDistrict)) {
+      if (ages.length === 0) {
+        result[d] = { medianAge: -1, pctUnder20: -1, hasPartialMissing: totalFeatures > 0 };
+        continue;
+      }
+      const sorted = [...ages].sort((a, b) => a - b);
+      const medianAge = sorted[Math.floor(sorted.length / 2)];
+      const pctUnder20 = Math.round((ages.filter((a) => a < 20).length / ages.length) * 100);
+      const hasPartialMissing = ages.length < totalFeatures;
+      result[d] = { medianAge, pctUnder20, hasPartialMissing };
+    }
+    return result;
+  }
+
   /** Re-join district median prices into the district GeoJSON and update source. */
   function updateChoropleth(): void {
     const src = map.getSource("districts") as maplibregl.GeoJSONSource | undefined;
@@ -1434,17 +1496,25 @@
       }
     }
 
+    // Pre-compute district age stats (uses rawAllFeatures — unfiltered for consistent district overview)
+    const ageStatsMap = rawAllFeatures.length > 0 ? computeDistrictAgeStatsMap() : {};
+
     const updated = {
       ...districtGeoJSON,
       features: districtGeoJSON.features.map((f: any) => {
         const district = f.properties.district as string;
         const completionCount = completionByDistrict[district];
+        const ageStat = ageStatsMap[district];
         const props: Record<string, any> = {
           ...f.properties,
           medianPrice: medians[district] ?? -1,
           // Only add completionCount when present so ["has","completionCount"] is a
           // reliable test — omitting it means the gray "資料不足" swatch is reachable
           ...(completionCount !== undefined ? { completionCount } : {}),
+          // Age stats: -1 = no data
+          medianAge: ageStat?.medianAge ?? -1,
+          pctUnder20: ageStat?.pctUnder20 ?? -1,
+          hasPartialMissingAge: ageStat?.hasPartialMissing ? 1 : 0,
         };
         if (buyerScoreActive) {
           props.buyerScore = buyerScores[district] ?? -1;
@@ -1515,6 +1585,34 @@
         geojson.features = geojson.features.filter((f: any) => {
           const addr = (f.properties.address || "").toLowerCase();
           return addr.includes(keyword);
+        });
+      }
+      // Building age filter (屋齡篩選)
+      if (params.buildAgeRange) {
+        const currentYear = new Date().getFullYear();
+        geojson.features = geojson.features.filter((f: any) => {
+          const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
+          if (!rawBY || rawBY <= 0) return false; // exclude records without buildYear when filter active
+          const by = rawBY < 200 ? rawBY + 1911 : rawBY; // ROC → Western year
+          const age = currentYear - by;
+          if (age < 0 || age >= 200) return false;
+          switch (params.buildAgeRange) {
+            case "0-5":   return age <= 5;
+            case "5-20":  return age > 5  && age <= 20;
+            case "20-40": return age > 20 && age <= 40;
+            case "40+":   return age > 40;
+            default:      return true;
+          }
+        });
+      }
+      // 921後興建 toggle: only show buildings completed in 2000+
+      if (params.post921 === "1") {
+        const currentYear = new Date().getFullYear();
+        geojson.features = geojson.features.filter((f: any) => {
+          const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
+          if (!rawBY || rawBY <= 0) return false;
+          const by = rawBY < 200 ? rawBY + 1911 : rawBY;
+          return by >= 2000 && by <= currentYear;
         });
       }
       // MRT proximity filter (straight-line Haversine distance to nearest station)
@@ -2069,6 +2167,41 @@
       ? renderBuyerScoreBadgeHtml(district, activeCity)
       : "";
 
+    // Building age stats for click popup (computed on-demand from rawAllFeatures for this district)
+    let ageClickHtml = "";
+    {
+      const currentYear = new Date().getFullYear();
+      const distFeatures = rawAllFeatures.filter(
+        (f) => f.properties?.district === district && (!activeCity || f.properties?.city === activeCity)
+      );
+      const ages: number[] = [];
+      let totalCount = 0;
+      for (const f of distFeatures) {
+        totalCount++;
+        const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
+        if (!rawBY || rawBY <= 0) continue;
+        const by = rawBY < 200 ? rawBY + 1911 : rawBY;
+        const age = currentYear - by;
+        if (age >= 0 && age < 200) ages.push(age);
+      }
+      if (ages.length > 0) {
+        const sorted = [...ages].sort((a, b) => a - b);
+        const medianAge = sorted[Math.floor(sorted.length / 2)];
+        const pctUnder20 = Math.round((ages.filter((a) => a < 20).length / ages.length) * 100);
+        const hasMissing = ages.length < totalCount;
+        const missingNote = hasMissing ? ` <span class="age-missing-note">部分資料缺失</span>` : "";
+        ageClickHtml = `
+          <div class="popup-row age-row" style="margin-top:6px">
+            <span class="popup-label">屋齡中位數</span>
+            <span class="popup-value"><strong>${medianAge} 年</strong>${missingNote}</span>
+          </div>
+          <div class="popup-row" style="margin-bottom:2px">
+            <span class="popup-label">屋齡分佈</span>
+            <span class="popup-value"><span class="age-dist-badge">${pctUnder20}% 屋齡&lt;20年</span></span>
+          </div>`;
+      }
+    }
+
     districtClickPopup?.remove();
     districtClickPopup = new maplibregl.Popup({
       closeButton: true,
@@ -2086,6 +2219,7 @@
          </div>
          ${yoyHtml}
          ${buyerScoreClickHtml}
+         ${ageClickHtml}
          ${sparkSection}
          <div class="popup-row" style="margin-top:6px">
            <span class="popup-label">近半年成交</span>
@@ -2173,9 +2307,23 @@
         buyerScoreHtml = `<div class="popup-row" style="margin-top:4px"><span class="popup-label">買方時機分</span><span class="buyer-score-badge ${cls}">${emoji} ${label} ${score}/100</span></div>`;
       }
     }
+    // Building age stats (pre-computed in updateChoropleth, uses rawAllFeatures)
+    let ageHtml = "";
+    {
+      const medianAge = props.medianAge as number | undefined;
+      const pctUnder20 = props.pctUnder20 as number | undefined;
+      const hasPartialMissing = props.hasPartialMissingAge === 1;
+      if (medianAge !== undefined && medianAge >= 0) {
+        const distBadge = pctUnder20 !== undefined && pctUnder20 >= 0
+          ? `<span class="age-dist-badge">${pctUnder20}% 屋齡&lt;20年</span>`
+          : "";
+        const missingNote = hasPartialMissing ? `<span class="age-missing-note">部分資料缺失</span>` : "";
+        ageHtml = `<div class="popup-row age-row" style="margin-top:4px"><span class="popup-label">屋齡中位數</span><span class="popup-value">${medianAge} 年 ${distBadge}${missingNote}</span></div>`;
+      }
+    }
     districtHover
       .setLngLat(e.lngLat)
-      .setHTML(`<div class="popup-title">${props.district}</div>${priceHtml}${completionHtml}${buyerScoreHtml}`)
+      .setHTML(`<div class="popup-title">${props.district}</div>${priceHtml}${completionHtml}${buyerScoreHtml}${ageHtml}`)
       .addTo(map);
   });
 
@@ -2232,6 +2380,12 @@
     // MRT proximity filter
     const mrtWalkMin = (document.getElementById("mrt-walk-min") as HTMLSelectElement)?.value;
     if (mrtWalkMin) params.mrtWalkMin = mrtWalkMin;
+
+    // Building age filter
+    const buildAgeRange = (document.getElementById("build-age-range") as HTMLSelectElement)?.value;
+    if (buildAgeRange) params.buildAgeRange = buildAgeRange;
+    const post921 = (document.getElementById("post921-toggle") as HTMLInputElement)?.checked;
+    if (post921) params.post921 = "1";
 
     // Fly to selected city center and load matching district boundaries
     const targetCity = city || "台北市";
