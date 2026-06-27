@@ -787,7 +787,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   function formatWan(amount: number): string {
-    return (amount / 10000).toFixed(0) + " 萬";
+    return Math.abs(amount / 10000).toFixed(0) + " 萬";
   }
 
   function updateQinganDeadlineCta(): void {
@@ -806,7 +806,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const totalPrice = parseFloat(mortgageTotalInput?.value ?? "");
     const downPercent = parseFloat(mortgageDownInput?.value ?? "");
     const years = parseInt(mortgageYearsSelect?.value ?? "30", 10);
-    const postRate = parseFloat(qinganPostRateInput?.value ?? "2.5");
+    const postRate = parseFloat(qinganPostRateInput?.value) || 2.5;
 
     const qcPostRateDisplay = document.getElementById("qc-post-rate-display") as HTMLTableCellElement;
     if (qcPostRateDisplay) qcPostRateDisplay.textContent = `${postRate}%`;
@@ -854,24 +854,25 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     const monthlyDiff = monthlyPost - monthlyQingan;
     const totalInterestDiff = totalInterestPost - totalInterestQingan;
-    const absDiff = Math.abs(Math.round(monthlyDiff));
+    // Round first, then take abs — avoids "+0 元/月" for tiny nonzero diffs
+    const roundedDiff = Math.round(monthlyDiff);
+    const absDiff = Math.abs(roundedDiff);
 
     if (qcDiff) {
-      if (monthlyDiff > 0) {
+      if (roundedDiff > 0) {
         qcDiff.textContent = `+${absDiff.toLocaleString("zh-TW")} 元/月（總利息多 ${formatWan(totalInterestDiff)}）`;
-      } else if (monthlyDiff < 0) {
-        qcDiff.textContent = `−${absDiff.toLocaleString("zh-TW")} 元/月（總利息省 ${formatWan(-totalInterestDiff)}）`;
+      } else if (roundedDiff < 0) {
+        qcDiff.textContent = `−${absDiff.toLocaleString("zh-TW")} 元/月（總利息省 ${formatWan(totalInterestDiff)}）`;
       } else {
         qcDiff.textContent = "相同";
       }
     }
 
-    // Highlight diff row: amber when post rate is higher (small diff), red for large increase;
-    // use green class when post rate is actually lower than 青安 rate (savings scenario)
+    // Highlight diff row: amber when post rate is slightly higher, red for large increase (≥5000/mo)
     if (diffRow) {
       diffRow.classList.remove("qingan-diff-amber", "qingan-diff-red");
-      if (monthlyDiff > 0) {
-        diffRow.classList.add(monthlyDiff >= 5000 ? "qingan-diff-red" : "qingan-diff-amber");
+      if (roundedDiff > 0) {
+        diffRow.classList.add(roundedDiff >= 5000 ? "qingan-diff-red" : "qingan-diff-amber");
       }
     }
 
