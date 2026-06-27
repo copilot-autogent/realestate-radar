@@ -1504,9 +1504,8 @@
 
     // Pre-compute district age stats (uses rawAllFeatures — unfiltered for consistent district overview)
     // Key by "city:district" to avoid cross-city collision for same-name districts.
-    if (rawAllFeatures.length > 0) {
-      cachedDistrictAgeStatsMap = computeDistrictAgeStatsMap();
-    }
+    // Always refresh (even if rawAllFeatures is empty) so cleared data doesn't leave stale stats.
+    cachedDistrictAgeStatsMap = rawAllFeatures.length > 0 ? computeDistrictAgeStatsMap() : {};
 
     const updated = {
       ...districtGeoJSON,
@@ -1524,7 +1523,7 @@
           // Age stats: -1 = no data; keyed by city to avoid cross-city name collisions
           medianAge: ageStat?.medianAge ?? -1,
           pctUnder20: ageStat?.pctUnder20 ?? -1,
-          hasPartialMissingAge: (ageStat?.hasPartialMissing || (ageStat?.medianAge === -1 && ageStat?.hasPartialMissing)) ? 1 : 0,
+          hasPartialMissingAge: ageStat?.hasPartialMissing ? 1 : 0,
         };
         if (buyerScoreActive) {
           props.buyerScore = buyerScores[district] ?? -1;
@@ -2177,11 +2176,15 @@
       ? renderBuyerScoreBadgeHtml(district, activeCity)
       : "";
 
-    // Building age stats for click popup — use cachedDistrictAgeStatsMap (city-scoped) to match hover tooltip
+    // Building age stats for click popup — use the district feature's own city for cache lookup
+    // (more reliable than activeCity which may be missing if city dropdown is blank)
     let ageClickHtml = "";
     {
-      const ageKey = `${activeCity ?? ""}:${district}`;
-      const ageStat = cachedDistrictAgeStatsMap[ageKey];
+      const featureCity = (e.features[0].properties.city as string | undefined) ?? activeCity ?? "";
+      const ageKey = `${featureCity}:${district}`;
+      // Fallback: if direct key misses, try any entry matching this district name
+      const ageStat = cachedDistrictAgeStatsMap[ageKey]
+        ?? Object.entries(cachedDistrictAgeStatsMap).find(([k]) => k.endsWith(`:${district}`))?.[1];
       if (ageStat && ageStat.medianAge >= 0) {
         const missingNote = ageStat.hasPartialMissing ? ` <span class="age-missing-note">部分資料缺失</span>` : "";
         ageClickHtml = `
