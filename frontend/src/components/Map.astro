@@ -18,6 +18,33 @@
   </div>
 </div>
 
+<!-- Cross-district comparison panel (fixed bottom bar) -->
+<div id="comparison-panel" class="comparison-panel" aria-label="行政區比較面板" style="display:none">
+  <div class="comparison-panel-header">
+    <span class="comparison-panel-title">📊 行政區比較</span>
+    <div class="comparison-panel-actions">
+      <button id="comparison-clear-btn" class="comparison-clear-btn" aria-label="清除所有比較">清除全部</button>
+      <button id="comparison-toggle-btn" class="comparison-toggle-btn" aria-label="收合比較面板">▼</button>
+    </div>
+  </div>
+  <div id="comparison-panel-body" class="comparison-panel-body">
+    <div class="comparison-table-wrap">
+      <table id="comparison-table" class="comparison-table" aria-label="行政區指標比較表">
+        <thead>
+          <tr>
+            <th class="comparison-metric-col">指標</th>
+            <!-- district columns injected by JS -->
+          </tr>
+        </thead>
+        <tbody>
+          <!-- rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+    <p id="comparison-hint" class="comparison-hint">點擊地圖上的行政區，再按「📌 加入比較」即可比較最多 3 個行政區。</p>
+  </div>
+</div>
+
 <style is:global>
   /* Choropleth legend overlay */
   .choropleth-legend {
@@ -292,6 +319,169 @@
       to   { transform: translateY(0); }
     }
   }
+
+  /* ---- Cross-district comparison panel ---- */
+  .comparison-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1100;
+    background: #fff;
+    border-top: 2px solid #2563eb;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.13);
+    font-size: 0.85rem;
+    transition: transform 0.22s ease;
+  }
+  .comparison-panel.collapsed .comparison-panel-body {
+    display: none;
+  }
+  .comparison-panel.collapsed .comparison-toggle-btn {
+    transform: rotate(180deg);
+  }
+  .comparison-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: #eff6ff;
+    border-bottom: 1px solid #bfdbfe;
+    cursor: pointer;
+    user-select: none;
+    min-height: 40px;
+  }
+  .comparison-panel-title {
+    font-weight: 700;
+    color: #1d4ed8;
+    font-size: 0.9rem;
+  }
+  .comparison-panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .comparison-clear-btn {
+    background: none;
+    border: 1px solid #93c5fd;
+    border-radius: 5px;
+    color: #2563eb;
+    font-size: 0.78rem;
+    padding: 3px 9px;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .comparison-clear-btn:hover { background: #dbeafe; }
+  .comparison-toggle-btn {
+    background: none;
+    border: none;
+    font-size: 0.85rem;
+    color: #64748b;
+    cursor: pointer;
+    padding: 2px 6px;
+    transition: transform 0.22s;
+    line-height: 1;
+  }
+  .comparison-panel-body {
+    padding: 10px 12px 12px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .comparison-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .comparison-table {
+    border-collapse: collapse;
+    min-width: 340px;
+    width: 100%;
+    font-size: 0.83rem;
+  }
+  .comparison-table th,
+  .comparison-table td {
+    padding: 7px 12px;
+    border: 1px solid #e2e8f0;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .comparison-table th {
+    background: #f8fafc;
+    font-weight: 600;
+    color: #475569;
+  }
+  .comparison-table td.comparison-metric-col,
+  .comparison-table th.comparison-metric-col {
+    text-align: left;
+    color: #64748b;
+    font-weight: 500;
+    background: #f8fafc;
+    min-width: 140px;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+  }
+  .comparison-table .district-header-cell {
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 700;
+    position: relative;
+  }
+  .comparison-table .district-header-cell .unpin-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #94a3b8;
+    font-size: 0.78rem;
+    padding: 0 0 0 6px;
+    line-height: 1;
+    vertical-align: middle;
+  }
+  .comparison-table .district-header-cell .unpin-btn:hover { color: #ef4444; }
+  .comparison-table .val-price { color: #1d4ed8; font-weight: 700; }
+  .comparison-table .val-up    { color: #dc2626; font-weight: 600; }
+  .comparison-table .val-down  { color: #16a34a; font-weight: 600; }
+  .comparison-table .val-neutral { color: #b45309; }
+  .comparison-table .val-na    { color: #94a3b8; font-style: italic; }
+  .comparison-hint {
+    color: #94a3b8;
+    font-size: 0.78rem;
+    margin: 6px 0 0;
+    text-align: center;
+  }
+  /* Pin button inside district popup */
+  .popup-pin-btn {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 5px 0;
+    background: #eff6ff;
+    border: 1px solid #93c5fd;
+    border-radius: 6px;
+    color: #2563eb;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s;
+  }
+  .popup-pin-btn:hover { background: #dbeafe; }
+  .popup-pin-btn.pinned {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #dc2626;
+  }
+  .popup-pin-btn:disabled {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #94a3b8;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 640px) {
+    .comparison-panel-body { max-height: 200px; }
+    .comparison-table { font-size: 0.78rem; }
+    .comparison-table th, .comparison-table td { padding: 5px 8px; }
+  }
 </style>
 
 <script>
@@ -425,7 +615,160 @@
   // ---- Full unfiltered transaction features (cached once on first static load) ----
   let rawAllFeatures: any[] = [];
 
-  // ---- 議價時機 YoY Trend Signal ----
+  // ---- Cross-district comparison panel state ----
+  const MAX_PINS = 3;
+  interface PinnedDistrict { district: string; city: string }
+  let pinnedDistricts: PinnedDistrict[] = [];
+
+  /**
+   * Compute key metrics for one district from rawAllFeatures.
+   * Uses the full unfiltered dataset for consistency (same as YoY functions).
+   */
+  function computeDistrictMetrics(district: string, city?: string): {
+    medianPriceWan: string;
+    yoyPct: string;
+    yoyClass: string;
+    txCount6mo: number;
+    medianBuildingAge: string;
+  } {
+    const features = rawAllFeatures.filter(
+      (f) => f.properties?.district === district && (!city || f.properties?.city === city)
+    );
+
+    // Median unit price (all time)
+    const prices = features
+      .map((f) => f.properties?.unitPrice as number)
+      .filter((p) => typeof p === "number" && p > 0)
+      .sort((a, b) => a - b);
+    const medianPriceWan = prices.length
+      ? ((prices[Math.floor(prices.length / 2)] || 0) / 10_000).toFixed(1)
+      : "—";
+
+    // YoY price change
+    const sig = computeYoYSignal(district, city);
+    let yoyPct = "—";
+    let yoyClass = "val-na";
+    if (sig.tier !== "insufficient" && sig.pct !== null) {
+      const sign = sig.pct >= 0 ? "+" : "";
+      yoyPct = `${sign}${sig.pct.toFixed(1)}%`;
+      yoyClass = sig.tier === "buyer" ? "val-down" : sig.tier === "seller" ? "val-up" : "val-neutral";
+    }
+
+    // Transactions past 6 months
+    const cutoff6mo = new Date();
+    cutoff6mo.setMonth(cutoff6mo.getMonth() - 6);
+    const txCount6mo = features.filter((f) => {
+      const d = f.properties?.date as string | undefined;
+      return d && new Date(d) >= cutoff6mo;
+    }).length;
+
+    // Median building age: compute from buildYear in each feature
+    const currentYear = new Date().getFullYear();
+    const ages = features
+      .map((f) => {
+        const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
+        if (!rawBY || rawBY <= 0) return null;
+        const by = rawBY < 200 ? rawBY + 1911 : rawBY;
+        const age = currentYear - by;
+        return age >= 0 && age < 200 ? age : null;
+      })
+      .filter((a): a is number => a !== null)
+      .sort((a, b) => a - b);
+    const medianBuildingAge = ages.length
+      ? `${ages[Math.floor(ages.length / 2)]} 年`
+      : "—";
+
+    return { medianPriceWan, yoyPct, yoyClass, txCount6mo, medianBuildingAge };
+  }
+
+  /** Render (or refresh) the comparison panel table from current pinnedDistricts state. */
+  function renderComparisonPanel(): void {
+    const panel = document.getElementById("comparison-panel") as HTMLElement | null;
+    const table = document.getElementById("comparison-table") as HTMLTableElement | null;
+    const hint  = document.getElementById("comparison-hint") as HTMLElement | null;
+    if (!panel || !table) return;
+
+    if (pinnedDistricts.length === 0) {
+      panel.style.display = "none";
+      return;
+    }
+
+    panel.style.display = "block";
+    if (hint) hint.style.display = pinnedDistricts.length < MAX_PINS ? "block" : "none";
+
+    const metrics = pinnedDistricts.map((p) => computeDistrictMetrics(p.district, p.city));
+
+    // Build header row (metric label col + one col per pinned district)
+    const thead = table.querySelector("thead tr") as HTMLTableRowElement;
+    thead.innerHTML = `<th class="comparison-metric-col">指標</th>`;
+    pinnedDistricts.forEach((p) => {
+      const th = document.createElement("th");
+      th.className = "district-header-cell";
+      th.innerHTML = `${escHtml(p.city ? p.city + " " : "")}${escHtml(p.district)}<button class="unpin-btn" data-district="${escHtml(p.district)}" data-city="${escHtml(p.city)}" aria-label="移除 ${escHtml(p.district)}">✕</button>`;
+      thead.appendChild(th);
+    });
+
+    // Build data rows
+    const ROWS: [string, (m: ReturnType<typeof computeDistrictMetrics>) => string][] = [
+      ["中位單價 (萬/坪)",   (m) => `<span class="val-price">${m.medianPriceWan}</span>`],
+      ["年增率 YoY",         (m) => `<span class="${m.yoyClass}">${m.yoyPct}</span>`],
+      ["近半年成交 (筆)",     (m) => `${m.txCount6mo || "0"}`],
+      ["中位屋齡",           (m) => m.medianBuildingAge],
+    ];
+
+    const tbody = table.querySelector("tbody") as HTMLTableSectionElement;
+    tbody.innerHTML = ROWS.map(([label, render]) => {
+      const cells = metrics.map((m) => `<td>${render(m)}</td>`).join("");
+      return `<tr><td class="comparison-metric-col">${escHtml(label)}</td>${cells}</tr>`;
+    }).join("");
+
+    // Wire up unpin buttons
+    thead.querySelectorAll(".unpin-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const district = (btn as HTMLElement).dataset.district ?? "";
+        const city     = (btn as HTMLElement).dataset.city     ?? "";
+        pinnedDistricts = pinnedDistricts.filter(
+          (p) => !(p.district === district && p.city === city)
+        );
+        renderComparisonPanel();
+        // Refresh open popup pin button state if still open
+        syncPopupPinButton(district, city);
+      });
+    });
+  }
+
+  /**
+   * Toggle a district pin on/off. Returns new pinned state.
+   * Enforces MAX_PINS cap (returns false if cap would be exceeded).
+   */
+  function togglePin(district: string, city: string): boolean {
+    const idx = pinnedDistricts.findIndex((p) => p.district === district && p.city === city);
+    if (idx !== -1) {
+      pinnedDistricts.splice(idx, 1);
+      renderComparisonPanel();
+      return false; // unpinned
+    }
+    if (pinnedDistricts.length >= MAX_PINS) return false; // cap reached
+    pinnedDistricts.push({ district, city });
+    renderComparisonPanel();
+    return true; // pinned
+  }
+
+  /** Update the pin button text/state inside an open popup (if matching district/city). */
+  function syncPopupPinButton(district: string, city: string): void {
+    const btn = document.querySelector<HTMLButtonElement>(
+      `.popup-pin-btn[data-district="${CSS.escape(district)}"][data-city="${CSS.escape(city)}"]`
+    );
+    if (!btn) return;
+    const isPinned = pinnedDistricts.some((p) => p.district === district && p.city === city);
+    const atCap    = !isPinned && pinnedDistricts.length >= MAX_PINS;
+    btn.textContent = isPinned ? "✕ 移除比較" : atCap ? "📌 已達上限 (最多3個)" : "📌 加入比較";
+    btn.className   = `popup-pin-btn${isPinned ? " pinned" : ""}`;
+    btn.disabled    = atCap;
+  }
+
+
   /**
    * Computes rolling 12-month YoY median unit-price change for a district.
    * Anchors to the latest date present in rawAllFeatures for that district.
@@ -1379,6 +1722,13 @@
          </div>`
       : `<div class="popup-row" style="color:#94a3b8;font-size:0.76rem;margin-top:4px">走勢資料不足</div>`;
 
+    const pinCity = activeCity || "";
+    const isPinned = pinnedDistricts.some((p) => p.district === district && p.city === pinCity);
+    const atCap    = !isPinned && pinnedDistricts.length >= MAX_PINS;
+    const pinBtnLabel = isPinned ? "✕ 移除比較" : atCap ? "📌 已達上限 (最多3個)" : "📌 加入比較";
+    const pinBtnClass = `popup-pin-btn${isPinned ? " pinned" : ""}`;
+    const pinBtnDisabled = atCap ? "disabled" : "";
+
     districtClickPopup?.remove();
     districtClickPopup = new maplibregl.Popup({
       closeButton: true,
@@ -1399,9 +1749,22 @@
          <div class="popup-row" style="margin-top:6px">
            <span class="popup-label">近半年成交</span>
            <span class="popup-value">${sixMonthCount} 筆</span>
-         </div>`
+         </div>
+         <button class="${pinBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(pinCity)}" ${pinBtnDisabled}>${pinBtnLabel}</button>`
       )
       .addTo(map);
+
+    // Wire pin button inside popup (after addTo — DOM is now live)
+    const pinBtn = districtClickPopup.getElement()?.querySelector<HTMLButtonElement>(".popup-pin-btn");
+    if (pinBtn) {
+      pinBtn.addEventListener("click", () => {
+        const d = pinBtn.dataset.district ?? district;
+        const c = pinBtn.dataset.city     ?? pinCity;
+        togglePin(d, c);
+        syncPopupPinButton(d, c);
+      });
+    }
+
     // Null the reference when the popup is dismissed via its own ✕ button
     districtClickPopup.on("close", () => { districtClickPopup = null; });
   });
@@ -1723,6 +2086,23 @@
     if (currentTxGeojson) {
       renderTransactionList(currentTxGeojson.features || [], sortBy);
     }
+  });
+
+  // ---- Comparison panel controls ----
+  document.getElementById("comparison-clear-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    pinnedDistricts = [];
+    renderComparisonPanel();
+  });
+
+  document.getElementById("comparison-toggle-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    document.getElementById("comparison-panel")?.classList.toggle("collapsed");
+  });
+
+  // Clicking the header also toggles collapse
+  document.querySelector(".comparison-panel-header")?.addEventListener("click", () => {
+    document.getElementById("comparison-panel")?.classList.toggle("collapsed");
   });
 
     if (legend) legend.style.opacity = on ? "1" : "0";
