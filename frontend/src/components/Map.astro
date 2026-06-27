@@ -2161,14 +2161,12 @@
     const completionHtml = completionActive && props.completionCount > 0
       ? `<div class="popup-row" style="margin-top:4px"><span class="popup-label">📦 完工供給（近4季）</span><span class="popup-price">${(props.completionCount as number).toLocaleString()} 宅</span></div>`
       : "";
-    // Buyer score badge on hover when mode is active
+    // Buyer score badge on hover: use pre-computed props.buyerScore (joined by updateChoropleth)
+    // rather than calling computeBuyerTimingScore on every mousemove (O(n) per tick).
     let buyerScoreHtml = "";
     if (buyerScoreActive) {
-      const district = props.district as string;
-      // Use city-select dropdown value (consistent with click popup fallback path)
-      const activeCity = (document.getElementById("city-select") as HTMLSelectElement | null)?.value || undefined;
-      const score = computeBuyerTimingScore(district, activeCity);
-      if (score === null) {
+      const score = props.buyerScore as number | undefined;
+      if (score === undefined || score < 0) {
         buyerScoreHtml = `<div class="popup-row" style="margin-top:4px"><span class="popup-label">買方時機分</span><span class="buyer-score-insufficient">資料不足</span></div>`;
       } else {
         const { label, cls, emoji } = buyerScoreBucket(score);
@@ -2472,6 +2470,13 @@
 
   document.getElementById("close-buyer-score-tooltip")?.addEventListener("click", closeBuyerScoreTooltip);
   document.getElementById("buyer-score-tooltip-backdrop")?.addEventListener("click", closeBuyerScoreTooltip);
+  // Escape key closes the methodology tooltip
+  document.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      const tooltip = document.getElementById("buyer-score-tooltip");
+      if (tooltip && !tooltip.hasAttribute("hidden")) closeBuyerScoreTooltip();
+    }
+  });
 
   // ---- Buyer timing score mode change (dispatched from index.astro toggle) ----
   document.addEventListener("buyer-score-mode-change", (e: Event) => {
