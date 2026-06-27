@@ -1446,38 +1446,44 @@
   }
 
   /**
-   * Compute building age statistics per district from rawAllFeatures.
+   * Compute building age statistics per district from rawAllFeatures, keyed by "city:district"
+   * to handle same-name districts across cities (e.g., 中山區 in 台北市 / 基隆市).
    * Returns medianAge (-1 = no data), pctUnder20, hasPartialMissing.
-   * Uses rawAllFeatures so stats reflect overall district character regardless of active price/age filters.
+   * Uses rawAllFeatures so stats reflect overall district character regardless of active filters.
    */
   function computeDistrictAgeStatsMap(): Record<string, { medianAge: number; pctUnder20: number; hasPartialMissing: boolean }> {
     const currentYear = new Date().getFullYear();
-    const byDistrict: Record<string, { ages: number[]; totalFeatures: number }> = {};
+    const byKey: Record<string, { ages: number[]; totalFeatures: number }> = {};
     for (const f of rawAllFeatures) {
       const d = f.properties?.district as string | undefined;
+      const c = f.properties?.city as string | undefined;
       if (!d) continue;
-      if (!byDistrict[d]) byDistrict[d] = { ages: [], totalFeatures: 0 };
-      byDistrict[d].totalFeatures++;
+      const key = `${c ?? ""}:${d}`;
+      if (!byKey[key]) byKey[key] = { ages: [], totalFeatures: 0 };
+      byKey[key].totalFeatures++;
       const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
       if (!rawBY || rawBY <= 0) continue;
       const by = rawBY < 200 ? rawBY + 1911 : rawBY;
       const age = currentYear - by;
-      if (age >= 0 && age < 200) byDistrict[d].ages.push(age);
+      if (age >= 0 && age < 200) byKey[key].ages.push(age);
     }
     const result: Record<string, { medianAge: number; pctUnder20: number; hasPartialMissing: boolean }> = {};
-    for (const [d, { ages, totalFeatures }] of Object.entries(byDistrict)) {
+    for (const [key, { ages, totalFeatures }] of Object.entries(byKey)) {
       if (ages.length === 0) {
-        result[d] = { medianAge: -1, pctUnder20: -1, hasPartialMissing: totalFeatures > 0 };
+        result[key] = { medianAge: -1, pctUnder20: -1, hasPartialMissing: totalFeatures > 0 };
         continue;
       }
       const sorted = [...ages].sort((a, b) => a - b);
       const medianAge = sorted[Math.floor(sorted.length / 2)];
       const pctUnder20 = Math.round((ages.filter((a) => a < 20).length / ages.length) * 100);
       const hasPartialMissing = ages.length < totalFeatures;
-      result[d] = { medianAge, pctUnder20, hasPartialMissing };
+      result[key] = { medianAge, pctUnder20, hasPartialMissing };
     }
     return result;
   }
+
+  // Module-level cache of district age stats (refreshed by updateChoropleth after rawAllFeatures loads)
+  let cachedDistrictAgeStatsMap: Record<string, { medianAge: number; pctUnder20: number; hasPartialMissing: boolean }> = {};
 
   /** Re-join district median prices into the district GeoJSON and update source. */
   function updateChoropleth(): void {
@@ -1497,24 +1503,28 @@
     }
 
     // Pre-compute district age stats (uses rawAllFeatures — unfiltered for consistent district overview)
-    const ageStatsMap = rawAllFeatures.length > 0 ? computeDistrictAgeStatsMap() : {};
+    // Key by "city:district" to avoid cross-city collision for same-name districts.
+    if (rawAllFeatures.length > 0) {
+      cachedDistrictAgeStatsMap = computeDistrictAgeStatsMap();
+    }
 
     const updated = {
       ...districtGeoJSON,
       features: districtGeoJSON.features.map((f: any) => {
         const district = f.properties.district as string;
+        const city = f.properties.city as string | undefined;
         const completionCount = completionByDistrict[district];
-        const ageStat = ageStatsMap[district];
+        const ageStat = cachedDistrictAgeStatsMap[`${city ?? ""}:${district}`];
         const props: Record<string, any> = {
           ...f.properties,
           medianPrice: medians[district] ?? -1,
           // Only add completionCount when present so ["has","completionCount"] is a
           // reliable test — omitting it means the gray "資料不足" swatch is reachable
           ...(completionCount !== undefined ? { completionCount } : {}),
-          // Age stats: -1 = no data
+          // Age stats: -1 = no data; keyed by city to avoid cross-city name collisions
           medianAge: ageStat?.medianAge ?? -1,
           pctUnder20: ageStat?.pctUnder20 ?? -1,
-          hasPartialMissingAge: ageStat?.hasPartialMissing ? 1 : 0,
+          hasPartialMissingAge: (ageStat?.hasPartialMissing || (ageStat?.medianAge === -1 && ageStat?.hasPartialMissing)) ? 1 : 0,
         };
         if (buyerScoreActive) {
           props.buyerScore = buyerScores[district] ?? -1;
@@ -1599,8 +1609,8 @@
           switch (params.buildAgeRange) {
             case "0-5":   return age <= 5;
             case "5-20":  return age > 5  && age <= 20;
-            case "20-40": return age > 20 && age <= 40;
-            case "40+":   return age > 40;
+            case "20-40": return age > 20 && age < 40;  // excludes 40; "40+" is ≥40
+            case "40+":   return age >= 40;              // 40年以上 includes exactly 40
             default:      return true;
           }
         });
@@ -2167,37 +2177,21 @@
       ? renderBuyerScoreBadgeHtml(district, activeCity)
       : "";
 
-    // Building age stats for click popup (computed on-demand from rawAllFeatures for this district)
+    // Building age stats for click popup — use cachedDistrictAgeStatsMap (city-scoped) to match hover tooltip
     let ageClickHtml = "";
     {
-      const currentYear = new Date().getFullYear();
-      const distFeatures = rawAllFeatures.filter(
-        (f) => f.properties?.district === district && (!activeCity || f.properties?.city === activeCity)
-      );
-      const ages: number[] = [];
-      let totalCount = 0;
-      for (const f of distFeatures) {
-        totalCount++;
-        const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
-        if (!rawBY || rawBY <= 0) continue;
-        const by = rawBY < 200 ? rawBY + 1911 : rawBY;
-        const age = currentYear - by;
-        if (age >= 0 && age < 200) ages.push(age);
-      }
-      if (ages.length > 0) {
-        const sorted = [...ages].sort((a, b) => a - b);
-        const medianAge = sorted[Math.floor(sorted.length / 2)];
-        const pctUnder20 = Math.round((ages.filter((a) => a < 20).length / ages.length) * 100);
-        const hasMissing = ages.length < totalCount;
-        const missingNote = hasMissing ? ` <span class="age-missing-note">部分資料缺失</span>` : "";
+      const ageKey = `${activeCity ?? ""}:${district}`;
+      const ageStat = cachedDistrictAgeStatsMap[ageKey];
+      if (ageStat && ageStat.medianAge >= 0) {
+        const missingNote = ageStat.hasPartialMissing ? ` <span class="age-missing-note">部分資料缺失</span>` : "";
         ageClickHtml = `
           <div class="popup-row age-row" style="margin-top:6px">
             <span class="popup-label">屋齡中位數</span>
-            <span class="popup-value"><strong>${medianAge} 年</strong>${missingNote}</span>
+            <span class="popup-value"><strong>${ageStat.medianAge} 年</strong>${missingNote}</span>
           </div>
           <div class="popup-row" style="margin-bottom:2px">
             <span class="popup-label">屋齡分佈</span>
-            <span class="popup-value"><span class="age-dist-badge">${pctUnder20}% 屋齡&lt;20年</span></span>
+            <span class="popup-value"><span class="age-dist-badge">${ageStat.pctUnder20 >= 0 ? ageStat.pctUnder20 : "—"}% 屋齡&lt;20年</span></span>
           </div>`;
       }
     }
