@@ -1022,7 +1022,9 @@
       ["年增率 YoY",         (m) => `<span class="${m.yoyClass}">${m.yoyPct}</span>`],
       ["近半年成交 (筆)",     (m) => `${m.txCount6mo || "0"}`],
       ["中位屋齡",           (m) => m.medianBuildingAge],
-      ["成交量趨勢",         (m) => `<span class="velocity-trend-badge ${m.velocityClass}">${escHtml(m.velocityTrend)}</span>`],
+      ["成交量趨勢",         (m) => m.velocityClass === "velocity-na"
+        ? `<span class="val-na">${escHtml(m.velocityTrend)}</span>`
+        : `<span class="velocity-trend-badge ${m.velocityClass}">${escHtml(m.velocityTrend)}</span>`],
     ];
 
     const tbody = table.querySelector("tbody") as HTMLTableSectionElement;
@@ -1272,6 +1274,7 @@
       const d = f.properties?.date;
       if (typeof d !== "string" || d.length < 7) continue;
       const key = d.slice(0, 7); // "YYYY-MM" extracted directly — no Date parsing needed
+      if (!/^\d{4}-\d{2}$/.test(key)) continue; // guard against non-YYYY-MM-DD date formats
       monthMap[key] = (monthMap[key] ?? 0) + 1;
     }
 
@@ -1321,8 +1324,9 @@
         trendLabel = "▲ 成交量增加";
         trendClass = "velocity-rising";
       } else {
-        trendLabel = "→ 持平";
-        trendClass = "velocity-flat";
+        // Too few recent transactions and no prior baseline — insufficient for trend
+        trendLabel = "資料不足";
+        trendClass = "velocity-na";
       }
     } else {
       const ratio = (last3 - prior3) / prior3;
