@@ -120,6 +120,11 @@ export function transactionsRouter(): Router {
    * CV = stddev(unit_price) / avg(unit_price) × 100
    * Minimum data gate: ≥10 transactions (districts below threshold return cv_pct = null).
    *
+   * NOTE: The static (GitHub Pages) frontend computes CV client-side from loaded GeoJSON.
+   * This endpoint is for live-backend deployments where server-side aggregation is preferred.
+   * The 12-month window anchor is the global dataset MAX(transaction_date), which means
+   * cities whose most-recent transaction predates the global max may appear data-insufficient.
+   *
    * Response per district:
    *   city, district, tx_count_12mo, cv_pct (null if < 10 tx), tier
    *   tier: "穩定" | "中波動" | "高波動" | "資料不足"

@@ -1626,7 +1626,7 @@
 
     const recent12 = features.filter((f) => {
       const t = new Date((f.properties?.date as string) ?? "").getTime();
-      return !isNaN(t) && t > cut12mo.getTime() && t <= maxTime;
+      return !isNaN(t) && t >= cut12mo.getTime() && t <= maxTime;
     });
 
     if (recent12.length < MIN_TX) return null;
@@ -1672,7 +1672,7 @@
     if (score >= 70 && cv < 10) {
       return `<div class="best-entry-callout">🏆 最佳進場訊號：買方優勢 + 價格穩定</div>`;
     }
-    if (score >= 70 && cv > 20) {
+    if (score >= 70 && cv >= 20) {
       return `<div class="volatility-caveat-card">⚠️ 買方時機佳，但價格波動大——進場時機影響更顯著，請留意低點。</div>`;
     }
     return "";
@@ -1947,7 +1947,7 @@
         <div class="legend-items">
           <div class="legend-item"><span class="legend-swatch" style="background:#22c55e"></span>🟢 穩定 (CV &lt; 10%)</div>
           <div class="legend-item"><span class="legend-swatch" style="background:#fde047"></span>🟡 中波動 (10–20%)</div>
-          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>🔴 高波動 (CV &gt; 20%)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>🔴 高波動 (CV ≥ 20%)</div>
           <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足 (&lt;10筆)</div>
         </div>`;
     } else if (!active) {
@@ -2147,7 +2147,8 @@
 
     // Pre-compute volatility CV for all districts (uses rawAllFeatures — unfiltered)
     const volatilityCVs: Record<string, number> = {};
-    if (volatilityActive || rawAllFeatures.length > 0) {
+    // Always pre-compute CV when data is available — badge appears in all click popups
+    if (rawAllFeatures.length > 0) {
       for (const f of districtGeoJSON.features) {
         const district = f.properties.district as string;
         const city = f.properties.city as string | undefined;
@@ -2875,9 +2876,12 @@
       : "";
 
     // Volatility badge — always shown in click popup
-    const volatilityClickHtml = renderVolatilityBadgeHtml(district, activeCity);
+    // Use the clicked feature's city for volatility/combined-signal to avoid
+    // cross-city collisions when activeCity is blank or a different city name.
+    const featureCityForVolatility = (e.features[0].properties.city as string | undefined) ?? activeCity ?? undefined;
+    const volatilityClickHtml = renderVolatilityBadgeHtml(district, featureCityForVolatility);
     // Combined signal callouts (最佳進場訊號 / caveat card)
-    const combinedSignalHtml = renderVolatilityCombinedSignalHtml(district, activeCity);
+    const combinedSignalHtml = renderVolatilityCombinedSignalHtml(district, featureCityForVolatility);
 
     // Building age stats for click popup — use the district feature's own city for cache lookup
     // (more reliable than activeCity which may be missing if city dropdown is blank).
