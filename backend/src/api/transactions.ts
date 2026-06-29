@@ -81,7 +81,13 @@ export function transactionsRouter(): Router {
 
       res.json({
         count: result.rowCount,
-        data: result.rows,
+        data: result.rows.map(row => ({
+          ...row,
+          assessed_value_per_sqm: row.assessed_value_per_sqm != null
+            ? Number(row.assessed_value_per_sqm) : null,
+          assessed_to_market_ratio: row.assessed_to_market_ratio != null
+            ? Number(row.assessed_to_market_ratio) : null,
+        })),
       });
     } catch (err) {
       console.error("Query error:", err);

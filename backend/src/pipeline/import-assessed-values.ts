@@ -14,11 +14,12 @@
  * update transactions with district-level assessed values.
  */
 
-import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parse } from "csv-parse/sync";
 import iconv from "iconv-lite";
-import { query, close } from "../db/connection.js";
+import { query, getPool, close } from "../db/connection.js";
 import type { DistrictAssessedValue } from "../types.js";
 
 /**
@@ -182,10 +183,12 @@ export async function importAssessedValueFile(filepath: string): Promise<number>
   console.log(`[assessed] Aggregated to ${districts.length} district-year records`);
 
   let upserted = 0;
-  await query("BEGIN");
+  // Use a dedicated client so BEGIN/COMMIT/ROLLBACK run on the same connection
+  const client = await getPool().connect();
   try {
+    await client.query("BEGIN");
     for (const d of districts) {
-      await query(
+      await client.query(
         `INSERT INTO district_assessed_values
            (city, district, year, median_assessed_value_per_sqm, parcel_count, source_file)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -198,10 +201,12 @@ export async function importAssessedValueFile(filepath: string): Promise<number>
       );
       upserted++;
     }
-    await query("COMMIT");
+    await client.query("COMMIT");
   } catch (err) {
-    await query("ROLLBACK");
+    await client.query("ROLLBACK");
     throw err;
+  } finally {
+    client.release();
   }
 
   console.log(`[assessed] Upserted ${upserted} district-year records`);
@@ -250,7 +255,7 @@ export async function backfillTransactionAssessedValues(): Promise<number> {
         WHEN (t.unit_price / 3.30579) > 0
         THEN LEAST(
           ROUND((b.median_assessed_value_per_sqm / (t.unit_price / 3.30579) * 100)::NUMERIC, 4),
-          9999999.9999
+          999999.9999
         )
         ELSE NULL
       END
@@ -295,9 +300,12 @@ export function lookupAssessedValue(
 ): number | null {
   const normCity = normalizeName(city);
   const normDistrict = normalizeName(district);
-  // Try exact year first, then ±1, ±2, ±3
+  // Try exact year first, then increasing distance.
+  // On ties prefer the more recent (larger) year — consistent with backfill SQL
+  // which uses ORDER BY year_diff ASC, assessed_year DESC.
   for (let delta = 0; delta <= 3; delta++) {
-    for (const offset of delta === 0 ? [0] : [delta, -delta]) {
+    const offsets = delta === 0 ? [0] : [delta, -delta]; // future before past = larger year first
+    for (const offset of offsets) {
       const key = `${normCity}|${normDistrict}|${txYear + offset}`;
       const val = map.get(key);
       if (val !== undefined) return val;
@@ -307,7 +315,15 @@ export function lookupAssessedValue(
 }
 
 // CLI entry point: import a specific file or run backfill
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMain = (() => {
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
   const [, , cmd, filepath] = process.argv;
 
   if (cmd === "import" && filepath) {

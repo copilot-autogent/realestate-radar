@@ -64,15 +64,21 @@ async function importFile(filepath: string): Promise<number> {
 
   console.log(`[import] ${filename} → ${city}`);
 
-  // Load district assessed values for ratio computation
-  const assessedMap = await loadDistrictAssessedValueMap();
-
   // Log import start
   const logResult = await query(
     `INSERT INTO import_log (source, filename, status) VALUES ('plvr', $1, 'running') RETURNING id`,
     [filename]
   );
   const logId = logResult.rows[0].id;
+
+  // Load district assessed values for ratio computation.
+  // Graceful degradation: if the migration hasn't been applied yet, proceed without assessed data.
+  let assessedMap = new Map<string, number>();
+  try {
+    assessedMap = await loadDistrictAssessedValueMap();
+  } catch {
+    console.warn("[import] district_assessed_values not available — proceeding without assessed data");
+  }
 
   const buffer = readFileSync(filepath);
   const content = detectAndDecode(buffer);
@@ -117,11 +123,14 @@ async function importFile(filepath: string): Promise<number> {
     // Look up district-level assessed value for this transaction's city/district/year
     const txYear = txDate.getFullYear();
     const assessedValuePerSqm = lookupAssessedValue(assessedMap, city, rec.鄉鎮市區, txYear);
-    // Ratio: assessedValue / marketPrice(元/sqm) × 100  (pricePerSqm is already in 元/sqm)
-    const assessedToMarketRatio =
+    // Ratio: assessedValue / marketPrice(元/sqm) × 100; clamp to NUMERIC(10,4) max
+    const rawRatio =
       assessedValuePerSqm !== null && pricePerSqm !== null && pricePerSqm > 0
         ? Math.round((assessedValuePerSqm / pricePerSqm) * 100 * 10000) / 10000
         : null;
+    const assessedToMarketRatio = rawRatio !== null ? Math.min(rawRatio, 999999.9999) : null;
+    // Only store assessed fields atomically: skip both if assessed value is unknown
+    const storeAssessed = assessedValuePerSqm !== null && assessedToMarketRatio !== null;
 
     try {
       await query(
@@ -143,11 +152,13 @@ async function importFile(filepath: string): Promise<number> {
           $24, $25
         ) ON CONFLICT (serial_number) DO UPDATE SET
           assessed_value_per_sqm = CASE
-            WHEN EXCLUDED.assessed_value_per_sqm IS NOT NULL THEN EXCLUDED.assessed_value_per_sqm
+            WHEN EXCLUDED.assessed_value_per_sqm IS NOT NULL AND EXCLUDED.assessed_to_market_ratio IS NOT NULL
+            THEN EXCLUDED.assessed_value_per_sqm
             ELSE transactions.assessed_value_per_sqm
           END,
           assessed_to_market_ratio = CASE
-            WHEN EXCLUDED.assessed_to_market_ratio IS NOT NULL THEN EXCLUDED.assessed_to_market_ratio
+            WHEN EXCLUDED.assessed_value_per_sqm IS NOT NULL AND EXCLUDED.assessed_to_market_ratio IS NOT NULL
+            THEN EXCLUDED.assessed_to_market_ratio
             ELSE transactions.assessed_to_market_ratio
           END`,
         [
@@ -174,8 +185,8 @@ async function importFile(filepath: string): Promise<number> {
           rec.備註 || null,
           rec.編號,
           filename,
-          assessedValuePerSqm,
-          assessedToMarketRatio,
+          storeAssessed ? assessedValuePerSqm : null,
+          storeAssessed ? assessedToMarketRatio : null,
         ]
       );
       imported++;
