@@ -1436,16 +1436,34 @@
 
   /**
    * Computes the approximate centroid of a GeoJSON polygon ring (outer ring).
+   * Slices off the closing duplicate point (GeoJSON rings repeat the first coord at end)
+   * before averaging to avoid biasing the centroid toward that vertex.
    * Returns [lng, lat] or null when coordinates are empty.
    */
   function computePolygonCentroid(rings: number[][][]): [number, number] | null {
     const ring = rings[0];
-    if (!ring || ring.length === 0) return null;
-    const sum = ring.reduce(
+    if (!ring || ring.length < 2) return null;
+    // GeoJSON ring closes by repeating the first point — drop the last vertex before averaging
+    const pts = ring.length > 1 ? ring.slice(0, -1) : ring;
+    const sum = pts.reduce(
       (acc: [number, number], c: number[]) => [acc[0] + c[0], acc[1] + c[1]],
       [0, 0]
     );
-    return [sum[0] / ring.length, sum[1] / ring.length];
+    return [sum[0] / pts.length, sum[1] / pts.length];
+  }
+
+  /**
+   * Returns the centroid of the largest sub-polygon (by vertex count) in a MultiPolygon.
+   * Falls back to the first polygon when all have equal size.
+   */
+  function computeMultiPolygonCentroid(polygons: number[][][][]): [number, number] | null {
+    if (!polygons || polygons.length === 0) return null;
+    // Pick the polygon with the most outer-ring vertices as a proxy for "largest"
+    const largest = polygons.reduce(
+      (best, poly) => (poly[0]?.length ?? 0) > (best[0]?.length ?? 0) ? poly : best,
+      polygons[0]
+    );
+    return computePolygonCentroid(largest);
   }
 
   /**
@@ -1479,7 +1497,7 @@
         if (geom?.type === "Polygon") {
           center = computePolygonCentroid(geom.coordinates);
         } else if (geom?.type === "MultiPolygon") {
-          center = computePolygonCentroid(geom.coordinates[0]);
+          center = computeMultiPolygonCentroid(geom.coordinates);
         }
         if (!center) continue;
 
@@ -1766,7 +1784,9 @@
         const district = f.properties.district as string;
         const city = f.properties.city as string | undefined;
         const sig = computeBuyersMarketSignal(district, city);
-        buyersMarketFlags[district] = { qualifies: sig.qualifies ? 1 : 0, stale: sig.isStale ? 1 : 0 };
+        // Key by "city:district" to match how ageStat and buyersMarketMarkers avoid collision
+        const key = `${city ?? ""}:${district}`;
+        buyersMarketFlags[key] = { qualifies: sig.qualifies ? 1 : 0, stale: sig.isStale ? 1 : 0 };
       }
     }
 
@@ -1793,8 +1813,8 @@
           pctUnder20: ageStat?.pctUnder20 ?? -1,
           hasPartialMissingAge: ageStat?.hasPartialMissing ? 1 : 0,
           // Buyers market signal flags for hover tooltip
-          buyersMarket: buyersMarketFlags[district]?.qualifies ?? 0,
-          buyersMarketStale: buyersMarketFlags[district]?.stale ?? 0,
+          buyersMarket: buyersMarketFlags[`${city ?? ""}:${district}`]?.qualifies ?? 0,
+          buyersMarketStale: buyersMarketFlags[`${city ?? ""}:${district}`]?.stale ?? 0,
         };
         if (buyerScoreActive) {
           props.buyerScore = buyerScores[district] ?? -1;
@@ -2607,8 +2627,11 @@
     }
     // Buyers market opportunity indicator on hover (first line)
     // Uses pre-computed props.buyersMarket flag (joined in updateChoropleth)
+    // Shows stale variant when data is > 90 days old
     const bmOpportunityHtml = props.buyersMarket === 1
-      ? `<span class="bm-opportunity-indicator">🟢 買方機會區</span>`
+      ? props.buyersMarketStale === 1
+        ? `<span class="bm-opportunity-indicator" style="background:#fefce8;border-color:#fde047;color:#713f12">⚠️ 買方機會區（資料逾90天）</span>`
+        : `<span class="bm-opportunity-indicator">🟢 買方機會區</span>`
       : "";
     districtHover
       .setLngLat(e.lngLat)
