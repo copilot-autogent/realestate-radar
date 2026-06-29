@@ -214,7 +214,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       <button id="search-btn" class="search-btn">搜尋</button>
       <button id="reset-btn" class="reset-btn">清除篩選</button>
       <button id="save-search-btn" class="save-search-btn">⭐ 儲存此搜尋</button>
-      <button id="share-search-btn" type="button" class="share-search-btn">🔗 分享此搜尋</button>
+      <button id="share-search-btn" type="button" class="share-search-btn">📋 複製連結</button>
 
       <div id="my-searches-panel" class="my-searches-panel" style="display:none">
         <div class="my-searches-header">⭐ 我的搜尋 (<span id="ss-count">0</span>)</div>
@@ -466,66 +466,138 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
   });
 
-  // ---- URL state ----
-  function getFilterParams(): Record<string, string> {
+  // ---- URL hash state (GitHub Pages compatible, client-side only) ----
+  // Encodes all active filter state into the URL hash fragment so users can
+  // copy, bookmark, and share any filtered view without a server.
+
+  function getHashParams(): Record<string, string> {
     const params: Record<string, string> = {};
-    const city         = (document.getElementById("city-select")     as HTMLSelectElement)?.value;
-    const district     = (document.getElementById("district-select")  as HTMLSelectElement)?.value;
-    const minPrice     = (document.getElementById("price-min")        as HTMLInputElement)?.value;
-    const maxPrice     = (document.getElementById("price-max")        as HTMLInputElement)?.value;
-    const buildingType = (document.getElementById("building-type")    as HTMLSelectElement)?.value;
-    const address      = (document.getElementById("address-search")   as HTMLInputElement)?.value;
-    if (city)         params.city = city;
-    if (district)     params.district = district;
-    if (minPrice)     params.minPrice = minPrice;
-    if (maxPrice)     params.maxPrice = maxPrice;
-    const totalPriceMin = (document.getElementById("total-price-min") as HTMLInputElement)?.value;
-    const totalPriceMax = (document.getElementById("total-price-max") as HTMLInputElement)?.value;
+    const city          = (document.getElementById("city-select")              as HTMLSelectElement)?.value;
+    const district      = (document.getElementById("district-select")          as HTMLSelectElement)?.value;
+    const minPrice      = (document.getElementById("price-min")                as HTMLInputElement)?.value;
+    const maxPrice      = (document.getElementById("price-max")                as HTMLInputElement)?.value;
+    const totalPriceMin = (document.getElementById("total-price-min")          as HTMLInputElement)?.value;
+    const totalPriceMax = (document.getElementById("total-price-max")          as HTMLInputElement)?.value;
+    const areaMin       = (document.getElementById("area-min")                 as HTMLInputElement)?.value;
+    const areaMax       = (document.getElementById("area-max")                 as HTMLInputElement)?.value;
+    const buildingType  = (document.getElementById("building-type")            as HTMLSelectElement)?.value;
+    const address       = (document.getElementById("address-search")           as HTMLInputElement)?.value;
+    const dateFrom      = (document.getElementById("date-from")                as HTMLInputElement)?.value;
+    const dateTo        = (document.getElementById("date-to")                  as HTMLInputElement)?.value;
+    const mrtWalkMin    = (document.getElementById("mrt-walk-min")             as HTMLSelectElement)?.value;
+    const buildAgeRange = (document.getElementById("build-age-range")          as HTMLSelectElement)?.value;
+    const post921       = (document.getElementById("post921-toggle")           as HTMLInputElement)?.checked;
+    // Overlay / choropleth layer states
+    const choropleth    = (document.getElementById("choropleth-toggle")        as HTMLInputElement)?.checked ?? true;
+    const buyerScore    = (document.getElementById("buyer-score-toggle")       as HTMLInputElement)?.checked;
+    const volatility    = (document.getElementById("volatility-toggle")        as HTMLInputElement)?.checked;
+    const completion    = (document.getElementById("completion-overlay-toggle") as HTMLInputElement)?.checked;
+
+    if (city)          params.city = city;
+    if (district)      params.district = district;
+    if (minPrice)      params.minPrice = minPrice;
+    if (maxPrice)      params.maxPrice = maxPrice;
     if (totalPriceMin) params.totalPriceMin = totalPriceMin;
-    const areaMin = (document.getElementById("area-min") as HTMLInputElement)?.value;
-    const areaMax = (document.getElementById("area-max") as HTMLInputElement)?.value;
     if (totalPriceMax) params.totalPriceMax = totalPriceMax;
-    if (areaMin) params.areaMin = areaMin;
-    if (areaMax) params.areaMax = areaMax;
-    if (buildingType) params.buildingType = buildingType;
-    if (address)      params.address = address;
-    const dateFrom = (document.getElementById("date-from") as HTMLInputElement)?.value;
-    const dateTo   = (document.getElementById("date-to")   as HTMLInputElement)?.value;
-    if (dateFrom) params.dateFrom = dateFrom;
-    if (dateTo)   params.dateTo   = dateTo;
-    const mrtWalkMin = (document.getElementById("mrt-walk-min") as HTMLSelectElement)?.value;
-    if (mrtWalkMin) params.mrtWalkMin = mrtWalkMin;
-    const buildAgeRange = (document.getElementById("build-age-range") as HTMLSelectElement)?.value;
+    if (areaMin)       params.areaMin = areaMin;
+    if (areaMax)       params.areaMax = areaMax;
+    if (buildingType)  params.buildingType = buildingType;
+    if (address)       params.address = address;
+    if (dateFrom)      params.dateFrom = dateFrom;
+    if (dateTo)        params.dateTo = dateTo;
+    if (mrtWalkMin)    params.mrtWalkMin = mrtWalkMin;
     if (buildAgeRange) params.buildAgeRange = buildAgeRange;
-    const post921 = (document.getElementById("post921-toggle") as HTMLInputElement)?.checked;
-    if (post921) params.post921 = "1";
+    if (post921)       params.post921 = "1";
+    // choropleth is on by default; only encode when turned off
+    if (!choropleth)   params.choropleth = "0";
+    if (buyerScore)    params.buyerScore = "1";
+    if (volatility)    params.volatility = "1";
+    if (completion)    params.completion = "1";
     return params;
   }
 
-  function pushUrlState(params: Record<string, string>): void {
-    const qs = new URLSearchParams(params).toString();
-    const newUrl = qs ? `${location.pathname}?${qs}` : location.pathname;
-    history.pushState(null, "", newUrl);
+  /** Update URL hash in-place without adding a history entry (used for real-time updates). */
+  function updateHash(): void {
+    const qs = new URLSearchParams(getHashParams()).toString();
+    history.replaceState(null, "", qs ? `${location.pathname}#${qs}` : location.pathname);
   }
 
+  /**
+   * Restore filter state from URL hash fragment.
+   * Returns true if a hash was present and parsed, false otherwise.
+   * Invalid or partial values are silently ignored (graceful degradation).
+   */
+  function loadFromHash(): boolean {
+    const raw = location.hash.startsWith("#") ? location.hash.slice(1) : "";
+    if (!raw) return false;
+    try {
+      const sp = new URLSearchParams(raw);
+      const set = (id: string, key: string) => {
+        const el = document.getElementById(id) as HTMLSelectElement | HTMLInputElement | null;
+        const v = sp.get(key);
+        if (el && v !== null && v !== "") el.value = v;
+      };
+      const city = sp.get("city");
+      if (city) {
+        (document.getElementById("city-select") as HTMLSelectElement).value = city;
+        updateDistrictOptions(city);
+      }
+      set("district-select", "district");
+      set("price-min",       "minPrice");
+      set("price-max",       "maxPrice");
+      set("total-price-min", "totalPriceMin");
+      set("total-price-max", "totalPriceMax");
+      set("area-min",        "areaMin");
+      set("area-max",        "areaMax");
+      set("building-type",   "buildingType");
+      set("build-age-range", "buildAgeRange");
+      set("date-from",       "dateFrom");
+      set("date-to",         "dateTo");
+      set("address-search",  "address");
+      set("mrt-walk-min",    "mrtWalkMin");
+      const post921Val = sp.get("post921");
+      const post921El = document.getElementById("post921-toggle") as HTMLInputElement | null;
+      if (post921El && post921Val !== null) post921El.checked = post921Val === "1";
+      // Overlay toggle checkboxes (visual state only; change events fired after map loads)
+      if (sp.has("choropleth")) {
+        const el = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+        if (el) el.checked = sp.get("choropleth") !== "0";
+      }
+      const buyerScoreEl = document.getElementById("buyer-score-toggle") as HTMLInputElement | null;
+      if (buyerScoreEl) buyerScoreEl.checked = sp.get("buyerScore") === "1";
+      const volatilityEl = document.getElementById("volatility-toggle") as HTMLInputElement | null;
+      if (volatilityEl) volatilityEl.checked = sp.get("volatility") === "1";
+      const completionEl = document.getElementById("completion-overlay-toggle") as HTMLInputElement | null;
+      if (completionEl) completionEl.checked = sp.get("completion") === "1";
+      if (sp.get("address")) addressClearBtn.style.display = "block";
+      return true;
+    } catch {
+      // Graceful degradation: malformed hash silently ignored, default state loaded
+      return false;
+    }
+  }
+
+  /** Legacy: restore from query string for old bookmarks before hash-based approach. */
   function loadFromUrl(): void {
     const sp = new URLSearchParams(location.search);
+    if (!sp.toString()) return;
     const set = (id: string, key: string) => {
       const el = document.getElementById(id) as HTMLSelectElement | HTMLInputElement | null;
       const v = sp.get(key);
       if (el && v) el.value = v;
     };
-    set("city-select",     "city");
-    // Populate district options before setting value
     const city = sp.get("city");
-    if (city) updateDistrictOptions(city);
+    if (city) {
+      (document.getElementById("city-select") as HTMLSelectElement).value = city;
+      updateDistrictOptions(city);
+    }
     set("district-select", "district");
     set("price-min",       "minPrice");
     set("price-max",       "maxPrice");
     set("total-price-min", "totalPriceMin");
     set("total-price-max", "totalPriceMax");
-    set("area-min", "areaMin");
-    set("area-max", "areaMax");
+    set("area-min",        "areaMin");
+    set("area-max",        "areaMax");
     set("building-type",   "buildingType");
     set("date-from",       "dateFrom");
     set("date-to",         "dateTo");
@@ -537,15 +609,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const post921El = document.getElementById("post921-toggle") as HTMLInputElement | null;
       if (post921El) post921El.checked = true;
     }
-    // Show clear button if address has value
-    if (sp.get("address")) {
-      addressClearBtn.style.display = "block";
-    }
+    if (sp.get("address")) addressClearBtn.style.display = "block";
   }
 
-  // Hook search button to also push URL state
+  // Search button: push hash to history (so back button navigates between searches)
   document.getElementById("search-btn")?.addEventListener("click", () => {
-    pushUrlState(getFilterParams());
+    const qs = new URLSearchParams(getHashParams()).toString();
+    history.pushState(null, "", qs ? `${location.pathname}#${qs}` : location.pathname);
   });
 
   // Reset button
@@ -577,7 +647,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     // Reset preset active state
     document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
     document.querySelector('.preset-btn[data-months="0"]')?.classList.add("active");
-    history.pushState(null, "", location.pathname);
+    // Clear URL hash (search button click below will also push clean state)
+    history.replaceState(null, "", location.pathname);
     document.getElementById("search-btn")?.click();
   });
 
@@ -642,10 +713,58 @@ const showBuyersMarket = !isStale && dataYear !== null;
   document.getElementById("sidebar-close-btn")?.addEventListener("click", closeSidebar);
   backdrop?.addEventListener("click", closeSidebar);
 
-  // ---- On load: restore from URL ----
-  loadFromUrl();
-  if (location.search) {
+  // ---- On load: restore from URL hash (preferred) or query string (legacy) ----
+  const _hashRestored = loadFromHash();
+  if (!_hashRestored) loadFromUrl(); // Legacy query-string fallback for old bookmarks
+  if (_hashRestored || location.search) {
     setTimeout(() => document.getElementById("search-btn")?.click(), 800);
+  }
+  // Fire overlay change events after the Mapbox map has had time to initialize.
+  // Overlay handlers check map.getLayer(); firing too early is a no-op, so a
+  // generous delay ensures the layers are registered.
+  if (_hashRestored) {
+    setTimeout(() => {
+      const raw = location.hash.startsWith("#") ? location.hash.slice(1) : "";
+      try {
+        const _sp = new URLSearchParams(raw);
+        if (_sp.has("choropleth") && _sp.get("choropleth") === "0") {
+          document.getElementById("choropleth-toggle")?.dispatchEvent(new Event("change"));
+        }
+        if (_sp.get("buyerScore") === "1") {
+          document.getElementById("buyer-score-toggle")?.dispatchEvent(new Event("change"));
+        }
+        if (_sp.get("volatility") === "1") {
+          document.getElementById("volatility-toggle")?.dispatchEvent(new Event("change"));
+        }
+        if (_sp.get("completion") === "1") {
+          document.getElementById("completion-overlay-toggle")?.dispatchEvent(new Event("change"));
+        }
+      } catch { /* ignore */ }
+    }, 1500);
+  }
+
+  // ---- Real-time hash updates as filters change ----
+  // Selects: update hash immediately on change
+  for (const _id of ["city-select", "district-select", "building-type", "build-age-range", "mrt-walk-min"]) {
+    document.getElementById(_id)?.addEventListener("change", updateHash);
+  }
+  // Text / number inputs: debounced to avoid flooding replaceState on every keystroke
+  let _hashDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const _debouncedHashUpdate = () => {
+    if (_hashDebounceTimer !== null) clearTimeout(_hashDebounceTimer);
+    _hashDebounceTimer = setTimeout(updateHash, 400);
+  };
+  for (const _id of ["price-min", "price-max", "total-price-min", "total-price-max", "area-min", "area-max", "address-search"]) {
+    document.getElementById(_id)?.addEventListener("input", _debouncedHashUpdate);
+    document.getElementById(_id)?.addEventListener("change", _debouncedHashUpdate);
+  }
+  // Date inputs: update hash on change (change fires on blur / picker select)
+  for (const _id of ["date-from", "date-to"]) {
+    document.getElementById(_id)?.addEventListener("change", updateHash);
+  }
+  // Checkboxes: update hash immediately
+  for (const _id of ["post921-toggle", "choropleth-toggle", "buyer-score-toggle", "volatility-toggle", "completion-overlay-toggle"]) {
+    document.getElementById(_id)?.addEventListener("change", updateHash);
   }
 
   // ============================================================
@@ -1042,7 +1161,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   });
 
   // Share search button: copy current URL to clipboard
-  const SHARE_BTN_LABEL = "🔗 分享此搜尋";
+  const SHARE_BTN_LABEL = "📋 複製連結";
   document.getElementById("share-search-btn")?.addEventListener("click", async (e) => {
     const btn = e.currentTarget as HTMLButtonElement;
     // Guard against re-entry during success (2s) or error (3s) feedback windows
