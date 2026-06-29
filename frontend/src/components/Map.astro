@@ -1468,27 +1468,26 @@
 
   /**
    * Adds/removes pulsing ring markers on the map for districts that qualify
-   * as buyer's market opportunities.  Called from updateChoropleth() whenever
-   * the district GeoJSON or transaction data changes.
+   * as buyer's market opportunities.  Accepts pre-computed qualifying keys
+   * from `updateChoropleth` to avoid re-scanning rawAllFeatures per district.
    * Always clears and recreates all markers so positions stay accurate after
    * a city switch (new districtGeoJSON with different polygon coordinates).
    */
-  function updateBuyersMarketMarkers(): void {
+  function updateBuyersMarketMarkers(qualifyingKeys: Set<string>): void {
     // Always remove all existing markers first — positions must reflect current GeoJSON
     for (const m of buyersMarketMarkers.values()) m.remove();
     buyersMarketMarkers.clear();
 
-    if (!districtGeoJSON || !rawAllFeatures.length) return;
+    if (!districtGeoJSON || !rawAllFeatures.length || qualifyingKeys.size === 0) return;
 
     for (const f of districtGeoJSON.features) {
       const district = f.properties?.district as string | undefined;
       const city = f.properties?.city as string | undefined;
       if (!district) continue;
 
-      const sig = computeBuyersMarketSignal(district, city);
-      if (!sig.qualifies) continue;
-
       const key = `${city ?? ""}:${district}`;
+      if (!qualifyingKeys.has(key)) continue;
+
       let center: [number, number] | null = null;
       const geom = f.geometry;
       if (geom?.type === "Polygon") {
@@ -1766,6 +1765,7 @@
 
     // Pre-compute buyers market signal flags for hover tooltip (always, not gated on overlay mode)
     const buyersMarketFlags: Record<string, { qualifies: number; stale: number }> = {};
+    const buyersMarketQualifyingKeys = new Set<string>();
     if (rawAllFeatures.length > 0) {
       for (const f of districtGeoJSON.features) {
         const district = f.properties?.district as string | undefined;
@@ -1775,6 +1775,7 @@
         // Key by "city:district" to match how ageStat and buyersMarketMarkers avoid collision
         const key = `${city ?? ""}:${district}`;
         buyersMarketFlags[key] = { qualifies: sig.qualifies ? 1 : 0, stale: sig.isStale ? 1 : 0 };
+        if (sig.qualifies) buyersMarketQualifyingKeys.add(key);
       }
     }
 
@@ -1819,7 +1820,7 @@
     }
 
     // Update pulsing ring markers for qualifying buyer's market districts
-    updateBuyersMarketMarkers();
+    updateBuyersMarketMarkers(buyersMarketQualifyingKeys);
   }
 
   /** Load district boundary GeoJSON for the given city. */
