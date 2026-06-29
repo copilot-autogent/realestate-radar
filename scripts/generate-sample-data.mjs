@@ -62,6 +62,13 @@ for (const dist of districts) {
     const lon = dist.center[0] + (Math.random() - 0.5) * 0.03;
     const lat = dist.center[1] + (Math.random() - 0.5) * 0.02;
 
+    // Simulate 公告現值 at ~60–80% of market unit price (元/平方公尺)
+    // unitPrice is in 元/坪; convert to 元/sqm first (1坪 = 3.30579 sqm)
+    const unitPriceSqm = unitPrice / 3.30579;
+    const assessedRatio = rand(0.60, 0.80);
+    const assessedValuePerSqm = Math.round(unitPriceSqm * assessedRatio);
+    const assessedToMarketRatio = +(assessedValuePerSqm / unitPriceSqm * 100).toFixed(2);
+
     features.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: [+lon.toFixed(6), +lat.toFixed(6)] },
@@ -78,6 +85,10 @@ for (const dist of districts) {
         floor,
         floorsTotal: floors,
         rooms,
+        /** 公告現值 元/平方公尺 (district-level, simulated ~60–80% of market) */
+        assessedValuePerSqm,
+        /** assessedValuePerSqm / unitPrice(元/sqm) × 100 */
+        assessedToMarketRatio,
       },
     });
   }

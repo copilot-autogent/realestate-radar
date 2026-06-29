@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS transactions (
   parking_price BIGINT,                -- 車位總價元
   parking_area NUMERIC(10,2),          -- 車位移轉總面積(平方公尺)
 
+  -- Assessed land value (公告現值) — district-level join from 內政部地政司 dataset
+  assessed_value_per_sqm NUMERIC(12,2),  -- District-median 公告現值 元/平方公尺
+  assessed_to_market_ratio NUMERIC(8,4), -- assessed_value_per_sqm / unit_price_sqm × 100
+
   -- Metadata
   land_use TEXT,                       -- 都市土地使用分區 (住, 商, 工)
   note TEXT,                           -- 備註
@@ -63,6 +67,23 @@ CREATE INDEX IF NOT EXISTS idx_transactions_city_district ON transactions(city, 
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date);
 CREATE INDEX IF NOT EXISTS idx_transactions_address ON transactions(address);
 CREATE INDEX IF NOT EXISTS idx_transactions_unit_price ON transactions(unit_price);
+
+-- District-level 公告現值 aggregated from 內政部地政司 公告地價 dataset
+-- Used for Option C district-level join to compute assessedToMarketRatio (#76)
+CREATE TABLE IF NOT EXISTS district_assessed_values (
+  id SERIAL PRIMARY KEY,
+  city TEXT NOT NULL,              -- 縣市 e.g. 台北市
+  district TEXT NOT NULL,          -- 鄉鎮市區 e.g. 大安區
+  year INTEGER NOT NULL,           -- Publication year (AD)
+  median_assessed_value_per_sqm NUMERIC(12,2) NOT NULL, -- 公告現值 元/平方公尺
+  parcel_count INTEGER NOT NULL DEFAULT 0,              -- Number of parcels in aggregate
+  source_file TEXT,                -- Originating CSV filename
+  imported_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(city, district, year)
+);
+
+CREATE INDEX IF NOT EXISTS idx_district_assessed_city_district
+  ON district_assessed_values(city, district);
 
 -- POI data (MRT stations, schools, parks)
 CREATE TABLE IF NOT EXISTS pois (
