@@ -585,25 +585,33 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   /**
-   * Dispatch change events for overlay toggles that were restored from the hash.
-   * Called after map layers are confirmed ready via the map-layers-ready event.
-   * `snapshotRaw` is the hash string captured at the moment loadFromHash() ran
-   * (prevents stale re-reads after real-time updateHash() may have modified the hash).
+   * Apply overlay toggle state from a parsed hash snapshot.
+   * Handles both ON→OFF and OFF→ON transitions by comparing the desired state
+   * against the current checkbox state before dispatching change events.
    */
   function applyOverlayStateFromHash(snapshotRaw: string): void {
     try {
       const sp = new URLSearchParams(snapshotRaw);
-      if (sp.has("choropleth") && sp.get("choropleth") === "0") {
-        document.getElementById("choropleth-toggle")?.dispatchEvent(new Event("change"));
+      // Choropleth: default ON; encoded only when OFF
+      const wantChoropleth = sp.has("choropleth") ? sp.get("choropleth") !== "0" : true;
+      const choroplethEl = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethEl && choroplethEl.checked !== wantChoropleth) {
+        choroplethEl.checked = wantChoropleth;
+        choroplethEl.dispatchEvent(new Event("change"));
       }
-      if (sp.get("buyerScore") === "1") {
-        document.getElementById("buyer-score-toggle")?.dispatchEvent(new Event("change"));
-      }
-      if (sp.get("volatility") === "1") {
-        document.getElementById("volatility-toggle")?.dispatchEvent(new Event("change"));
-      }
-      if (sp.get("completion") === "1") {
-        document.getElementById("completion-overlay-toggle")?.dispatchEvent(new Event("change"));
+      // Other overlays: default OFF; encoded only when ON
+      const overlays: [string, string][] = [
+        ["buyer-score-toggle",       "buyerScore"],
+        ["volatility-toggle",        "volatility"],
+        ["completion-overlay-toggle","completion"],
+      ];
+      for (const [elId, key] of overlays) {
+        const want = sp.get(key) === "1";
+        const el = document.getElementById(elId) as HTMLInputElement | null;
+        if (el && el.checked !== want) {
+          el.checked = want;
+          el.dispatchEvent(new Event("change"));
+        }
       }
     } catch { /* ignore */ }
   }
@@ -619,8 +627,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     };
     const city = sp.get("city");
     if (city) {
-      (document.getElementById("city-select") as HTMLSelectElement).value = city;
-      updateDistrictOptions(city);
+      const cityEl = document.getElementById("city-select") as HTMLSelectElement | null;
+      if (cityEl) { cityEl.value = city; updateDistrictOptions(city); }
     }
     set("district-select", "district");
     set("price-min",       "minPrice");
@@ -644,11 +652,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   // Search button: push hash to history (so back button navigates between searches).
-  // Guard against duplicate history entries when the URL hasn't actually changed.
+  // Guard against duplicate history entries: compare relative path+hash to avoid
+  // the relative-vs-absolute mismatch of location.href (which is always absolute).
   document.getElementById("search-btn")?.addEventListener("click", () => {
     const qs = new URLSearchParams(getHashParams()).toString();
     const target = qs ? `${location.pathname}#${qs}` : location.pathname;
-    if (target !== location.href) history.pushState(null, "", target);
+    const current = location.pathname + location.hash;
+    if (target !== current) history.pushState(null, "", target);
   });
 
   // Reset button
@@ -709,7 +719,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
         dateFromEl.value = fmt(from);
         dateToEl.value   = fmt(to);
       }
-      // Trigger search
+      // Trigger search (also updates hash via search-btn click listener)
+      updateHash(); // Capture date values immediately for "複製連結" before Search fires
       document.getElementById("search-btn")?.click();
     });
   });
@@ -753,10 +764,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
     setTimeout(() => document.getElementById("search-btn")?.click(), 800);
   }
 
-  // Apply overlay toggle state once the Mapbox layers are confirmed ready.
-  // Map.astro dispatches "map-layers-ready" at the end of map.on("load").
-  // Snapshot the raw hash NOW (before real-time updateHash() can change it)
-  // so the deferred handler sees the original page-load URL, not a later edit.
+  // Track whether Mapbox layers are registered (Map.astro dispatches "map-layers-ready").
+  let _mapLayersReady = false;
+  document.addEventListener("map-layers-ready", () => { _mapLayersReady = true; }, { once: true });
+
+  // Apply overlay toggle state once map layers are confirmed ready.
+  // Snapshot the raw hash NOW so the deferred handler sees the original page-load
+  // URL, not a later edit by real-time updateHash() calls.
   if (_hashRestored) {
     const _initialHashRaw = location.hash.startsWith("#") ? location.hash.slice(1) : "";
     document.addEventListener("map-layers-ready", () => {
@@ -764,14 +778,47 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }, { once: true });
   }
 
+  /**
+   * Reset all filter form fields to their default (empty) state.
+   * Used before applying a popstate hash so stale filter values don't stick.
+   * Does not fire map-layer events (applyOverlayStateFromHash handles those).
+   */
+  function _resetFormFields(): void {
+    const clearInputs = ["city-select","district-select","price-min","price-max",
+      "total-price-min","total-price-max","area-min","area-max","building-type",
+      "build-age-range","date-from","date-to","address-search","mrt-walk-min"];
+    for (const id of clearInputs) {
+      const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+      if (el) el.value = "";
+    }
+    const post921El = document.getElementById("post921-toggle") as HTMLInputElement | null;
+    if (post921El) post921El.checked = false;
+    // Reset overlay checkboxes to their HTML defaults
+    const choroplethEl = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+    if (choroplethEl) choroplethEl.checked = true;
+    for (const id of ["buyer-score-toggle","volatility-toggle","completion-overlay-toggle"]) {
+      const el = document.getElementById(id) as HTMLInputElement | null;
+      if (el) el.checked = false;
+    }
+    if (addressClearBtn) addressClearBtn.style.display = "none";
+    updateDistrictOptions("");
+  }
+
   // ---- Back/forward navigation: rehydrate filters + re-run search ----
   window.addEventListener("popstate", () => {
+    // Reset first so absent-from-hash fields are cleared (prevents stale values sticking)
+    _resetFormFields();
     const restored = loadFromHash();
     if (!restored) loadFromUrl();
     document.getElementById("search-btn")?.click();
     if (restored) {
       const _popRaw = location.hash.startsWith("#") ? location.hash.slice(1) : "";
-      applyOverlayStateFromHash(_popRaw);
+      if (_mapLayersReady) {
+        applyOverlayStateFromHash(_popRaw);
+      } else {
+        // Map not yet ready (rare: navigation during init); wait for layers
+        document.addEventListener("map-layers-ready", () => applyOverlayStateFromHash(_popRaw), { once: true });
+      }
     }
   });
 
