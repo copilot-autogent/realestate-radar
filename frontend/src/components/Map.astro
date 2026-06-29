@@ -67,6 +67,26 @@
   <button class="close-tooltip-btn" id="close-buyer-score-tooltip">關閉</button>
 </div>
 
+<!-- 買方市場訊號 methodology tooltip backdrop + popup (hidden by default) -->
+<div id="buyers-market-tooltip-backdrop" class="buyer-score-tooltip-backdrop" hidden></div>
+<div id="buyers-market-tooltip" class="buyer-score-tooltip" hidden>
+  <h4>⚡ 買方市場訊號 — 判斷依據</h4>
+  <p style="font-size:0.8rem;color:#374151;margin-bottom:10px">以下三項條件需同時成立：</p>
+  <table>
+    <thead><tr><th>條件</th><th>門檻</th></tr></thead>
+    <tbody>
+      <tr><td>買方時機分</td><td>≥ 70（強烈買方優勢）</td></tr>
+      <tr><td>房價年增率 (YoY)</td><td>&lt; −3%（價格下跌中）</td></tr>
+      <tr><td>交易量趨勢</td><td>萎縮（成交量年減 &gt; 5%）</td></tr>
+    </tbody>
+  </table>
+  <div style="font-size:0.74rem;color:#64748b;margin-bottom:8px">
+    ⚠️ 資料不足門檻：近12個月成交量少於10筆時不顯示訊號。<br>
+    ⚠️ 若最新資料超過90天，訊號僅供歷史參考。
+  </div>
+  <button class="close-tooltip-btn" id="close-buyers-market-tooltip">關閉</button>
+</div>
+
 <style is:global>
   /* Choropleth legend overlay */
   .choropleth-legend {
@@ -639,6 +659,97 @@
     .comparison-panel-body { max-height: 200px; }
     .comparison-table { font-size: 0.78rem; }
     .comparison-table th, .comparison-table td { padding: 5px 8px; }
+  }
+
+  /* ---- 買方市場訊號 Banner ---- */
+  .buyers-market-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 8px 0 4px;
+    padding: 8px 10px;
+    background: #f0fdf4;
+    border: 1.5px solid #16a34a;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    color: #14532d;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .buyers-market-banner.buyers-market-stale {
+    background: #fefce8;
+    border-color: #ca8a04;
+    color: #713f12;
+  }
+  .buyers-market-info-btn {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid #86efac;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    font-size: 0.7rem;
+    color: #15803d;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+  .buyers-market-info-btn:hover { background: #dcfce7; }
+  .buyers-market-stale .buyers-market-info-btn {
+    border-color: #fde047;
+    color: #a16207;
+  }
+  .buyers-market-stale .buyers-market-info-btn:hover { background: #fef9c3; }
+
+  /* ---- 買方機會區 Pulsing Map Marker ---- */
+  .bm-pulse-marker {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 3px solid #16a34a;
+    background: rgba(22, 163, 74, 0.15);
+    position: relative;
+    pointer-events: none;
+  }
+  .bm-pulse-marker::before {
+    content: "";
+    position: absolute;
+    inset: -7px;
+    border-radius: 50%;
+    border: 2px solid #16a34a;
+    opacity: 0;
+    animation: bm-ring-pulse 2.4s ease-out infinite;
+  }
+  .bm-pulse-marker::after {
+    content: "";
+    position: absolute;
+    inset: -14px;
+    border-radius: 50%;
+    border: 1.5px solid #16a34a;
+    opacity: 0;
+    animation: bm-ring-pulse 2.4s ease-out 0.8s infinite;
+  }
+  @keyframes bm-ring-pulse {
+    0%  { transform: scale(0.5); opacity: 0.8; }
+    80% { transform: scale(2.0); opacity: 0; }
+    100%{ opacity: 0; }
+  }
+  /* Hover popup "買方機會區" indicator line */
+  .bm-opportunity-indicator {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #14532d;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 4px;
+    padding: 2px 7px;
+    margin-bottom: 4px;
+    display: block;
   }
 </style>
 
@@ -1249,6 +1360,168 @@
   /** District-level rolling-annual completion counts (uniform city allocation — all districts equal). */
   let completionByDistrict: Record<string, number> = {};
 
+  // ---- Buyers Market Signal state ----
+  /** Active pulsing ring markers keyed by "city:district". */
+  let buyersMarketMarkers: Map<string, maplibregl.Marker> = new Map();
+
+  /**
+   * Evaluates whether a district currently shows the 「買方市場」 signal.
+   * All three conditions must hold simultaneously:
+   *   1. Buyer timing score ≥ 70 (also enforces ≥10 tx data-sufficiency gate)
+   *   2. YoY price change < −3% (tier === "buyer")
+   *   3. Transaction volume trend = falling (萎縮)
+   *
+   * Also checks data staleness: if the district's latest transaction is > 90 days
+   * old, `isStale` is true and the banner shows a reduced-confidence warning instead.
+   *
+   * Returns `isDataSufficient: false` only when the ≥10 tx gate fails (score === null).
+   */
+  function computeBuyersMarketSignal(district: string, city?: string): {
+    qualifies: boolean;
+    isDataSufficient: boolean;
+    isStale: boolean;
+  } {
+    const STALE_DAYS = 90;
+
+    // Condition 1 + data-sufficiency gate (computeBuyerTimingScore returns null when < 10 tx)
+    const score = computeBuyerTimingScore(district, city);
+    if (score === null) return { qualifies: false, isDataSufficient: false, isStale: false };
+
+    // Staleness: find the district's latest transaction date
+    const features = rawAllFeatures.filter(
+      (f) => f.properties?.district === district && (!city || f.properties?.city === city)
+    );
+    const validTimes = features
+      .map((f) => new Date((f.properties?.date as string) ?? "").getTime())
+      .filter((t) => !isNaN(t));
+    const maxTime = validTimes.length > 0
+      ? validTimes.reduce((a, b) => (a > b ? a : b), -Infinity)
+      : -Infinity;
+    const isStale = maxTime !== -Infinity
+      && (Date.now() - maxTime) > STALE_DAYS * 24 * 60 * 60 * 1000;
+
+    if (score < 70) return { qualifies: false, isDataSufficient: true, isStale };
+
+    // Condition 2: YoY price decline > 3%
+    const yoy = computeYoYSignal(district, city);
+    if (yoy.tier !== "buyer") return { qualifies: false, isDataSufficient: true, isStale };
+
+    // Condition 3: transaction volume falling (萎縮)
+    const vol = computeVolumeYoYSignal(district, city);
+    if (vol.tier !== "falling") return { qualifies: false, isDataSufficient: true, isStale };
+
+    return { qualifies: true, isDataSufficient: true, isStale };
+  }
+
+  /**
+   * Renders the 「買方市場訊號」 banner HTML for the click popup and sidebar panel.
+   * Returns empty string when the district doesn't qualify.
+   */
+  function renderBuyersMarketBannerHtml(district: string, city?: string): string {
+    if (!rawAllFeatures.length) return "";
+    const sig = computeBuyersMarketSignal(district, city);
+    if (!sig.qualifies) return "";
+
+    if (sig.isStale) {
+      return `<div class="buyers-market-banner buyers-market-stale">
+        <span>⚠️ 資料已逾90天，訊號僅供參考</span>
+        <button class="buyers-market-info-btn" title="查看判斷依據" aria-label="買方市場訊號說明">ⓘ</button>
+      </div>`;
+    }
+    return `<div class="buyers-market-banner">
+      <span>⚡ 買方市場訊號：此行政區目前呈現「價跌量縮」格局，為近年罕見的議價視窗。</span>
+      <button class="buyers-market-info-btn" title="查看判斷依據" aria-label="買方市場訊號說明">ⓘ</button>
+    </div>`;
+  }
+
+  /**
+   * Computes the approximate centroid of a GeoJSON polygon ring (outer ring).
+   * Slices off the closing duplicate point (GeoJSON rings repeat the first coord at end)
+   * before averaging to avoid biasing the centroid toward that vertex.
+   * Returns [lng, lat] or null when coordinates are empty.
+   */
+  function computePolygonCentroid(rings: number[][][]): [number, number] | null {
+    const ring = rings[0];
+    if (!ring || ring.length < 2) return null;
+    // GeoJSON ring closes by repeating the first point — drop the last vertex before averaging
+    const pts = ring.length > 1 ? ring.slice(0, -1) : ring;
+    const sum = pts.reduce(
+      (acc: [number, number], c: number[]) => [acc[0] + c[0], acc[1] + c[1]],
+      [0, 0]
+    );
+    return [sum[0] / pts.length, sum[1] / pts.length];
+  }
+
+  /**
+   * Returns the centroid of the largest sub-polygon (by vertex count) in a MultiPolygon.
+   * Falls back to the first polygon when all have equal size.
+   */
+  function computeMultiPolygonCentroid(polygons: number[][][][]): [number, number] | null {
+    if (!polygons || polygons.length === 0) return null;
+    // Pick the polygon with the most outer-ring vertices as a proxy for "largest"
+    const largest = polygons.reduce(
+      (best, poly) => (poly[0]?.length ?? 0) > (best[0]?.length ?? 0) ? poly : best,
+      polygons[0]
+    );
+    return computePolygonCentroid(largest);
+  }
+
+  /**
+   * Adds/removes pulsing ring markers on the map for districts that qualify
+   * as buyer's market opportunities.  Accepts pre-computed qualifying keys
+   * from `updateChoropleth` to avoid re-scanning rawAllFeatures per district.
+   * Diffs against the current marker set to avoid restarting CSS pulse animations
+   * (which would cause visible flicker on every choropleth update).
+   * Clears all markers first only when districtGeoJSON is absent/empty.
+   */
+  function updateBuyersMarketMarkers(qualifyingKeys: Set<string>): void {
+    if (!districtGeoJSON || !rawAllFeatures.length || qualifyingKeys.size === 0) {
+      for (const m of buyersMarketMarkers.values()) m.remove();
+      buyersMarketMarkers.clear();
+      return;
+    }
+
+    // Build a lookup from key to district feature for position resolution
+    const featureByKey = new Map<string, any>();
+    for (const f of districtGeoJSON.features) {
+      const district = f.properties?.district as string | undefined;
+      const city = f.properties?.city as string | undefined;
+      if (district) featureByKey.set(`${city ?? ""}:${district}`, f);
+    }
+
+    // Remove markers for districts that no longer qualify
+    for (const [key, marker] of buyersMarketMarkers.entries()) {
+      if (!qualifyingKeys.has(key)) {
+        marker.remove();
+        buyersMarketMarkers.delete(key);
+      }
+    }
+
+    // Add markers for newly qualifying districts (don't recreate existing ones)
+    for (const key of qualifyingKeys) {
+      if (buyersMarketMarkers.has(key)) continue; // already present; preserve animation
+
+      const f = featureByKey.get(key);
+      if (!f) continue;
+
+      let center: [number, number] | null = null;
+      const geom = f.geometry;
+      if (geom?.type === "Polygon") {
+        center = computePolygonCentroid(geom.coordinates);
+      } else if (geom?.type === "MultiPolygon") {
+        center = computeMultiPolygonCentroid(geom.coordinates);
+      }
+      if (!center) continue;
+
+      const el = document.createElement("div");
+      el.className = "bm-pulse-marker";
+      const marker = new maplibregl.Marker({ element: el, anchor: "center" })
+        .setLngLat(center)
+        .addTo(map);
+      buyersMarketMarkers.set(key, marker);
+    }
+  }
+
 
   const DEFAULT_FILL_COLOR: any = [
     "case",
@@ -1506,6 +1779,22 @@
       }
     }
 
+    // Pre-compute buyers market signal flags for hover tooltip (always, not gated on overlay mode)
+    const buyersMarketFlags: Record<string, { qualifies: number; stale: number }> = {};
+    const buyersMarketQualifyingKeys = new Set<string>();
+    if (rawAllFeatures.length > 0) {
+      for (const f of districtGeoJSON.features) {
+        const district = f.properties?.district as string | undefined;
+        const city = f.properties?.city as string | undefined;
+        if (!district) continue;
+        const sig = computeBuyersMarketSignal(district, city);
+        // Key by "city:district" to match how ageStat and buyersMarketMarkers avoid collision
+        const key = `${city ?? ""}:${district}`;
+        buyersMarketFlags[key] = { qualifies: sig.qualifies ? 1 : 0, stale: sig.isStale ? 1 : 0 };
+        if (sig.qualifies) buyersMarketQualifyingKeys.add(key);
+      }
+    }
+
     // Pre-compute district age stats (uses rawAllFeatures — unfiltered for consistent district overview)
     // Key by "city:district" to avoid cross-city collision for same-name districts.
     // Always refresh (even if rawAllFeatures is empty) so cleared data doesn't leave stale stats.
@@ -1528,6 +1817,9 @@
           medianAge: ageStat?.medianAge ?? -1,
           pctUnder20: ageStat?.pctUnder20 ?? -1,
           hasPartialMissingAge: ageStat?.hasPartialMissing ? 1 : 0,
+          // Buyers market signal flags for hover tooltip
+          buyersMarket: buyersMarketFlags[`${city ?? ""}:${district}`]?.qualifies ?? 0,
+          buyersMarketStale: buyersMarketFlags[`${city ?? ""}:${district}`]?.stale ?? 0,
         };
         if (buyerScoreActive) {
           props.buyerScore = buyerScores[district] ?? -1;
@@ -1542,6 +1834,9 @@
     } else if (buyerScoreActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
     }
+
+    // Update pulsing ring markers for qualifying buyer's market districts
+    updateBuyersMarketMarkers(buyersMarketQualifyingKeys);
   }
 
   /** Load district boundary GeoJSON for the given city. */
@@ -2150,10 +2445,14 @@
       || undefined;
     const yoyHtml = renderYoYHtml(district, activeCity);
 
+    // Buyers market banner (always computed — shown unconditionally when conditions met)
+    const buyersMarketBannerHtml = renderBuyersMarketBannerHtml(district, activeCity);
+
     // Dispatch YoY+volume signal so #yoy-panel in the stats card updates on district click.
     // The popup itself (below) uses yoyHtml (price-only) to keep popup size compact.
+    // Include buyers market banner in the sidebar panel when present.
     document.dispatchEvent(new CustomEvent("yoy-signal", {
-      detail: { district, html: yoyHtml + renderVolumeHtml(district, activeCity) },
+      detail: { district, html: yoyHtml + renderVolumeHtml(district, activeCity) + buyersMarketBannerHtml },
     }));
 
     // Build popup HTML
@@ -2214,6 +2513,7 @@
       .setLngLat(e.lngLat)
       .setHTML(
         `<div class="popup-title">${escHtml(district)}</div>
+         ${buyersMarketBannerHtml}
          <div class="popup-row">
            <span class="popup-label">中位單價</span>
            <span class="popup-price">${medianWan} 萬/坪</span>
@@ -2247,6 +2547,14 @@
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         openBuyerScoreTooltip();
+      });
+    });
+
+    // Wire buyers market ⓘ button inside popup to open methodology tooltip
+    districtClickPopup.getElement()?.querySelectorAll<HTMLButtonElement>(".buyers-market-info-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openBuyersMarketTooltip();
       });
     });
 
@@ -2322,9 +2630,17 @@
         ageHtml = `<div class="popup-row age-row" style="margin-top:4px"><span class="popup-label">屋齡中位數</span><span class="popup-value">${medianAge} 年 ${distBadge}${missingNote}</span></div>`;
       }
     }
+    // Buyers market opportunity indicator on hover (first line)
+    // Uses pre-computed props.buyersMarket flag (joined in updateChoropleth)
+    // Shows stale variant when data is > 90 days old
+    const bmOpportunityHtml = props.buyersMarket === 1
+      ? props.buyersMarketStale === 1
+        ? `<span class="bm-opportunity-indicator" style="background:#fefce8;border-color:#fde047;color:#713f12">⚠️ 買方機會區（資料逾90天）</span>`
+        : `<span class="bm-opportunity-indicator">🟢 買方機會區</span>`
+      : "";
     districtHover
       .setLngLat(e.lngLat)
-      .setHTML(`<div class="popup-title">${props.district}</div>${priceHtml}${completionHtml}${buyerScoreHtml}${ageHtml}`)
+      .setHTML(`<div class="popup-title">${props.district}</div>${bmOpportunityHtml}${priceHtml}${completionHtml}${buyerScoreHtml}${ageHtml}`)
       .addTo(map);
   });
 
@@ -2630,6 +2946,37 @@
     if (e.key === "Escape") {
       const tooltip = document.getElementById("buyer-score-tooltip");
       if (tooltip && !tooltip.hasAttribute("hidden")) closeBuyerScoreTooltip();
+    }
+  });
+
+  // ---- Buyers market signal methodology tooltip ----
+  function openBuyersMarketTooltip(): void {
+    const backdrop = document.getElementById("buyers-market-tooltip-backdrop");
+    const tooltip  = document.getElementById("buyers-market-tooltip");
+    if (backdrop) backdrop.removeAttribute("hidden");
+    if (tooltip)  tooltip.removeAttribute("hidden");
+  }
+
+  function closeBuyersMarketTooltip(): void {
+    const backdrop = document.getElementById("buyers-market-tooltip-backdrop");
+    const tooltip  = document.getElementById("buyers-market-tooltip");
+    if (backdrop) backdrop.setAttribute("hidden", "");
+    if (tooltip)  tooltip.setAttribute("hidden", "");
+  }
+
+  document.getElementById("close-buyers-market-tooltip")?.addEventListener("click", closeBuyersMarketTooltip);
+  document.getElementById("buyers-market-tooltip-backdrop")?.addEventListener("click", closeBuyersMarketTooltip);
+  // Also wire ⓘ buttons in the sidebar #yoy-panel (dynamically injected)
+  document.getElementById("yoy-panel")?.addEventListener("click", (e: Event) => {
+    if ((e.target as HTMLElement).classList.contains("buyers-market-info-btn")) {
+      e.stopPropagation();
+      openBuyersMarketTooltip();
+    }
+  });
+  document.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      const tooltip = document.getElementById("buyers-market-tooltip");
+      if (tooltip && !tooltip.hasAttribute("hidden")) closeBuyersMarketTooltip();
     }
   });
 
