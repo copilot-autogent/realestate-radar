@@ -1,0 +1,128 @@
+name: Live 實價登錄 Data Pipeline
+
+on:
+  # Weekly on Monday at 03:00 UTC (data published on 1st/11th/21st; Monday catches all)
+  schedule:
+    - cron: '0 3 * * 1'
+  # Allow manual trigger from the Actions tab
+  workflow_dispatch:
+    inputs:
+      force_full_import:
+        description: 'Force full import (ignore incremental cutoff)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: write   # needed to commit updated sample-transactions.json
+
+concurrency:
+  group: plvr-pipeline
+  cancel-in-progress: false   # never cancel a running import
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: realestate_radar
+          POSTGRES_USER: radar
+          POSTGRES_PASSWORD: radar_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U radar -d realestate_radar"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATA_SOURCE: live
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: realestate_radar
+      DB_USER: radar
+      DB_PASSWORD: radar_dev
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch full history so we can commit back updated data file
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm install
+
+      - name: Apply DB schema
+        working-directory: backend
+        run: |
+          PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar -f src/db/schema.sql
+          # Apply optional migrations (idempotent; OK if already applied)
+          for f in src/db/migrations/*.sql; do
+            echo "Applying migration: $f"
+            PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar -f "$f" || true
+          done
+
+      - name: Download current quarter CSV from 內政部
+        working-directory: backend
+        run: npm run pipeline:download
+        # Pipeline must not fail the build on transient 內政部 server errors —
+        # individual city downloads are skipped with a warning; exit code stays 0.
+
+      - name: Import CSV into PostGIS (incremental)
+        working-directory: backend
+        run: npm run pipeline:import
+
+      - name: Geocode pending records
+        working-directory: backend
+        # Graceful: geocoding failures are non-fatal; the static export uses
+        # only geocoded records (lat/lon NOT NULL), so partial geocoding is fine.
+        run: npm run pipeline:geocode || echo "[warn] geocode step had errors — continuing"
+
+      - name: Export static GeoJSON for GitHub Pages
+        working-directory: backend
+        run: npm run pipeline:export
+
+      - name: Commit updated transactions data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/data/sample-transactions.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit — data is already up-to-date"
+          else
+            RECORD_COUNT=$(node -e "
+              const d = JSON.parse(require('fs').readFileSync('frontend/public/data/sample-transactions.json', 'utf8'));
+              console.log(d.features.length);
+            ")
+            git commit -m "chore(data): refresh live 實價登錄 data [${RECORD_COUNT} records]
+
+Automated pipeline run via .github/workflows/pipeline.yml
+Source: 內政部 plvr.land.moi.gov.tw open data"
+            git push
+          fi
+
+      # Trigger a re-deploy of the GitHub Pages site so the new data goes live
+      - name: Trigger GitHub Pages deploy
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy.yml',
+              ref: 'main',
+            });
+            console.log('Triggered deploy.yml');

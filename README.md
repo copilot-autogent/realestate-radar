@@ -28,7 +28,9 @@ Taiwan real estate analytics powered by government-mandated transaction data (�
 
 ## Demo Mode (GitHub Pages)
 
-The live demo runs fully in the browser — no backend required. It uses a static sample dataset of ~965 synthetic transactions across all 6 major cities with realistic price distributions. All filters work client-side.
+The live demo runs fully in the browser — no backend required. A weekly CI job ([`.github/workflows/pipeline.yml`](.github/workflows/pipeline.yml)) downloads the latest 內政部 batch, imports it into PostGIS, and exports an updated `sample-transactions.json` that is then deployed to GitHub Pages. The data reflects the most recent publicly available 實價登錄 records.
+
+For local development without a PostGIS connection, the frozen sample dataset is used as a fallback (see **Sample Data Fallback** below).
 
 ## Full Backend Mode (Local Dev)
 
@@ -47,15 +49,34 @@ cd frontend && npm install && npm run dev
 
 ### Data Pipeline
 
-Transaction data is published by 內政部 on the 1st, 11th, and 21st of each month.
+Transaction data is published by 內政部 on the 1st, 11th, and 21st of each month. The CI pipeline runs weekly and keeps the GitHub Pages demo up-to-date automatically.
+
+```bash
+# Download latest batch + import + export static JSON (live mode)
+cd backend && DATA_SOURCE=live npm run pipeline:live
+```
+
+Individual steps:
 
 ```bash
 # Download latest batch
 cd backend && npm run pipeline:download
 
-# Import to PostGIS
-cd backend && npm run pipeline:import
+# Import to PostGIS (incremental — only new records)
+cd backend && DATA_SOURCE=live npm run pipeline:import
+
+# Geocode new records
+cd backend && npm run pipeline:geocode
+
+# Export geocoded records to frontend/public/data/sample-transactions.json
+cd backend && DATA_SOURCE=live npm run pipeline:export
 ```
+
+### Sample Data Fallback
+
+The file `frontend/public/data/sample-transactions.json` is used by the static site. The CI pipeline keeps it fresh. For local development **without** a PostGIS connection, this file serves as the data source automatically — no `DATA_SOURCE` env var is needed.
+
+The `pipeline:import` and `pipeline:export` scripts require `DATA_SOURCE=live` to prevent accidental overwrites of the fallback file during local dev.
 
 ## Project Structure
 
@@ -84,7 +105,7 @@ cd backend && npm run pipeline:import
 - [ ] Multi-city district choropleth (non-Taipei cities currently show grey)
 - [ ] Total price filter (總價篩選) — filter by buyer budget in 萬
 - [ ] Transaction list panel — sortable table of results below histogram
-- [ ] Real 內政部 data pipeline integration
+- [x] Real 內政部 data pipeline integration — weekly CI cron (#81)
 
 ## License
 

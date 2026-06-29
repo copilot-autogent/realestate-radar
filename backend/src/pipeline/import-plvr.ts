@@ -5,6 +5,11 @@
  * and upserts into the transactions table.
  *
  * CSV encoding: UTF-8 with BOM (newer files) or Big5 (older files)
+ *
+ * Environment variables:
+ *   DATA_SOURCE=live  — enable live pipeline mode (required for production).
+ *                       When absent, warns and exits early (sample data fallback
+ *                       remains in frontend/public/data/sample-transactions.json).
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -53,7 +58,22 @@ function extractCityCode(filename: string): string | null {
   return match ? match[1] : null;
 }
 
-async function importFile(filepath: string): Promise<number> {
+/**
+ * Query the DB for the most recent transaction_date already imported.
+ * Returns null if the table is empty or unreachable (safe: triggers full import).
+ */
+async function getMaxTransactionDate(): Promise<Date | null> {
+  try {
+    const result = await query("SELECT MAX(transaction_date) AS max_date FROM transactions");
+    const val = result.rows[0]?.max_date;
+    return val ? new Date(val) : null;
+  } catch {
+    // If the table doesn't exist yet, proceed with a full import
+    return null;
+  }
+}
+
+async function importFile(filepath: string, cutoffDate: Date | null = null): Promise<number> {
   const filename = path.basename(filepath);
   const cityCode = extractCityCode(filename);
   if (!cityCode) {
@@ -115,12 +135,19 @@ async function importFile(filepath: string): Promise<number> {
   }
 
   let imported = 0;
+  let skipped = 0;
 
   for (const rec of records) {
     if (!rec.編號 || !rec.交易年月日 || !rec.總價元) continue;
 
     const txDate = parseRocDate(rec.交易年月日);
     if (!txDate) continue;
+
+    // Incremental update: skip records on or before the existing max date
+    if (cutoffDate !== null && txDate <= cutoffDate) {
+      skipped++;
+      continue;
+    }
 
     const areaSqm = safeFloat(rec.建物移轉總面積平方公尺);
     const pricePerSqm = safeBigint(rec.單價元平方公尺);
@@ -206,7 +233,7 @@ async function importFile(filepath: string): Promise<number> {
     [imported, logId]
   );
 
-  console.log(`[ok] ${filename}: ${imported}/${records.length} records imported`);
+  console.log(`[ok] ${filename}: ${imported}/${records.length} records imported (${skipped} skipped as already-seen)`);
   return imported;
 }
 
@@ -218,10 +245,19 @@ async function importAll(): Promise<void> {
   }
 
   console.log(`Found ${files.length} CSV files to import`);
+
+  // Incremental update: fetch the current high-water mark once before processing any file
+  const cutoffDate = await getMaxTransactionDate();
+  if (cutoffDate) {
+    console.log(`[incremental] Skipping records on or before ${cutoffDate.toISOString().split("T")[0]}`);
+  } else {
+    console.log("[incremental] No existing records — performing full import");
+  }
+
   let total = 0;
 
   for (const file of files) {
-    const count = await importFile(path.join(DATA_DIR, file));
+    const count = await importFile(path.join(DATA_DIR, file), cutoffDate);
     total += count;
   }
 
@@ -229,12 +265,21 @@ async function importAll(): Promise<void> {
   console.log("[refresh] district_price_stats materialized view...");
   await query("REFRESH MATERIALIZED VIEW CONCURRENTLY district_price_stats");
 
-  console.log(`\nImport complete: ${total} total records`);
+  console.log(`\nImport complete: ${total} new records`);
   await close();
 }
 
 // CLI entry point
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // Guard: live pipeline requires explicit DATA_SOURCE=live to prevent
+  // accidentally clobbering the local sample-data fallback workflow.
+  if (process.env.DATA_SOURCE !== "live") {
+    console.log(
+      "[info] DATA_SOURCE is not 'live' — running in sample-data mode.\n" +
+      "       Set DATA_SOURCE=live to enable live 內政部 ingestion."
+    );
+    process.exit(0);
+  }
   await importAll();
 }
 

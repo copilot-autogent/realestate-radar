@@ -12,6 +12,8 @@
     "pipeline:import": "tsx src/pipeline/import-plvr.ts",
     "pipeline:geocode": "tsx src/pipeline/geocode-pending.ts",
     "pipeline:run": "tsx src/pipeline/download.ts && tsx src/pipeline/import-plvr.ts && tsx src/pipeline/geocode-pending.ts",
+    "pipeline:export": "tsx src/pipeline/export-static.ts",
+    "pipeline:live": "tsx src/pipeline/download.ts && tsx src/pipeline/import-plvr.ts && tsx src/pipeline/geocode-pending.ts && tsx src/pipeline/export-static.ts",
     "pipeline:assessed:import": "tsx src/pipeline/import-assessed-values.ts import",
     "pipeline:assessed:backfill": "tsx src/pipeline/import-assessed-values.ts backfill",
     "pipeline:permits": "cd .. && tsx scripts/ingest-permits.ts",
