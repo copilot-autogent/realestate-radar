@@ -1631,7 +1631,7 @@
 
     if (recent12.length < MIN_TX) return null;
 
-    const prices = recent12.map((f) => f.properties.unitPrice as number);
+    const prices = recent12.map((f) => Number(f.properties.unitPrice));
     const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
     if (mean === 0) return null;
 
