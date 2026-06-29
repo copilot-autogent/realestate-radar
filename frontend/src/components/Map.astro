@@ -1470,23 +1470,39 @@
    * Adds/removes pulsing ring markers on the map for districts that qualify
    * as buyer's market opportunities.  Accepts pre-computed qualifying keys
    * from `updateChoropleth` to avoid re-scanning rawAllFeatures per district.
-   * Always clears and recreates all markers so positions stay accurate after
-   * a city switch (new districtGeoJSON with different polygon coordinates).
+   * Diffs against the current marker set to avoid restarting CSS pulse animations
+   * (which would cause visible flicker on every choropleth update).
+   * Clears all markers first only when districtGeoJSON is absent/empty.
    */
   function updateBuyersMarketMarkers(qualifyingKeys: Set<string>): void {
-    // Always remove all existing markers first — positions must reflect current GeoJSON
-    for (const m of buyersMarketMarkers.values()) m.remove();
-    buyersMarketMarkers.clear();
+    if (!districtGeoJSON || !rawAllFeatures.length || qualifyingKeys.size === 0) {
+      for (const m of buyersMarketMarkers.values()) m.remove();
+      buyersMarketMarkers.clear();
+      return;
+    }
 
-    if (!districtGeoJSON || !rawAllFeatures.length || qualifyingKeys.size === 0) return;
-
+    // Build a lookup from key to district feature for position resolution
+    const featureByKey = new Map<string, any>();
     for (const f of districtGeoJSON.features) {
       const district = f.properties?.district as string | undefined;
       const city = f.properties?.city as string | undefined;
-      if (!district) continue;
+      if (district) featureByKey.set(`${city ?? ""}:${district}`, f);
+    }
 
-      const key = `${city ?? ""}:${district}`;
-      if (!qualifyingKeys.has(key)) continue;
+    // Remove markers for districts that no longer qualify
+    for (const [key, marker] of buyersMarketMarkers.entries()) {
+      if (!qualifyingKeys.has(key)) {
+        marker.remove();
+        buyersMarketMarkers.delete(key);
+      }
+    }
+
+    // Add markers for newly qualifying districts (don't recreate existing ones)
+    for (const key of qualifyingKeys) {
+      if (buyersMarketMarkers.has(key)) continue; // already present; preserve animation
+
+      const f = featureByKey.get(key);
+      if (!f) continue;
 
       let center: [number, number] | null = null;
       const geom = f.geometry;
