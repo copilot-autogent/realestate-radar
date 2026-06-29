@@ -1266,10 +1266,11 @@
     // Group transaction counts by YYYY-MM.
     // Use string slice on YYYY-MM-DD to avoid UTC-vs-local timezone shift when
     // constructing a Date from a bare date string (parsed as UTC by spec).
+    // Guard against non-string values (upstream GeoJSON properties are untyped).
     const monthMap: Record<string, number> = {};
     for (const f of features) {
-      const d = f.properties?.date as string | undefined;
-      if (!d || d.length < 7) continue;
+      const d = f.properties?.date;
+      if (typeof d !== "string" || d.length < 7) continue;
       const key = d.slice(0, 7); // "YYYY-MM" extracted directly — no Date parsing needed
       monthMap[key] = (monthMap[key] ?? 0) + 1;
     }
@@ -1291,6 +1292,8 @@
       months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
     }
 
+    // Months without any observed transactions are null (no record vs zero).
+    // Every key in monthMap is ≥1 since we only increment on observed rows.
     const counts: (number | null)[] = months.map((m) =>
       monthMap[m] != null ? monthMap[m] : null
     );
@@ -1301,21 +1304,26 @@
     }
 
     // Trend: last 3 months vs prior 3 months (index 9-11 vs 6-8).
-    // Only count months that actually have data (non-null) to avoid conflating
-    // "no transactions recorded" (null) with "zero transactions" (0).
+    // Null months contribute 0 to the sum (same as no transactions recorded).
     const last3: number = counts.slice(9).reduce<number>((s, v) => s + (v ?? 0), 0);
     const prior3: number = counts.slice(6, 9).reduce<number>((s, v) => s + (v ?? 0), 0);
 
     let trendLabel: string;
     let trendClass: string;
     if (last3 === 0 && prior3 === 0) {
-      // Both trend windows are empty — insufficient data for a meaningful trend
-      trendLabel = "→ 持平";
-      trendClass = "velocity-flat";
+      // All data is in the first half of the window — trend windows lack data
+      trendLabel = "資料不足";
+      trendClass = "velocity-na";
     } else if (prior3 === 0) {
-      // New or recovering market: data only in the recent window
-      trendLabel = "▲ 成交量增加";
-      trendClass = "velocity-rising";
+      // New or recovering market: data only in the recent window.
+      // Require ≥MIN_DATA_POINTS transactions to avoid noise from isolated records.
+      if (last3 >= MIN_DATA_POINTS) {
+        trendLabel = "▲ 成交量增加";
+        trendClass = "velocity-rising";
+      } else {
+        trendLabel = "→ 持平";
+        trendClass = "velocity-flat";
+      }
     } else {
       const ratio = (last3 - prior3) / prior3;
       if (ratio > TREND_THRESHOLD) {
