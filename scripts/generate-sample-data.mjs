@@ -58,6 +58,8 @@ for (const dist of districts) {
     const month = randInt(1, 13);
     const day = randInt(1, 29);
     const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    // buildYear in ROC year (e.g. 80 = 1991); 建築完成年月 in PLVR is ROC year × 100 + month
+    const buildYear = randInt(60, 113); // ROC 60–113 = AD 1971–2024
 
     const lon = dist.center[0] + (Math.random() - 0.5) * 0.03;
     const lat = dist.center[1] + (Math.random() - 0.5) * 0.02;
@@ -85,6 +87,7 @@ for (const dist of districts) {
         floor,
         floorsTotal: floors,
         rooms,
+        buildYear,
         /** 公告現值 元/平方公尺 (district-level, simulated ~60–80% of market) */
         assessedValuePerSqm,
         /** assessedValuePerSqm / unitPrice(元/sqm) × 100 */

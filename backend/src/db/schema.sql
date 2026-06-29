@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 
   -- Assessed land value (公告現值) — district-level join from 內政部地政司 dataset
   assessed_value_per_sqm NUMERIC(12,2),  -- District-median 公告現值 元/平方公尺
-  assessed_to_market_ratio NUMERIC(8,4), -- assessed_value_per_sqm / unit_price_sqm × 100
+  assessed_to_market_ratio NUMERIC(10,4), -- assessed_value_per_sqm / unit_price_sqm × 100
 
   -- Metadata
   land_use TEXT,                       -- 都市土地使用分區 (住, 商, 工)

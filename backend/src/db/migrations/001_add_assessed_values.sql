@@ -4,7 +4,7 @@
 -- Add assessed value columns to existing transactions
 ALTER TABLE transactions
   ADD COLUMN IF NOT EXISTS assessed_value_per_sqm NUMERIC(12,2),
-  ADD COLUMN IF NOT EXISTS assessed_to_market_ratio NUMERIC(8,4);
+  ADD COLUMN IF NOT EXISTS assessed_to_market_ratio NUMERIC(10,4);
 
 -- District-level 公告現值 aggregated from 內政部地政司 公告地價 dataset
 CREATE TABLE IF NOT EXISTS district_assessed_values (

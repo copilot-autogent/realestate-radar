@@ -14,18 +14,20 @@
  * update transactions with district-level assessed values.
  */
 
-import { readFileSync, existsSync } from "node:fs";
-import { createWriteStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { pipeline } from "node:stream/promises";
 import { parse } from "csv-parse/sync";
 import iconv from "iconv-lite";
 import { query, close } from "../db/connection.js";
 import type { DistrictAssessedValue } from "../types.js";
 
-const DATA_DIR = path.resolve(import.meta.dirname, "../../../data/downloads");
-const ASSESSED_DIR = path.resolve(import.meta.dirname, "../../../data/assessed");
+/**
+ * Normalize city/district names: convert 臺→台 and trim whitespace.
+ * The 公告地價 dataset uses 臺 while PLVR and CITY_CODES use 台.
+ */
+function normalizeName(s: string): string {
+  return s.trim().replace(/臺/g, "台");
+}
 
 /** Raw CSV row from 內政部地政司 公告現值 dataset */
 interface AssessedValueRawRow {
@@ -38,8 +40,9 @@ interface AssessedValueRawRow {
 }
 
 function detectAndDecode(buffer: Buffer): string {
+  // UTF-8 BOM — strip BOM bytes before decoding
   if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
-    return buffer.toString("utf-8");
+    return buffer.slice(3).toString("utf-8");
   }
   const utf8 = buffer.toString("utf-8");
   if (!utf8.includes("�")) return utf8;
@@ -48,7 +51,9 @@ function detectAndDecode(buffer: Buffer): string {
 
 function rocYearToAd(rocYear: string): number | null {
   const n = parseInt(rocYear, 10);
-  return isNaN(n) ? null : n + 1911;
+  // Sanity-check: valid ROC years are roughly 50–130 (AD 1961–2041)
+  if (isNaN(n) || n < 50 || n > 130) return null;
+  return n + 1911;
 }
 
 function safeFloat(val: string | undefined): number | null {
@@ -59,17 +64,24 @@ function safeFloat(val: string | undefined): number | null {
 
 /**
  * Parse a 公告現值 CSV buffer into raw rows.
- * The dataset has no fixed number of header rows — tries with and without skipping first row.
+ * Tries known column-count variants; validates that the accepted variant's
+ * column count matches the actual data column count to avoid positional mis-mapping.
  */
 function parseAssessedValueCsv(content: string): AssessedValueRawRow[] {
-  const columnVariants = [
-    // Variant 1: standard column names
-    ["縣市", "鄉鎮市區", "地號", "公告現值", "公告地價", "年度"],
-    // Variant 2: codes prepended
-    ["縣市代碼", "鄉鎮市區代碼", "縣市", "鄉鎮市區", "地號", "公告現值", "公告地價", "年度"],
+  // First, probe how many columns the CSV actually has
+  const firstDataLine = content.split("\n").find(l => l.trim().length > 0);
+  const actualColCount = firstDataLine ? firstDataLine.split(",").length : 0;
+
+  const columnVariants: { cols: string[]; colCount: number }[] = [
+    // Variant 1: 6-column (no codes)
+    { cols: ["縣市", "鄉鎮市區", "地號", "公告現值", "公告地價", "年度"], colCount: 6 },
+    // Variant 2: 8-column (codes prepended)
+    { cols: ["縣市代碼", "鄉鎮市區代碼", "縣市", "鄉鎮市區", "地號", "公告現值", "公告地價", "年度"], colCount: 8 },
   ];
 
-  for (const cols of columnVariants) {
+  for (const { cols, colCount } of columnVariants) {
+    // Only try if the CSV has at least as many columns as this variant expects
+    if (actualColCount < colCount) continue;
     try {
       const rows = parse(content, {
         columns: cols,
@@ -77,7 +89,9 @@ function parseAssessedValueCsv(content: string): AssessedValueRawRow[] {
         relax_column_count: true,
         from_line: 2,  // skip header row
       }) as AssessedValueRawRow[];
-      if (rows.length > 0 && rows[0].縣市 && rows[0].年度) return rows;
+      if (rows.length > 0 && rows[0].縣市 && rows[0].年度 && rocYearToAd(rows[0].年度) !== null) {
+        return rows;
+      }
     } catch {
       // try next variant
     }
@@ -106,8 +120,8 @@ function aggregateToDistrict(rows: AssessedValueRawRow[]): DistrictAssessedValue
     const adYear = rocYearToAd(row.年度);
     if (!adYear) continue;
 
-    const city = (row.縣市 ?? "").trim();
-    const district = (row.鄉鎮市區 ?? "").trim();
+    const city = normalizeName(row.縣市 ?? "");
+    const district = normalizeName(row.鄉鎮市區 ?? "");
     if (!city || !district) continue;
 
     const key = `${city}|${district}|${adYear}`;
@@ -168,19 +182,26 @@ export async function importAssessedValueFile(filepath: string): Promise<number>
   console.log(`[assessed] Aggregated to ${districts.length} district-year records`);
 
   let upserted = 0;
-  for (const d of districts) {
-    await query(
-      `INSERT INTO district_assessed_values
-         (city, district, year, median_assessed_value_per_sqm, parcel_count, source_file)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (city, district, year) DO UPDATE SET
-         median_assessed_value_per_sqm = EXCLUDED.median_assessed_value_per_sqm,
-         parcel_count = EXCLUDED.parcel_count,
-         source_file = EXCLUDED.source_file,
-         imported_at = NOW()`,
-      [d.city, d.district, d.year, d.medianAssessedValuePerSqm, d.parcelCount, filename]
-    );
-    upserted++;
+  await query("BEGIN");
+  try {
+    for (const d of districts) {
+      await query(
+        `INSERT INTO district_assessed_values
+           (city, district, year, median_assessed_value_per_sqm, parcel_count, source_file)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (city, district, year) DO UPDATE SET
+           median_assessed_value_per_sqm = EXCLUDED.median_assessed_value_per_sqm,
+           parcel_count = EXCLUDED.parcel_count,
+           source_file = EXCLUDED.source_file,
+           imported_at = NOW()`,
+        [d.city, d.district, d.year, d.medianAssessedValuePerSqm, d.parcelCount, filename]
+      );
+      upserted++;
+    }
+    await query("COMMIT");
+  } catch (err) {
+    await query("ROLLBACK");
+    throw err;
   }
 
   console.log(`[assessed] Upserted ${upserted} district-year records`);
@@ -199,11 +220,13 @@ export async function importAssessedValueFile(filepath: string): Promise<number>
 export async function backfillTransactionAssessedValues(): Promise<number> {
   console.log("[assessed] Back-filling transaction assessed values...");
 
-  // Join transactions with the district_assessed_values for the closest available year
+  // Join transactions with the district_assessed_values for the closest available year.
+  // Tie-break by preferring the more recent (larger) year when year_diff is equal.
   const result = await query(`
     WITH ranked AS (
       SELECT
         t.id AS tx_id,
+        dav.year AS assessed_year,
         dav.median_assessed_value_per_sqm,
         ABS(dav.year - EXTRACT(YEAR FROM t.transaction_date)::INTEGER) AS year_diff
       FROM transactions t
@@ -214,18 +237,21 @@ export async function backfillTransactionAssessedValues(): Promise<number> {
     best AS (
       SELECT DISTINCT ON (tx_id)
         tx_id,
-        median_assessed_value_per_sqm,
-        year_diff
+        median_assessed_value_per_sqm
       FROM ranked
-      ORDER BY tx_id, year_diff ASC
+      ORDER BY tx_id, year_diff ASC, assessed_year DESC
     )
     UPDATE transactions t
     SET
       assessed_value_per_sqm = b.median_assessed_value_per_sqm,
       -- unit_price is stored in 元/坪; convert back to 元/sqm: unit_price / 3.30579
+      -- Clamp ratio to NUMERIC(10,4) range; guard against zero/near-zero prices
       assessed_to_market_ratio = CASE
         WHEN (t.unit_price / 3.30579) > 0
-        THEN ROUND((b.median_assessed_value_per_sqm / (t.unit_price / 3.30579) * 100)::NUMERIC, 4)
+        THEN LEAST(
+          ROUND((b.median_assessed_value_per_sqm / (t.unit_price / 3.30579) * 100)::NUMERIC, 4),
+          9999999.9999
+        )
         ELSE NULL
       END
     FROM best b
@@ -250,7 +276,8 @@ export async function loadDistrictAssessedValueMap(): Promise<Map<string, number
 
   const map = new Map<string, number>();
   for (const row of result.rows) {
-    const key = `${row.city}|${row.district}|${row.year}`;
+    // Store with normalized names so lookupAssessedValue can find them reliably
+    const key = `${normalizeName(row.city)}|${normalizeName(row.district)}|${row.year}`;
     map.set(key, parseFloat(row.median_assessed_value_per_sqm));
   }
   return map;
@@ -266,10 +293,12 @@ export function lookupAssessedValue(
   district: string,
   txYear: number,
 ): number | null {
+  const normCity = normalizeName(city);
+  const normDistrict = normalizeName(district);
   // Try exact year first, then ±1, ±2, ±3
   for (let delta = 0; delta <= 3; delta++) {
     for (const offset of delta === 0 ? [0] : [delta, -delta]) {
-      const key = `${city}|${district}|${txYear + offset}`;
+      const key = `${normCity}|${normDistrict}|${txYear + offset}`;
       const val = map.get(key);
       if (val !== undefined) return val;
     }

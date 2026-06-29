@@ -142,8 +142,14 @@ async function importFile(filepath: string): Promise<number> {
           $20, $21, $22, $23,
           $24, $25
         ) ON CONFLICT (serial_number) DO UPDATE SET
-          assessed_value_per_sqm = EXCLUDED.assessed_value_per_sqm,
-          assessed_to_market_ratio = EXCLUDED.assessed_to_market_ratio`,
+          assessed_value_per_sqm = CASE
+            WHEN EXCLUDED.assessed_value_per_sqm IS NOT NULL THEN EXCLUDED.assessed_value_per_sqm
+            ELSE transactions.assessed_value_per_sqm
+          END,
+          assessed_to_market_ratio = CASE
+            WHEN EXCLUDED.assessed_to_market_ratio IS NOT NULL THEN EXCLUDED.assessed_to_market_ratio
+            ELSE transactions.assessed_to_market_ratio
+          END`,
         [
           city,
           rec.鄉鎮市區,
