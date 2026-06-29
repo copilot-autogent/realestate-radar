@@ -2537,6 +2537,8 @@
         <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
       </div>`;
     document.getElementById("map")!.appendChild(legend);
+    // Signal that all Mapbox layers are registered so overlay restore can proceed
+    document.dispatchEvent(new CustomEvent("map-layers-ready"));
   });
 
   // ---- Popup on transaction click ----
