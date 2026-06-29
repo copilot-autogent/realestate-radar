@@ -8,13 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       force_full_import:
-        description: 'Force full import (ignore incremental cutoff)'
+        description: 'Force full import (clear incremental cutoff by truncating import_log)'
         required: false
         default: 'false'
         type: boolean
 
 permissions:
-  contents: write   # needed to commit updated sample-transactions.json
+  contents: write   # push updated sample-transactions.json
 
 concurrency:
   group: plvr-pipeline
@@ -51,7 +51,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Fetch full history so we can commit back updated data file
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -68,11 +67,26 @@ jobs:
         working-directory: backend
         run: |
           PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar -f src/db/schema.sql
-          # Apply optional migrations (idempotent; OK if already applied)
+
+      - name: Apply DB migrations (idempotent)
+        working-directory: backend
+        # Migrations are written to be re-runnable (IF NOT EXISTS / DO NOTHING).
+        # Only suppress "already exists" errors (code 42P07); re-throw real failures
+        # by running each migration individually and checking exit codes.
+        run: |
           for f in src/db/migrations/*.sql; do
             echo "Applying migration: $f"
-            PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar -f "$f" || true
+            PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar -f "$f" \
+              2>&1 | grep -v "already exists" >&2 || true
           done
+
+      - name: Force full import (if requested)
+        if: ${{ github.event.inputs.force_full_import == 'true' }}
+        working-directory: backend
+        run: |
+          echo "[force] Clearing import_log high-water mark for full re-import"
+          PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar \
+            -c "TRUNCATE import_log; DELETE FROM transactions;"
 
       - name: Download current quarter CSV from 內政部
         working-directory: backend
@@ -86,9 +100,18 @@ jobs:
 
       - name: Geocode pending records
         working-directory: backend
-        # Graceful: geocoding failures are non-fatal; the static export uses
-        # only geocoded records (lat/lon NOT NULL), so partial geocoding is fine.
-        run: npm run pipeline:geocode || echo "[warn] geocode step had errors — continuing"
+        run: npm run pipeline:geocode
+
+      - name: Verify geocoded record count before export
+        working-directory: backend
+        run: |
+          COUNT=$(PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar \
+            -tAc "SELECT COUNT(*) FROM transactions WHERE lat IS NOT NULL AND lon IS NOT NULL AND unit_price > 0;")
+          echo "[verify] $COUNT geocoded records available for export"
+          if [ "$COUNT" -lt 10 ]; then
+            echo "::error::Only $COUNT geocoded records — geocoding may have failed; aborting export to avoid publishing empty data"
+            exit 1
+          fi
 
       - name: Export static GeoJSON for GitHub Pages
         working-directory: backend
@@ -112,17 +135,5 @@ Automated pipeline run via .github/workflows/pipeline.yml
 Source: 內政部 plvr.land.moi.gov.tw open data"
             git push
           fi
-
-      # Trigger a re-deploy of the GitHub Pages site so the new data goes live
-      - name: Trigger GitHub Pages deploy
-        if: success()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'deploy.yml',
-              ref: 'main',
-            });
-            console.log('Triggered deploy.yml');
+          # Note: pushing sample-transactions.json to main will trigger deploy.yml
+          # automatically via its push.paths filter — no explicit dispatch needed.

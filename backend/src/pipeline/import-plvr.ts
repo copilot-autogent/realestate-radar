@@ -143,8 +143,10 @@ async function importFile(filepath: string, cutoffDate: Date | null = null): Pro
     const txDate = parseRocDate(rec.交易年月日);
     if (!txDate) continue;
 
-    // Incremental update: skip records on or before the existing max date
-    if (cutoffDate !== null && txDate <= cutoffDate) {
+    // Incremental update: skip records strictly before the existing max date.
+    // Using strict `<` (not `<=`) so records on the boundary date are always
+    // re-attempted — ON CONFLICT DO UPDATE makes the upsert idempotent.
+    if (cutoffDate !== null && txDate < cutoffDate) {
       skipped++;
       continue;
     }

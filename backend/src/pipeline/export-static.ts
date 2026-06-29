@@ -26,7 +26,7 @@ const EXPORT_DAYS = parseInt(process.env.EXPORT_DAYS ?? "730", 10);
 
 const OUT_PATH = path.resolve(
   import.meta.dirname,
-  "../../../../frontend/public/data/sample-transactions.json"
+  "../../../frontend/public/data/sample-transactions.json"
 );
 
 interface ExportRow {

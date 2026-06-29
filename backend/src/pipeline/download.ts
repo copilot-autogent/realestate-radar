@@ -16,15 +16,24 @@ const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000;
 
 /** Fetch with exponential backoff; retries on transient 5xx or network errors. */
-async function fetchWithRetry(url: string, init: RequestInit, attempt = 0): Promise<Response> {
+async function fetchWithRetry(
+  url: string,
+  headers: Record<string, string>,
+  attempt = 0
+): Promise<Response> {
   try {
-    const res = await fetch(url, init);
+    const res = await fetch(url, {
+      headers,
+      // Fresh signal per attempt — reusing a signal across retries can
+      // cause retries to abort immediately if the original timer elapsed.
+      signal: AbortSignal.timeout(60_000),
+    });
     // Only retry transient server errors (5xx); 4xx are permanent
     if (res.status >= 500 && attempt < MAX_RETRIES) {
       const delay = RETRY_BASE_MS * Math.pow(2, attempt);
       console.warn(`[retry] HTTP ${res.status} — waiting ${delay}ms before retry ${attempt + 1}/${MAX_RETRIES}`);
       await new Promise(r => setTimeout(r, delay));
-      return fetchWithRetry(url, init, attempt + 1);
+      return fetchWithRetry(url, headers, attempt + 1);
     }
     return res;
   } catch (err) {
@@ -32,7 +41,7 @@ async function fetchWithRetry(url: string, init: RequestInit, attempt = 0): Prom
       const delay = RETRY_BASE_MS * Math.pow(2, attempt);
       console.warn(`[retry] Network error (${(err as Error).message}) — waiting ${delay}ms before retry ${attempt + 1}/${MAX_RETRIES}`);
       await new Promise(r => setTimeout(r, delay));
-      return fetchWithRetry(url, init, attempt + 1);
+      return fetchWithRetry(url, headers, attempt + 1);
     }
     throw err;
   }
@@ -85,14 +94,13 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
     const url = `${BASE_URL}?${params.toString()}`;
     console.log(`[download] ${cityCode} (${CITY_CODES[cityCode]}) ${year}S${season}...`);
 
+    const HEADERS = {
+      "User-Agent": "RealEstateRadar/0.1 (github.com/copilot-autogent/realestate-radar)",
+      Accept: "text/csv,application/octet-stream,*/*",
+    };
+
     try {
-      const res = await fetchWithRetry(url, {
-        headers: {
-          "User-Agent": "RealEstateRadar/0.1 (github.com/copilot-autogent/realestate-radar)",
-          Accept: "text/csv,application/octet-stream,*/*",
-        },
-        signal: AbortSignal.timeout(60_000),
-      });
+      const res = await fetchWithRetry(url, HEADERS);
 
       if (!res.ok) {
         console.warn(`[warn] ${cityCode}: HTTP ${res.status} after retries — skipping`);
