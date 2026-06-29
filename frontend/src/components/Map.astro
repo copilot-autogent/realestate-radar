@@ -240,6 +240,37 @@
     padding-left: 2px;
   }
 
+  /* ---- 成交量趨勢 Velocity sparkline ---- */
+  .velocity-trend-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .velocity-rising  { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
+  .velocity-falling { color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .velocity-flat    { color: #a16207; background: #fefce8; border: 1px solid #fde047; }
+  .velocity-na      { color: #94a3b8; font-size: 0.76rem; font-weight: 400; font-style: italic; }
+  .velocity-spark-wrap {
+    margin-top: 8px;
+  }
+  .velocity-spark-label {
+    font-size: 0.73rem;
+    color: #64748b;
+    margin-bottom: 2px;
+  }
+  .velocity-spark-axis {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-top: 1px;
+  }
+
   /* ---- 買方時機分 Buyer Timing Score ---- */
   .buyer-score-badge {
     display: inline-flex;
@@ -899,6 +930,8 @@
     yoyClass: string;
     txCount6mo: number;
     medianBuildingAge: string;
+    velocityTrend: string;
+    velocityClass: string;
   } {
     const features = rawAllFeatures.filter(
       (f) => f.properties?.district === district && (!city || f.properties?.city === city)
@@ -947,7 +980,12 @@
       ? `${ages[Math.floor(ages.length / 2)]} 年`
       : "—";
 
-    return { medianPriceWan, yoyPct, yoyClass, txCount6mo, medianBuildingAge };
+    // Monthly velocity trend
+    const vel = computeMonthlyVelocity(district, city);
+    const velocityTrend = vel.trendLabel;
+    const velocityClass = vel.trendClass;
+
+    return { medianPriceWan, yoyPct, yoyClass, txCount6mo, medianBuildingAge, velocityTrend, velocityClass };
   }
 
   /** Render (or refresh) the comparison panel table from current pinnedDistricts state. */
@@ -984,6 +1022,9 @@
       ["年增率 YoY",         (m) => `<span class="${m.yoyClass}">${m.yoyPct}</span>`],
       ["近半年成交 (筆)",     (m) => `${m.txCount6mo || "0"}`],
       ["中位屋齡",           (m) => m.medianBuildingAge],
+      ["成交量趨勢",         (m) => m.velocityClass === "velocity-na"
+        ? `<span class="val-na">${escHtml(m.velocityTrend)}</span>`
+        : `<span class="velocity-trend-badge ${m.velocityClass}">${escHtml(m.velocityTrend)}</span>`],
     ];
 
     const tbody = table.querySelector("tbody") as HTMLTableSectionElement;
@@ -1200,6 +1241,158 @@
       <div class="yoy-row volume-count-row"><span class="yoy-row-label">本區交易量 (近12個月)</span><span>${vol.count12mo} 筆</span></div>
       <div class="yoy-row"><span class="yoy-row-label">較去年同期</span><span class="volume-signal volume-${vol.tier}">${vol.arrow} ${pctStr}%</span></div>
       <div class="volume-interp">${vol.label}</div>`;
+  }
+
+  /**
+   * Computes a 12-month rolling monthly transaction count sparkline for a district.
+   * Anchors to the latest month present in rawAllFeatures for the district.
+   * Gate: requires ≥3 months with data in the 12-month window.
+   * Trend: computed from sum of last 3 months vs prior 3 months (months 4–6 from end).
+   */
+  function computeMonthlyVelocity(district: string, city?: string): {
+    hasData: boolean;
+    months: string[];      // YYYY-MM labels for 12-month window
+    counts: (number | null)[]; // transaction count per month, null if no data
+    trendLabel: string;    // ▲ 成交量增加 / ▼ 成交量萎縮 / → 持平 / 資料不足
+    trendClass: string;    // CSS class: velocity-rising / velocity-falling / velocity-flat / velocity-na
+  } {
+    const MIN_DATA_POINTS = 3;
+    const TREND_THRESHOLD = 0.05; // 5% change to register as rising/falling
+
+    const features = rawAllFeatures.filter(
+      (f) =>
+        f.properties?.district === district &&
+        (!city || f.properties?.city === city)
+    );
+
+    // Group transaction counts by YYYY-MM.
+    // Use string slice on YYYY-MM-DD to avoid UTC-vs-local timezone shift when
+    // constructing a Date from a bare date string (parsed as UTC by spec).
+    // Guard against non-string values (upstream GeoJSON properties are untyped).
+    const monthMap: Record<string, number> = {};
+    for (const f of features) {
+      const d = f.properties?.date;
+      if (typeof d !== "string" || d.length < 7) continue;
+      const key = d.slice(0, 7); // "YYYY-MM" extracted directly — no Date parsing needed
+      if (!/^\d{4}-\d{2}$/.test(key)) continue; // guard against non-YYYY-MM-DD date formats
+      monthMap[key] = (monthMap[key] ?? 0) + 1;
+    }
+
+    const allMonthKeys = Object.keys(monthMap).sort();
+    if (allMonthKeys.length === 0) {
+      return { hasData: false, months: [], counts: [], trendLabel: "資料不足", trendClass: "velocity-na" };
+    }
+
+    // Anchor 12-month window at the latest month present
+    const lastKey = allMonthKeys[allMonthKeys.length - 1];
+    const [lastYr, lastMo] = lastKey.split("-").map(Number);
+    const anchorDate = new Date(lastYr, lastMo - 1, 1);
+
+    const months: string[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(anchorDate);
+      d.setMonth(d.getMonth() - i);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+
+    // Months without any observed transactions are null (no record vs zero).
+    // Every key in monthMap is ≥1 since we only increment on observed rows.
+    const counts: (number | null)[] = months.map((m) =>
+      monthMap[m] != null ? monthMap[m] : null
+    );
+
+    const dataPointCount = counts.filter((c) => c !== null).length;
+    if (dataPointCount < MIN_DATA_POINTS) {
+      return { hasData: false, months, counts, trendLabel: "資料不足", trendClass: "velocity-na" };
+    }
+
+    // Trend: last 3 months vs prior 3 months (index 9-11 vs 6-8).
+    // Null months contribute 0 to the sum (same as no transactions recorded).
+    const last3: number = counts.slice(9).reduce<number>((s, v) => s + (v ?? 0), 0);
+    const prior3: number = counts.slice(6, 9).reduce<number>((s, v) => s + (v ?? 0), 0);
+
+    let trendLabel: string;
+    let trendClass: string;
+    if (last3 === 0 && prior3 === 0) {
+      // All data is in the first half of the window — trend windows lack data
+      trendLabel = "資料不足";
+      trendClass = "velocity-na";
+    } else if (prior3 === 0) {
+      // New or recovering market: data only in the recent window.
+      // Require ≥MIN_DATA_POINTS transactions to avoid noise from isolated records.
+      if (last3 >= MIN_DATA_POINTS) {
+        trendLabel = "▲ 成交量增加";
+        trendClass = "velocity-rising";
+      } else {
+        // Too few recent transactions and no prior baseline — insufficient for trend
+        trendLabel = "資料不足";
+        trendClass = "velocity-na";
+      }
+    } else {
+      const ratio = (last3 - prior3) / prior3;
+      if (ratio > TREND_THRESHOLD) {
+        trendLabel = "▲ 成交量增加";
+        trendClass = "velocity-rising";
+      } else if (ratio < -TREND_THRESHOLD) {
+        trendLabel = "▼ 成交量萎縮";
+        trendClass = "velocity-falling";
+      } else {
+        trendLabel = "→ 持平";
+        trendClass = "velocity-flat";
+      }
+    }
+
+    return { hasData: true, months, counts, trendLabel, trendClass };
+  }
+
+  /**
+   * Renders an inline SVG sparkline for monthly transaction counts.
+   * Similar to buildSparkline but for integer count data.
+   */
+  function buildVolumeSparkline(counts: (number | null)[], width = 204, height = 40): string {
+    const W = width, H = height;
+    const PX = 3, PY = 4;
+    const plotW = W - PX * 2;
+    const plotH = H - PY * 2;
+    const n = counts.length;
+
+    const nonNull = counts.filter((v): v is number => v !== null);
+    if (nonNull.length === 0) {
+      return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><text x="${W / 2}" y="${H / 2 + 3}" text-anchor="middle" font-size="9" fill="#94a3b8">暫無資料</text></svg>`;
+    }
+
+    const yMin = 0; // Count bars start at 0
+    const yMax = Math.max(...nonNull);
+    const yRange = yMax - yMin || 1;
+
+    const pts: ([number, number] | null)[] = counts.map((v, i) => {
+      if (v === null) return null;
+      const x = PX + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+      const y = PY + plotH - ((v - yMin) / yRange) * plotH;
+      return [+x.toFixed(1), +y.toFixed(1)];
+    });
+
+    const lines: string[] = [];
+    let seg: [number, number][] = [];
+    const flushSeg = () => {
+      if (seg.length >= 2) {
+        lines.push(`<polyline points="${seg.map((p) => p.join(",")).join(" ")}" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`);
+      } else if (seg.length === 1) {
+        lines.push(`<circle cx="${seg[0][0]}" cy="${seg[0][1]}" r="2" fill="#10b981"/>`);
+      }
+      seg = [];
+    };
+    for (const pt of pts) {
+      if (pt === null) { flushSeg(); } else { seg.push(pt); }
+    }
+    flushSeg();
+
+    const dots = pts
+      .filter((p): p is [number, number] => p !== null)
+      .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.2" fill="#059669" stroke="white" stroke-width="1.2"/>`)
+      .join("");
+
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible">${lines.join("")}${dots}</svg>`;
   }
 
   /** Renders the price YoY signal as an HTML row string for use in popups and the stats panel. */
@@ -2468,6 +2661,18 @@
          </div>`
       : `<div class="popup-row" style="color:#94a3b8;font-size:0.76rem;margin-top:4px">走勢資料不足</div>`;
 
+    // Build volume sparkline section
+    const velData = computeMonthlyVelocity(district, activeCity);
+    const volumeSparkSection = velData.hasData
+      ? `<div class="velocity-spark-wrap">
+           <div class="velocity-spark-label">📊 月成交量 (近12個月) <span class="velocity-trend-badge ${velData.trendClass}">${escHtml(velData.trendLabel)}</span></div>
+           ${buildVolumeSparkline(velData.counts)}
+           <div class="velocity-spark-axis">
+             <span>${velData.months[0] ?? ""}</span><span>${velData.months[velData.months.length - 1] ?? ""}</span>
+           </div>
+         </div>`
+      : `<div class="popup-row" style="color:#94a3b8;font-size:0.76rem;margin-top:4px">成交量資料不足</div>`;
+
     const pinCity = activeCity || "";
     const isPinned = pinnedDistricts.some((p) => p.district === district && p.city === pinCity);
     const atCap    = !isPinned && pinnedDistricts.length >= MAX_PINS;
@@ -2522,6 +2727,7 @@
          ${buyerScoreClickHtml}
          ${ageClickHtml}
          ${sparkSection}
+         ${volumeSparkSection}
          <div class="popup-row" style="margin-top:6px">
            <span class="popup-label">近半年成交</span>
            <span class="popup-value">${sixMonthCount} 筆</span>
