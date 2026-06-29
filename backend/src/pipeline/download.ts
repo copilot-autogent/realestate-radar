@@ -6,11 +6,46 @@
  * URL pattern: GET with city code + data type + season params.
  */
 
-import { mkdirSync, createWriteStream, existsSync } from "node:fs";
+import { mkdirSync, createWriteStream, existsSync, unlinkSync, renameSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
 import { CITY_CODES } from "../types.js";
+
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 2000;
+
+/** Fetch with exponential backoff; retries on transient 5xx or network errors. */
+async function fetchWithRetry(
+  url: string,
+  headers: Record<string, string>,
+  attempt = 0
+): Promise<Response> {
+  try {
+    const res = await fetch(url, {
+      headers,
+      // Fresh signal per attempt — reusing a signal across retries can
+      // cause retries to abort immediately if the original timer elapsed.
+      signal: AbortSignal.timeout(60_000),
+    });
+    // Only retry transient server errors (5xx); 4xx are permanent
+    if (res.status >= 500 && attempt < MAX_RETRIES) {
+      const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+      console.warn(`[retry] HTTP ${res.status} — waiting ${delay}ms before retry ${attempt + 1}/${MAX_RETRIES}`);
+      await new Promise(r => setTimeout(r, delay));
+      return fetchWithRetry(url, headers, attempt + 1);
+    }
+    return res;
+  } catch (err) {
+    if (attempt < MAX_RETRIES) {
+      const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+      console.warn(`[retry] Network error (${(err as Error).message}) — waiting ${delay}ms before retry ${attempt + 1}/${MAX_RETRIES}`);
+      await new Promise(r => setTimeout(r, delay));
+      return fetchWithRetry(url, headers, attempt + 1);
+    }
+    throw err;
+  }
+}
 
 const DATA_DIR = path.resolve(import.meta.dirname, "../../../data/downloads");
 
@@ -59,17 +94,16 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
     const url = `${BASE_URL}?${params.toString()}`;
     console.log(`[download] ${cityCode} (${CITY_CODES[cityCode]}) ${year}S${season}...`);
 
+    const HEADERS = {
+      "User-Agent": "RealEstateRadar/0.1 (github.com/copilot-autogent/realestate-radar)",
+      Accept: "text/csv,application/octet-stream,*/*",
+    };
+
     try {
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": "RealEstateRadar/0.1 (github.com/copilot-autogent/realestate-radar)",
-          Accept: "text/csv,application/octet-stream,*/*",
-        },
-        signal: AbortSignal.timeout(30_000),
-      });
+      const res = await fetchWithRetry(url, HEADERS);
 
       if (!res.ok) {
-        console.warn(`[warn] ${cityCode}: HTTP ${res.status} — skipping`);
+        console.warn(`[warn] ${cityCode}: HTTP ${res.status} after retries — skipping`);
         continue;
       }
 
@@ -78,12 +112,22 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
         continue;
       }
 
-      const writable = createWriteStream(outPath);
-      await pipeline(Readable.fromWeb(res.body as any), writable);
+      // Write to a temp path first; rename on success to avoid partial files
+      const tmpPath = `${outPath}.tmp`;
+      const writable = createWriteStream(tmpPath);
+      try {
+        await pipeline(Readable.fromWeb(res.body as any), writable);
+        renameSync(tmpPath, outPath);
+      } catch (writeErr) {
+        // Clean up partial file
+        try { unlinkSync(tmpPath); } catch { /* ignore */ }
+        throw writeErr;
+      }
       console.log(`[ok] ${filename}`);
       downloaded.push(outPath);
     } catch (err) {
       console.error(`[error] ${cityCode}:`, (err as Error).message);
+      // Non-fatal: pipeline continues with other cities
     }
   }
 

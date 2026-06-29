@@ -6,6 +6,7 @@ on:
     paths:
       - 'frontend/**'
       - 'scripts/generate-metadata.mjs'
+      - 'frontend/public/data/sample-transactions.json'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 

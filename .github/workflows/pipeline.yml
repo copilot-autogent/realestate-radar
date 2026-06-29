@@ -1,0 +1,161 @@
+name: Live 實價登錄 Data Pipeline
+
+on:
+  # Weekly on Monday at 03:00 UTC (data published on 1st/11th/21st; Monday catches all)
+  schedule:
+    - cron: '0 3 * * 1'
+  # Allow manual trigger from the Actions tab
+  workflow_dispatch:
+    inputs:
+      force_full_import:
+        description: 'Force full import (clear incremental cutoff by truncating import_log)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: write   # push updated sample-transactions.json
+  actions: write    # trigger deploy.yml after data commit
+
+concurrency:
+  group: plvr-pipeline
+  cancel-in-progress: false   # never cancel a running import
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: realestate_radar
+          POSTGRES_USER: radar
+          POSTGRES_PASSWORD: radar_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U radar -d realestate_radar"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATA_SOURCE: live
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: realestate_radar
+      DB_USER: radar
+      DB_PASSWORD: radar_dev
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Apply DB schema
+        working-directory: backend
+        run: |
+          PGPASSWORD=${{ env.DB_PASSWORD }} psql -h localhost -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} \
+            -v ON_ERROR_STOP=1 -f src/db/schema.sql
+
+      - name: Apply DB migrations (idempotent)
+        working-directory: backend
+        # All migrations use IF NOT EXISTS / DO NOTHING — safe to re-run.
+        # ON_ERROR_STOP=1 ensures genuine migration errors fail the step.
+        run: |
+          for f in src/db/migrations/*.sql; do
+            echo "Applying migration: $f"
+            PGPASSWORD=${{ env.DB_PASSWORD }} psql -h localhost -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} \
+              -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Force full import (if requested)
+        if: ${{ github.event.inputs.force_full_import == 'true' }}
+        working-directory: backend
+        run: |
+          echo "[force] Clearing transactions + import_log for full re-import"
+          # WARNING: destructive — deletes all existing transaction records
+          PGPASSWORD=${{ env.DB_PASSWORD }} psql -h localhost -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} \
+            -v ON_ERROR_STOP=1 -c "TRUNCATE transactions, import_log CASCADE;"
+
+      - name: Download current quarter CSV from 內政部
+        working-directory: backend
+        run: npm run pipeline:download
+        # Pipeline must not fail the build on transient 內政部 server errors —
+        # individual city downloads are skipped with a warning; exit code stays 0.
+
+      - name: Import CSV into PostGIS (incremental)
+        working-directory: backend
+        run: npm run pipeline:import
+
+      - name: Geocode pending records
+        working-directory: backend
+        run: npm run pipeline:geocode
+
+      - name: Verify geocoded record count before export
+        working-directory: backend
+        run: |
+          COUNT=$(PGPASSWORD=${{ env.DB_PASSWORD }} psql -h localhost -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} \
+            -tAc "SELECT COUNT(*) FROM transactions WHERE lat IS NOT NULL AND lon IS NOT NULL AND unit_price > 0;")
+          echo "[verify] $COUNT geocoded records available for export"
+          if [ "$COUNT" -lt 10 ]; then
+            echo "::error::Only $COUNT geocoded records — geocoding may have failed; aborting export to avoid publishing empty data"
+            exit 1
+          fi
+
+      - name: Export static GeoJSON for GitHub Pages
+        working-directory: backend
+        run: npm run pipeline:export
+
+      - name: Commit updated transactions data
+        id: commit_data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Always operate on the default branch; -B creates local branch tracking origin/main
+          git checkout -B main origin/main
+          git add frontend/public/data/sample-transactions.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit — data is already up-to-date"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+          else
+            RECORD_COUNT=$(node -e "
+              const d = JSON.parse(require('fs').readFileSync('frontend/public/data/sample-transactions.json', 'utf8'));
+              console.log(d.features.length);
+            ")
+            git commit -m "chore(data): refresh live 實價登錄 data [${RECORD_COUNT} records]
+
+Automated pipeline run via .github/workflows/pipeline.yml
+Source: 內政部 plvr.land.moi.gov.tw open data"
+            # Pull-rebase before push to handle concurrent commits (e.g. another deploy)
+            git pull --rebase origin main
+            git push origin main
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Pushes made with GITHUB_TOKEN do not trigger other workflows by default.
+      # Explicitly dispatch deploy.yml so the new data goes live on GitHub Pages.
+      - name: Trigger GitHub Pages deploy
+        if: steps.commit_data.outputs.pushed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy.yml',
+              ref: 'main',
+            });
+            console.log('Triggered deploy.yml for updated data');

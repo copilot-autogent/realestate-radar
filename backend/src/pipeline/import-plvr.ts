@@ -5,6 +5,11 @@
  * and upserts into the transactions table.
  *
  * CSV encoding: UTF-8 with BOM (newer files) or Big5 (older files)
+ *
+ * Environment variables:
+ *   DATA_SOURCE=live  — enable live pipeline mode (required for production).
+ *                       When absent, warns and exits early (sample data fallback
+ *                       remains in frontend/public/data/sample-transactions.json).
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -53,7 +58,27 @@ function extractCityCode(filename: string): string | null {
   return match ? match[1] : null;
 }
 
-async function importFile(filepath: string): Promise<number> {
+/**
+ * Query the DB for the most recent transaction_date already imported.
+ * Returns null only when the table is empty (no data yet) or doesn't exist yet
+ * (first-run before schema is applied). Re-throws on genuine DB errors.
+ */
+async function getMaxTransactionDate(): Promise<Date | null> {
+  try {
+    const result = await query("SELECT MAX(transaction_date) AS max_date FROM transactions");
+    const val = result.rows[0]?.max_date;
+    return val ? new Date(val) : null;
+  } catch (err) {
+    const pgCode = (err as { code?: string }).code;
+    if (pgCode === "42P01") {
+      // Table doesn't exist yet — schema hasn't been applied; do a full import
+      return null;
+    }
+    throw err;
+  }
+}
+
+async function importFile(filepath: string, cutoffDate: Date | null = null): Promise<number> {
   const filename = path.basename(filepath);
   const cityCode = extractCityCode(filename);
   if (!cityCode) {
@@ -115,12 +140,21 @@ async function importFile(filepath: string): Promise<number> {
   }
 
   let imported = 0;
+  let skipped = 0;
 
   for (const rec of records) {
     if (!rec.編號 || !rec.交易年月日 || !rec.總價元) continue;
 
     const txDate = parseRocDate(rec.交易年月日);
     if (!txDate) continue;
+
+    // Incremental update: skip records strictly before the existing max date.
+    // Using strict `<` (not `<=`) so records on the boundary date are always
+    // re-attempted — ON CONFLICT DO UPDATE makes the upsert idempotent.
+    if (cutoffDate !== null && txDate < cutoffDate) {
+      skipped++;
+      continue;
+    }
 
     const areaSqm = safeFloat(rec.建物移轉總面積平方公尺);
     const pricePerSqm = safeBigint(rec.單價元平方公尺);
@@ -206,7 +240,7 @@ async function importFile(filepath: string): Promise<number> {
     [imported, logId]
   );
 
-  console.log(`[ok] ${filename}: ${imported}/${records.length} records imported`);
+  console.log(`[ok] ${filename}: ${imported}/${records.length} records imported (${skipped} skipped as already-seen)`);
   return imported;
 }
 
@@ -218,10 +252,23 @@ async function importAll(): Promise<void> {
   }
 
   console.log(`Found ${files.length} CSV files to import`);
+
+  // Incremental update: fetch the current high-water mark once before processing any file.
+  // Normalize to UTC midnight to match parseRocDate's local-midnight semantics at the boundary.
+  const rawCutoff = await getMaxTransactionDate();
+  const cutoffDate = rawCutoff
+    ? new Date(Date.UTC(rawCutoff.getFullYear(), rawCutoff.getMonth(), rawCutoff.getDate()))
+    : null;
+  if (cutoffDate) {
+    console.log(`[incremental] Skipping records strictly before ${cutoffDate.toISOString().split("T")[0]} (boundary date re-imported for completeness)`);
+  } else {
+    console.log("[incremental] No existing records — performing full import");
+  }
+
   let total = 0;
 
   for (const file of files) {
-    const count = await importFile(path.join(DATA_DIR, file));
+    const count = await importFile(path.join(DATA_DIR, file), cutoffDate);
     total += count;
   }
 
@@ -229,12 +276,24 @@ async function importAll(): Promise<void> {
   console.log("[refresh] district_price_stats materialized view...");
   await query("REFRESH MATERIALIZED VIEW CONCURRENTLY district_price_stats");
 
-  console.log(`\nImport complete: ${total} total records`);
+  console.log(`\nImport complete: ${total} new records`);
   await close();
 }
 
 // CLI entry point
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // Guard: live pipeline requires explicit DATA_SOURCE=live to prevent
+  // accidentally running against a dev DB without intending to.
+  if (process.env.DATA_SOURCE !== "live") {
+    // Exit 1 (not 0) so misconfigured CI runs fail visibly rather than
+    // silently producing stale data.
+    console.error(
+      "[error] DATA_SOURCE is not 'live' — live 內政部 ingestion requires DATA_SOURCE=live.\n" +
+      "        For local dev without PostGIS, use the sample-data fallback in\n" +
+      "        frontend/public/data/sample-transactions.json directly."
+    );
+    process.exit(1);
+  }
   await importAll();
 }
 
