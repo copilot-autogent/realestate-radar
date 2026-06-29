@@ -226,9 +226,9 @@ export function transactionsRouter(): Router {
             rooms: row.rooms,
             buildYear: row.build_year,
             assessedValuePerSqm: row.assessed_value_per_sqm != null
-              ? parseFloat(row.assessed_value_per_sqm) : null,
+              ? Number(row.assessed_value_per_sqm) : null,
             assessedToMarketRatio: row.assessed_to_market_ratio != null
-              ? parseFloat(row.assessed_to_market_ratio) : null,
+              ? Number(row.assessed_to_market_ratio) : null,
           },
         })),
       };

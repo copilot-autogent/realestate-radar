@@ -72,12 +72,18 @@ async function importFile(filepath: string): Promise<number> {
   const logId = logResult.rows[0].id;
 
   // Load district assessed values for ratio computation.
-  // Graceful degradation: if the migration hasn't been applied yet, proceed without assessed data.
+  // Graceful degradation: if the migration hasn't been applied yet (pg error 42P01 =
+  // undefined_table), proceed without assessed data. Re-throw other errors.
   let assessedMap = new Map<string, number>();
   try {
     assessedMap = await loadDistrictAssessedValueMap();
-  } catch {
-    console.warn("[import] district_assessed_values not available — proceeding without assessed data");
+  } catch (err) {
+    const pgCode = (err as { code?: string }).code;
+    if (pgCode === "42P01") {
+      console.warn("[import] district_assessed_values table not found — run migration 001_add_assessed_values.sql");
+    } else {
+      throw err;
+    }
   }
 
   const buffer = readFileSync(filepath);

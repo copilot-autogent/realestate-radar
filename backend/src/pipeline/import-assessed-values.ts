@@ -98,7 +98,8 @@ function parseAssessedValueCsv(content: string): AssessedValueRawRow[] {
     }
   }
 
-  // Fallback: auto-detect columns from first row
+  // All known variants failed — fall back to auto-detect (may produce partial data)
+  console.warn("[assessed] CSV column-variant detection failed; falling back to header auto-detect");
   return parse(content, {
     columns: true,
     skip_empty_lines: true,
