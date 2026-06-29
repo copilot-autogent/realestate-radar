@@ -1263,14 +1263,14 @@
         (!city || f.properties?.city === city)
     );
 
-    // Group transaction counts by YYYY-MM
+    // Group transaction counts by YYYY-MM.
+    // Use string slice on YYYY-MM-DD to avoid UTC-vs-local timezone shift when
+    // constructing a Date from a bare date string (parsed as UTC by spec).
     const monthMap: Record<string, number> = {};
     for (const f of features) {
       const d = f.properties?.date as string | undefined;
-      if (!d) continue;
-      const dt = new Date(d);
-      if (isNaN(dt.getTime())) continue;
-      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+      if (!d || d.length < 7) continue;
+      const key = d.slice(0, 7); // "YYYY-MM" extracted directly — no Date parsing needed
       monthMap[key] = (monthMap[key] ?? 0) + 1;
     }
 
@@ -1300,15 +1300,22 @@
       return { hasData: false, months, counts, trendLabel: "資料不足", trendClass: "velocity-na" };
     }
 
-    // Trend: last 3 months vs prior 3 months (months index 9-11 vs 6-8)
+    // Trend: last 3 months vs prior 3 months (index 9-11 vs 6-8).
+    // Only count months that actually have data (non-null) to avoid conflating
+    // "no transactions recorded" (null) with "zero transactions" (0).
     const last3: number = counts.slice(9).reduce<number>((s, v) => s + (v ?? 0), 0);
     const prior3: number = counts.slice(6, 9).reduce<number>((s, v) => s + (v ?? 0), 0);
 
     let trendLabel: string;
     let trendClass: string;
-    if (prior3 === 0) {
+    if (last3 === 0 && prior3 === 0) {
+      // Both trend windows are empty — insufficient data for a meaningful trend
       trendLabel = "→ 持平";
       trendClass = "velocity-flat";
+    } else if (prior3 === 0) {
+      // New or recovering market: data only in the recent window
+      trendLabel = "▲ 成交量增加";
+      trendClass = "velocity-rising";
     } else {
       const ratio = (last3 - prior3) / prior3;
       if (ratio > TREND_THRESHOLD) {
@@ -2649,7 +2656,7 @@
            <div class="velocity-spark-label">📊 月成交量 (近12個月) <span class="velocity-trend-badge ${velData.trendClass}">${escHtml(velData.trendLabel)}</span></div>
            ${buildVolumeSparkline(velData.counts)}
            <div class="velocity-spark-axis">
-             <span>${velData.months[0]}</span><span>${velData.months[11]}</span>
+             <span>${velData.months[0] ?? ""}</span><span>${velData.months[velData.months.length - 1] ?? ""}</span>
            </div>
          </div>`
       : `<div class="popup-row" style="color:#94a3b8;font-size:0.76rem;margin-top:4px">成交量資料不足</div>`;
