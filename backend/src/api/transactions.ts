@@ -115,6 +115,71 @@ export function transactionsRouter(): Router {
   });
 
   /**
+   * GET /api/transactions/volatility
+   * District-level price Coefficient of Variation (CV) over a 12-month rolling window.
+   * CV = stddev(unit_price) / avg(unit_price) × 100
+   * Minimum data gate: ≥10 transactions (districts below threshold return cv_pct = null).
+   *
+   * NOTE: The static (GitHub Pages) frontend computes CV client-side from loaded GeoJSON.
+   * This endpoint is for live-backend deployments where server-side aggregation is preferred.
+   * The 12-month window anchor is the global dataset MAX(transaction_date), which means
+   * cities whose most-recent transaction predates the global max may appear data-insufficient.
+   *
+   * Response per district:
+   *   city, district, tx_count_12mo, cv_pct (null if < 10 tx), tier
+   *   tier: "穩定" | "中波動" | "高波動" | "資料不足"
+   */
+  router.get("/volatility", async (_req: Request, res: Response) => {
+    try {
+      const result = await query(
+        `WITH recent AS (
+           SELECT
+             city,
+             district,
+             unit_price
+           FROM transactions
+           WHERE unit_price IS NOT NULL
+             AND unit_price > 0
+             AND transaction_date >= (
+               SELECT MAX(transaction_date) - INTERVAL '12 months'
+               FROM transactions
+               WHERE unit_price IS NOT NULL AND unit_price > 0
+             )
+         ),
+         agg AS (
+           SELECT
+             city,
+             district,
+             COUNT(*) AS tx_count_12mo,
+             CASE WHEN COUNT(*) >= 10
+               THEN ROUND((STDDEV_POP(unit_price) / NULLIF(AVG(unit_price), 0)) * 100, 2)
+               ELSE NULL
+             END AS cv_pct
+           FROM recent
+           GROUP BY city, district
+         )
+         SELECT
+           city,
+           district,
+           tx_count_12mo,
+           cv_pct,
+           CASE
+             WHEN cv_pct IS NULL THEN '資料不足'
+             WHEN cv_pct < 10    THEN '穩定'
+             WHEN cv_pct < 20    THEN '中波動'
+             ELSE                     '高波動'
+           END AS tier
+         FROM agg
+         ORDER BY city, district`
+      );
+      res.json({ data: result.rows });
+    } catch (err) {
+      console.error("Volatility query error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
    * GET /api/transactions/history
    * Price history for a specific address/building
    */

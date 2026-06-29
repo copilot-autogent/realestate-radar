@@ -286,6 +286,61 @@
   .buyer-score-yellow { color: #a16207; background: #fefce8; border: 1px solid #fde047; }
   .buyer-score-red    { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
   .buyer-score-insufficient { color: #94a3b8; font-size: 0.76rem; font-weight: 400; font-style: italic; }
+
+  /* ---- 價格波動度 Volatility Badge ---- */
+  .volatility-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .volatility-stable   { color: #15803d; background: #f0fdf4; border: 1px solid #86efac; }
+  .volatility-medium   { color: #a16207; background: #fefce8; border: 1px solid #fde047; }
+  .volatility-high     { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
+  .volatility-insufficient { color: #94a3b8; font-size: 0.76rem; font-weight: 400; font-style: italic; }
+  .volatility-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+    gap: 8px;
+  }
+  .volatility-row-label {
+    font-size: 0.76rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+  /* Combined signal callout: 最佳進場訊號 */
+  .best-entry-callout {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.80rem;
+    font-weight: 700;
+    color: #15803d;
+    margin-bottom: 6px;
+  }
+  /* Caveat card: high timing + high volatility warning */
+  .volatility-caveat-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.76rem;
+    color: #b91c1c;
+    margin-bottom: 6px;
+  }
   .buyer-score-row {
     display: flex;
     justify-content: space-between;
@@ -1541,12 +1596,97 @@
     return `<div class="buyer-score-row"><span class="buyer-score-row-label">買方時機分 <button class="buyer-score-help-btn" title="查看計算方法" aria-label="買方時機分計算方法">?</button></span><span class="buyer-score-badge ${cls}">${emoji} ${label} ${score}/100</span></div>`;
   }
 
+  // ---- Price Volatility (CV) ----
+
+  /**
+   * Computes the price Coefficient of Variation (CV) for a district over the last 12 months.
+   * CV = (stddev / mean) × 100  — using unitPrice (元/坪).
+   * Minimum data gate: ≥10 transactions in the 12-month window.
+   * Returns null when data is insufficient.
+   */
+  function computeVolatilityCV(district: string, city?: string): number | null {
+    const MIN_TX = 10;
+
+    const features = rawAllFeatures.filter(
+      (f) =>
+        f.properties?.district === district &&
+        (f.properties?.unitPrice as number) > 0 &&
+        (!city || f.properties?.city === city)
+    );
+
+    const validTimes = features
+      .map((f) => new Date((f.properties?.date as string) ?? "").getTime())
+      .filter((t) => !isNaN(t));
+
+    if (validTimes.length === 0) return null;
+
+    const maxTime = validTimes.reduce((a, b) => (a > b ? a : b), -Infinity);
+    const cut12mo = new Date(maxTime);
+    cut12mo.setFullYear(cut12mo.getFullYear() - 1);
+
+    const recent12 = features.filter((f) => {
+      const t = new Date((f.properties?.date as string) ?? "").getTime();
+      return !isNaN(t) && t >= cut12mo.getTime() && t <= maxTime;
+    });
+
+    if (recent12.length < MIN_TX) return null;
+
+    const prices = recent12.map((f) => Number(f.properties.unitPrice));
+    const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
+    if (mean === 0) return null;
+
+    const variance = prices.reduce((sum, p) => sum + (p - mean) ** 2, 0) / prices.length;
+    const stddev = Math.sqrt(variance);
+    return (stddev / mean) * 100;
+  }
+
+  /** Returns volatility tier info: label, CSS class, emoji. */
+  function volatilityTier(cv: number): { label: string; cls: string; emoji: string } {
+    if (cv < 10)  return { label: "穩定",  cls: "volatility-stable",  emoji: "🟢" };
+    if (cv < 20)  return { label: "中波動", cls: "volatility-medium",  emoji: "🟡" };
+    return               { label: "高波動", cls: "volatility-high",    emoji: "🔴" };
+  }
+
+  /** Renders the volatility badge row HTML for use in popups. */
+  function renderVolatilityBadgeHtml(district: string, city?: string): string {
+    if (!rawAllFeatures.length) return "";
+    const cv = computeVolatilityCV(district, city);
+    if (cv === null) {
+      return `<div class="volatility-row"><span class="volatility-row-label">價格波動度</span><span class="volatility-insufficient">資料不足</span></div>`;
+    }
+    const { label, cls, emoji } = volatilityTier(cv);
+    return `<div class="volatility-row"><span class="volatility-row-label">價格波動度 (CV ${cv.toFixed(1)}%)</span><span class="volatility-badge ${cls}">${emoji} ${label}</span></div>`;
+  }
+
+  /**
+   * Renders combined signal callouts for a district:
+   *  - 最佳進場訊號 when timing score ≥70 AND CV<10%
+   *  - Caveat card when timing score ≥70 AND CV>20%
+   */
+  function renderVolatilityCombinedSignalHtml(district: string, city?: string): string {
+    if (!rawAllFeatures.length) return "";
+    const score = computeBuyerTimingScore(district, city);
+    const cv = computeVolatilityCV(district, city);
+    if (score === null || cv === null) return "";
+
+    if (score >= 70 && cv < 10) {
+      return `<div class="best-entry-callout">🏆 最佳進場訊號：買方優勢 + 價格穩定</div>`;
+    }
+    if (score >= 70 && cv >= 20) {
+      return `<div class="volatility-caveat-card">⚠️ 買方時機佳，但價格波動大——進場時機影響更顯著，請留意低點。</div>`;
+    }
+    return "";
+  }
+
   // ---- Affordability overlay state ----
   let affordabilityActive = false;
   let affordabilityThreshold = 0; // TWD per ping
 
   // ---- Buyer timing score overlay state ----
   let buyerScoreActive = false;
+
+  // ---- Volatility overlay state ----
+  let volatilityActive = false;
 
   // ---- Completion overlay state ----
   let completionActive = false;
@@ -1765,9 +1905,8 @@
   function updateBuyerScoreLegend(active: boolean): void {
     const legend = document.getElementById("choropleth-legend");
     if (!legend) return;
-    if (active && !completionActive) {
-      // Only show buyer-score legend when completion overlay isn't also active
-      // (completion fill takes priority — show its legend to avoid mismatch)
+    if (active && !completionActive && !volatilityActive) {
+      // Only show buyer-score legend when completion/volatility overlay isn't also active
       legend.innerHTML = `
         <div class="legend-title">🎯 買方時機分</div>
         <div class="legend-items">
@@ -1778,13 +1917,47 @@
         </div>`;
     } else if (!active) {
       // Restore to the actually-active overlay's legend
-      if (completionActive) {
-        // Let the completion legend remain (don't clobber it)
+      if (completionActive) return;
+      if (volatilityActive) {
+        updateVolatilityLegend(true);
         return;
       }
       updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
     }
-    // active && completionActive → completion fill is showing; don't override its legend
+    // active && (completionActive || volatilityActive) → other fill is showing; don't override its legend
+  }
+
+  /** Build a MapLibre fill-color expression for the volatility (CV) choropleth. */
+  function getVolatilityFillColor(): any {
+    return [
+      "case",
+      ["<", ["coalesce", ["get", "volatilityCV"], -1], 0], "#d1d5db",
+      ["<", ["get", "volatilityCV"], 10], "#22c55e",
+      ["<", ["get", "volatilityCV"], 20], "#fde047",
+      "#ef4444",
+    ];
+  }
+
+  function updateVolatilityLegend(active: boolean): void {
+    const legend = document.getElementById("choropleth-legend");
+    if (!legend) return;
+    if (active && !completionActive) {
+      legend.innerHTML = `
+        <div class="legend-title">📊 價格波動度 (CV)</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="legend-swatch" style="background:#22c55e"></span>🟢 穩定 (CV &lt; 10%)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#fde047"></span>🟡 中波動 (10–20%)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>🔴 高波動 (CV ≥ 20%)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足 (&lt;10筆)</div>
+        </div>`;
+    } else if (!active) {
+      if (completionActive) return;
+      if (buyerScoreActive) {
+        updateBuyerScoreLegend(true);
+        return;
+      }
+      updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
+    }
   }
 
   function updateAffordabilityLegend(active: boolean, thresholdWan?: number): void {
@@ -1972,6 +2145,20 @@
       }
     }
 
+    // Pre-compute volatility CV for all districts (uses rawAllFeatures — unfiltered)
+    const volatilityCVs: Record<string, number> = {};
+    // Always pre-compute CV when data is available — badge appears in all click popups
+    if (rawAllFeatures.length > 0) {
+      for (const f of districtGeoJSON.features) {
+        const district = f.properties.district as string;
+        const city = f.properties.city as string | undefined;
+        const cv = computeVolatilityCV(district, city);
+        // -1 = insufficient data sentinel; use city:district key to avoid collisions
+        const key = `${city ?? ""}:${district}`;
+        volatilityCVs[key] = cv !== null ? cv : -1;
+      }
+    }
+
     // Pre-compute buyers market signal flags for hover tooltip (always, not gated on overlay mode)
     const buyersMarketFlags: Record<string, { qualifies: number; stale: number }> = {};
     const buyersMarketQualifyingKeys = new Set<string>();
@@ -2017,13 +2204,16 @@
         if (buyerScoreActive) {
           props.buyerScore = buyerScores[district] ?? -1;
         }
+        props.volatilityCV = volatilityCVs[`${city ?? ""}:${district}`] ?? -1;
         return { ...f, properties: props };
       }),
     };
     src.setData(updated);
-    // Re-apply overlay fill in priority order: completion > buyer-score > affordability > default
+    // Re-apply overlay fill in priority order: completion > volatility > buyer-score > affordability > default
     if (completionActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
+    } else if (volatilityActive && map.getLayer("districts-fill")) {
+      map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
     } else if (buyerScoreActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
     }
@@ -2685,6 +2875,14 @@
       ? renderBuyerScoreBadgeHtml(district, activeCity)
       : "";
 
+    // Volatility badge — always shown in click popup
+    // Use the clicked feature's city for volatility/combined-signal to avoid
+    // cross-city collisions when activeCity is blank or a different city name.
+    const featureCityForVolatility = (e.features[0].properties.city as string | undefined) ?? activeCity ?? undefined;
+    const volatilityClickHtml = renderVolatilityBadgeHtml(district, featureCityForVolatility);
+    // Combined signal callouts (最佳進場訊號 / caveat card)
+    const combinedSignalHtml = renderVolatilityCombinedSignalHtml(district, featureCityForVolatility);
+
     // Building age stats for click popup — use the district feature's own city for cache lookup
     // (more reliable than activeCity which may be missing if city dropdown is blank).
     // No cross-city fallback: if the exact city:district key misses, skip the age block rather
@@ -2719,12 +2917,14 @@
       .setHTML(
         `<div class="popup-title">${escHtml(district)}</div>
          ${buyersMarketBannerHtml}
+         ${combinedSignalHtml}
          <div class="popup-row">
            <span class="popup-label">中位單價</span>
            <span class="popup-price">${medianWan} 萬/坪</span>
          </div>
          ${yoyHtml}
          ${buyerScoreClickHtml}
+         ${volatilityClickHtml}
          ${ageClickHtml}
          ${sparkSection}
          ${volumeSparkSection}
@@ -2836,6 +3036,17 @@
         ageHtml = `<div class="popup-row age-row" style="margin-top:4px"><span class="popup-label">屋齡中位數</span><span class="popup-value">${medianAge} 年 ${distBadge}${missingNote}</span></div>`;
       }
     }
+    // Volatility badge on hover: use pre-computed props.volatilityCV
+    let volatilityHoverHtml = "";
+    if (volatilityActive) {
+      const cv = props.volatilityCV as number | undefined;
+      if (cv === undefined || cv < 0) {
+        volatilityHoverHtml = `<div class="popup-row" style="margin-top:4px"><span class="popup-label">價格波動度</span><span class="volatility-insufficient">資料不足</span></div>`;
+      } else {
+        const { label, cls, emoji } = volatilityTier(cv);
+        volatilityHoverHtml = `<div class="popup-row" style="margin-top:4px"><span class="popup-label">波動度</span><span class="volatility-badge ${cls}">${emoji} ${label}</span></div>`;
+      }
+    }
     // Buyers market opportunity indicator on hover (first line)
     // Uses pre-computed props.buyersMarket flag (joined in updateChoropleth)
     // Shows stale variant when data is > 90 days old
@@ -2846,7 +3057,7 @@
       : "";
     districtHover
       .setLngLat(e.lngLat)
-      .setHTML(`<div class="popup-title">${props.district}</div>${bmOpportunityHtml}${priceHtml}${completionHtml}${buyerScoreHtml}${ageHtml}`)
+      .setHTML(`<div class="popup-title">${props.district}</div>${bmOpportunityHtml}${priceHtml}${completionHtml}${buyerScoreHtml}${volatilityHoverHtml}${ageHtml}`)
       .addTo(map);
   });
 
@@ -3219,6 +3430,9 @@
       if (completionActive) {
         map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
         // Completion legend is already showing; don't clobber it
+      } else if (volatilityActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
+        updateVolatilityLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -3226,6 +3440,45 @@
         map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
         updateAffordabilityLegend(false);
       }
+    }
+  });
+
+  // ---- Volatility mode change (dispatched from index.astro toggle) ----
+  document.addEventListener("volatility-mode-change", (e: Event) => {
+    const detail = (e as CustomEvent).detail as { enabled: boolean };
+    volatilityActive = detail.enabled;
+
+    if (!map.getLayer("districts-fill")) return;
+
+    if (volatilityActive) {
+      for (const id of ["districts-fill", "districts-line"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      }
+      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethToggle) choroplethToggle.checked = true;
+
+      updateChoropleth();
+      if (!completionActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
+        updateVolatilityLegend(true);
+      }
+      const legend = document.getElementById("choropleth-legend");
+      if (legend) legend.style.opacity = "1";
+    } else {
+      updateChoropleth();
+      if (completionActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
+      } else if (buyerScoreActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
+        updateBuyerScoreLegend(true);
+      } else if (affordabilityActive && affordabilityThreshold > 0) {
+        map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
+        updateAffordabilityLegend(true, affordabilityThreshold / 10000);
+      } else {
+        map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+        updateAffordabilityLegend(false);
+      }
+      updateVolatilityLegend(false);
     }
   });
 
