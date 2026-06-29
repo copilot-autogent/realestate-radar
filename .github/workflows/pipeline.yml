@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write   # push updated sample-transactions.json
+  actions: write    # trigger deploy.yml after data commit
 
 concurrency:
   group: plvr-pipeline
@@ -70,23 +71,30 @@ jobs:
 
       - name: Apply DB migrations (idempotent)
         working-directory: backend
-        # Migrations are written to be re-runnable (IF NOT EXISTS / DO NOTHING).
-        # Only suppress "already exists" errors (code 42P07); re-throw real failures
-        # by running each migration individually and checking exit codes.
+        # Each migration is written to be re-runnable (IF NOT EXISTS / DO NOTHING).
+        # Only suppress pg error 42P07 "already exists"; any other error fails the step.
         run: |
           for f in src/db/migrations/*.sql; do
             echo "Applying migration: $f"
-            PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar -f "$f" \
-              2>&1 | grep -v "already exists" >&2 || true
+            if ! PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar -f "$f" 2>/tmp/mig_err; then
+              # Idempotent: tolerate "already exists" (42P07) only
+              if grep -qE "ERROR.*already exists" /tmp/mig_err; then
+                echo "[idempotent] migration already applied: $f"
+              else
+                cat /tmp/mig_err >&2
+                exit 1
+              fi
+            fi
           done
 
       - name: Force full import (if requested)
         if: ${{ github.event.inputs.force_full_import == 'true' }}
         working-directory: backend
         run: |
-          echo "[force] Clearing import_log high-water mark for full re-import"
+          echo "[force] Clearing transactions + import_log for full re-import"
+          # WARNING: destructive — deletes all existing transaction records
           PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar \
-            -c "TRUNCATE import_log; DELETE FROM transactions;"
+            -c "TRUNCATE transactions, import_log CASCADE;"
 
       - name: Download current quarter CSV from 內政部
         working-directory: backend
@@ -118,12 +126,16 @@ jobs:
         run: npm run pipeline:export
 
       - name: Commit updated transactions data
+        id: commit_data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Ensure we are on main before committing
+          git checkout main
           git add frontend/public/data/sample-transactions.json
           if git diff --cached --quiet; then
             echo "No changes to commit — data is already up-to-date"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
           else
             RECORD_COUNT=$(node -e "
               const d = JSON.parse(require('fs').readFileSync('frontend/public/data/sample-transactions.json', 'utf8'));
@@ -133,7 +145,21 @@ jobs:
 
 Automated pipeline run via .github/workflows/pipeline.yml
 Source: 內政部 plvr.land.moi.gov.tw open data"
-            git push
+            git push origin main
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
           fi
-          # Note: pushing sample-transactions.json to main will trigger deploy.yml
-          # automatically via its push.paths filter — no explicit dispatch needed.
+
+      # Pushes made with GITHUB_TOKEN do not trigger other workflows by default.
+      # Explicitly dispatch deploy.yml so the new data goes live on GitHub Pages.
+      - name: Trigger GitHub Pages deploy
+        if: steps.commit_data.outputs.pushed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy.yml',
+              ref: 'main',
+            });
+            console.log('Triggered deploy.yml for updated data');

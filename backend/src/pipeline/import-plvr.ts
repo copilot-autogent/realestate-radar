@@ -60,16 +60,21 @@ function extractCityCode(filename: string): string | null {
 
 /**
  * Query the DB for the most recent transaction_date already imported.
- * Returns null if the table is empty or unreachable (safe: triggers full import).
+ * Returns null only when the table is empty (no data yet) or doesn't exist yet
+ * (first-run before schema is applied). Re-throws on genuine DB errors.
  */
 async function getMaxTransactionDate(): Promise<Date | null> {
   try {
     const result = await query("SELECT MAX(transaction_date) AS max_date FROM transactions");
     const val = result.rows[0]?.max_date;
     return val ? new Date(val) : null;
-  } catch {
-    // If the table doesn't exist yet, proceed with a full import
-    return null;
+  } catch (err) {
+    const pgCode = (err as { code?: string }).code;
+    if (pgCode === "42P01") {
+      // Table doesn't exist yet — schema hasn't been applied; do a full import
+      return null;
+    }
+    throw err;
   }
 }
 
@@ -251,7 +256,7 @@ async function importAll(): Promise<void> {
   // Incremental update: fetch the current high-water mark once before processing any file
   const cutoffDate = await getMaxTransactionDate();
   if (cutoffDate) {
-    console.log(`[incremental] Skipping records on or before ${cutoffDate.toISOString().split("T")[0]}`);
+    console.log(`[incremental] Skipping records strictly before ${cutoffDate.toISOString().split("T")[0]} (boundary date re-imported for completeness)`);
   } else {
     console.log("[incremental] No existing records — performing full import");
   }

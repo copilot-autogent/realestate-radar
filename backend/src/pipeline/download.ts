@@ -6,7 +6,7 @@
  * URL pattern: GET with city code + data type + season params.
  */
 
-import { mkdirSync, createWriteStream, existsSync, unlinkSync } from "node:fs";
+import { mkdirSync, createWriteStream, existsSync, unlinkSync, renameSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
@@ -117,8 +117,6 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
       const writable = createWriteStream(tmpPath);
       try {
         await pipeline(Readable.fromWeb(res.body as any), writable);
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { renameSync } = await import("node:fs");
         renameSync(tmpPath, outPath);
       } catch (writeErr) {
         // Clean up partial file
