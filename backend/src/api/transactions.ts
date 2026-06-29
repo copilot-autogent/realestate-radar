@@ -70,7 +70,8 @@ export function transactionsRouter(): Router {
                 total_price, unit_price, area_sqm, area_ping,
                 building_type, floors_total, floor, build_year,
                 rooms, halls, bathrooms,
-                lat, lon
+                lat, lon,
+                assessed_value_per_sqm, assessed_to_market_ratio
          FROM transactions
          ${where}
          ORDER BY transaction_date DESC
@@ -80,7 +81,13 @@ export function transactionsRouter(): Router {
 
       res.json({
         count: result.rowCount,
-        data: result.rows,
+        data: result.rows.map(row => ({
+          ...row,
+          assessed_value_per_sqm: row.assessed_value_per_sqm != null
+            ? Number(row.assessed_value_per_sqm) : null,
+          assessed_to_market_ratio: row.assessed_to_market_ratio != null
+            ? Number(row.assessed_to_market_ratio) : null,
+        })),
       });
     } catch (err) {
       console.error("Query error:", err);
@@ -187,7 +194,8 @@ export function transactionsRouter(): Router {
         // (present since initial migration — Transaction type in types.ts)
         `SELECT id, lon, lat, unit_price, total_price, area_ping,
                 building_type, transaction_date, address, city, district,
-                floor, floors_total, rooms, build_year
+                floor, floors_total, rooms, build_year,
+                assessed_value_per_sqm, assessed_to_market_ratio
          FROM transactions
          WHERE ${conditions.join(" AND ")}
          ORDER BY transaction_date DESC
@@ -217,6 +225,10 @@ export function transactionsRouter(): Router {
             floorsTotal: row.floors_total,
             rooms: row.rooms,
             buildYear: row.build_year,
+            assessedValuePerSqm: row.assessed_value_per_sqm != null
+              ? Number(row.assessed_value_per_sqm) : null,
+            assessedToMarketRatio: row.assessed_to_market_ratio != null
+              ? Number(row.assessed_to_market_ratio) : null,
           },
         })),
       };

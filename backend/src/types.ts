@@ -55,6 +55,23 @@ export interface Transaction {
   landUse: string | null;
   note: string | null;
   serialNumber: string;
+  /** District-level median 公告現值 (元/平方公尺) for the transaction's city/district/year */
+  assessedValuePerSqm: number | null;
+  /** assessedValuePerSqm / unitPrice(元/sqm) × 100; null when either value is absent */
+  assessedToMarketRatio: number | null;
+}
+
+/**
+ * District-level aggregated 公告現值 data from 內政部地政司 公告地價 dataset.
+ * Used for Option C district-level join (sufficient for #72 ratio overlay).
+ */
+export interface DistrictAssessedValue {
+  city: string;
+  district: string;
+  year: number;
+  /** Median 公告現值 in 元/平方公尺 across all parcels in the district */
+  medianAssessedValuePerSqm: number;
+  parcelCount: number;
 }
 
 /** ROC date string (e.g. "1130115") → JS Date */

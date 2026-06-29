@@ -13,6 +13,7 @@ import { parse } from "csv-parse/sync";
 import iconv from "iconv-lite";
 import { query, close } from "../db/connection.js";
 import { parseRocDate, sqmToPing, CITY_CODES, type PlvrRawRecord } from "../types.js";
+import { loadDistrictAssessedValueMap, lookupAssessedValue } from "./import-assessed-values.js";
 
 const DATA_DIR = path.resolve(import.meta.dirname, "../../../data/downloads");
 
@@ -70,6 +71,21 @@ async function importFile(filepath: string): Promise<number> {
   );
   const logId = logResult.rows[0].id;
 
+  // Load district assessed values for ratio computation.
+  // Graceful degradation: if the migration hasn't been applied yet (pg error 42P01 =
+  // undefined_table), proceed without assessed data. Re-throw other errors.
+  let assessedMap = new Map<string, number>();
+  try {
+    assessedMap = await loadDistrictAssessedValueMap();
+  } catch (err) {
+    const pgCode = (err as { code?: string }).code;
+    if (pgCode === "42P01") {
+      console.warn("[import] district_assessed_values table not found — run migration 001_add_assessed_values.sql");
+    } else {
+      throw err;
+    }
+  }
+
   const buffer = readFileSync(filepath);
   const content = detectAndDecode(buffer);
 
@@ -110,6 +126,18 @@ async function importFile(filepath: string): Promise<number> {
     const pricePerSqm = safeBigint(rec.單價元平方公尺);
     const unitPricePing = pricePerSqm ? sqmToPing(pricePerSqm) : null;
 
+    // Look up district-level assessed value for this transaction's city/district/year
+    const txYear = txDate.getFullYear();
+    const assessedValuePerSqm = lookupAssessedValue(assessedMap, city, rec.鄉鎮市區, txYear);
+    // Ratio: assessedValue / marketPrice(元/sqm) × 100; clamp to NUMERIC(10,4) max
+    const rawRatio =
+      assessedValuePerSqm !== null && pricePerSqm !== null && pricePerSqm > 0
+        ? Math.round((assessedValuePerSqm / pricePerSqm) * 100 * 10000) / 10000
+        : null;
+    const assessedToMarketRatio = rawRatio !== null ? Math.min(rawRatio, 999999.9999) : null;
+    // Only store assessed fields atomically: skip both if assessed value is unknown
+    const storeAssessed = assessedValuePerSqm !== null && assessedToMarketRatio !== null;
+
     try {
       await query(
         `INSERT INTO transactions (
@@ -118,15 +146,27 @@ async function importFile(filepath: string): Promise<number> {
           building_type, floors_total, floor, build_year,
           rooms, halls, bathrooms,
           has_parking, parking_type, parking_price, parking_area,
-          land_use, note, serial_number, source_file
+          land_use, note, serial_number, source_file,
+          assessed_value_per_sqm, assessed_to_market_ratio
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8,
           $9, $10, $11, $12,
           $13, $14, $15,
           $16, $17, $18, $19,
-          $20, $21, $22, $23
-        ) ON CONFLICT (serial_number) DO NOTHING`,
+          $20, $21, $22, $23,
+          $24, $25
+        ) ON CONFLICT (serial_number) DO UPDATE SET
+          assessed_value_per_sqm = CASE
+            WHEN EXCLUDED.assessed_value_per_sqm IS NOT NULL AND EXCLUDED.assessed_to_market_ratio IS NOT NULL
+            THEN EXCLUDED.assessed_value_per_sqm
+            ELSE transactions.assessed_value_per_sqm
+          END,
+          assessed_to_market_ratio = CASE
+            WHEN EXCLUDED.assessed_value_per_sqm IS NOT NULL AND EXCLUDED.assessed_to_market_ratio IS NOT NULL
+            THEN EXCLUDED.assessed_to_market_ratio
+            ELSE transactions.assessed_to_market_ratio
+          END`,
         [
           city,
           rec.鄉鎮市區,
@@ -151,6 +191,8 @@ async function importFile(filepath: string): Promise<number> {
           rec.備註 || null,
           rec.編號,
           filename,
+          storeAssessed ? assessedValuePerSqm : null,
+          storeAssessed ? assessedToMarketRatio : null,
         ]
       );
       imported++;
