@@ -199,6 +199,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <label for="buyer-score-toggle">🎯 顯示買方時機分</label>
       </div>
 
+      <!-- Volatility risk score overlay toggle -->
+      <div class="toggle-row">
+        <input type="checkbox" id="volatility-toggle" />
+        <label for="volatility-toggle">📊 顯示價格波動度</label>
+      </div>
+
       <!-- MRT stations layer toggle (shown when MRT filter active) -->
       <div class="toggle-row" id="mrt-layer-toggle-row" style="display:none">
         <input type="checkbox" id="mrt-layer-toggle" checked />
@@ -2339,5 +2345,17 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   buyerScoreToggle?.addEventListener("change", updateBuyerScoreOverlay);
+
+  // ── Volatility overlay toggle → dispatch to Map.astro ──────────────────────
+  const volatilityToggle = document.getElementById("volatility-toggle") as HTMLInputElement | null;
+
+  function updateVolatilityOverlay(): void {
+    const enabled = volatilityToggle?.checked ?? false;
+    document.dispatchEvent(new CustomEvent("volatility-mode-change", {
+      detail: { enabled },
+    }));
+  }
+
+  volatilityToggle?.addEventListener("change", updateVolatilityOverlay);
 
 </script>
