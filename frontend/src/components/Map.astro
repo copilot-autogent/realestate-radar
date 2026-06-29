@@ -1470,15 +1470,15 @@
    * Adds/removes pulsing ring markers on the map for districts that qualify
    * as buyer's market opportunities.  Called from updateChoropleth() whenever
    * the district GeoJSON or transaction data changes.
+   * Always clears and recreates all markers so positions stay accurate after
+   * a city switch (new districtGeoJSON with different polygon coordinates).
    */
   function updateBuyersMarketMarkers(): void {
-    if (!districtGeoJSON || !rawAllFeatures.length) {
-      for (const m of buyersMarketMarkers.values()) m.remove();
-      buyersMarketMarkers.clear();
-      return;
-    }
+    // Always remove all existing markers first — positions must reflect current GeoJSON
+    for (const m of buyersMarketMarkers.values()) m.remove();
+    buyersMarketMarkers.clear();
 
-    const newQualifyingKeys = new Set<string>();
+    if (!districtGeoJSON || !rawAllFeatures.length) return;
 
     for (const f of districtGeoJSON.features) {
       const district = f.properties?.district as string | undefined;
@@ -1489,34 +1489,21 @@
       if (!sig.qualifies) continue;
 
       const key = `${city ?? ""}:${district}`;
-      newQualifyingKeys.add(key);
-
-      if (!buyersMarketMarkers.has(key)) {
-        let center: [number, number] | null = null;
-        const geom = f.geometry;
-        if (geom?.type === "Polygon") {
-          center = computePolygonCentroid(geom.coordinates);
-        } else if (geom?.type === "MultiPolygon") {
-          center = computeMultiPolygonCentroid(geom.coordinates);
-        }
-        if (!center) continue;
-
-        const el = document.createElement("div");
-        el.className = "bm-pulse-marker";
-        el.setAttribute("aria-label", `${district} 買方機會區`);
-        const marker = new maplibregl.Marker({ element: el, anchor: "center" })
-          .setLngLat(center)
-          .addTo(map);
-        buyersMarketMarkers.set(key, marker);
+      let center: [number, number] | null = null;
+      const geom = f.geometry;
+      if (geom?.type === "Polygon") {
+        center = computePolygonCentroid(geom.coordinates);
+      } else if (geom?.type === "MultiPolygon") {
+        center = computeMultiPolygonCentroid(geom.coordinates);
       }
-    }
+      if (!center) continue;
 
-    // Remove markers for districts that no longer qualify
-    for (const [key, marker] of buyersMarketMarkers.entries()) {
-      if (!newQualifyingKeys.has(key)) {
-        marker.remove();
-        buyersMarketMarkers.delete(key);
-      }
+      const el = document.createElement("div");
+      el.className = "bm-pulse-marker";
+      const marker = new maplibregl.Marker({ element: el, anchor: "center" })
+        .setLngLat(center)
+        .addTo(map);
+      buyersMarketMarkers.set(key, marker);
     }
   }
 
@@ -1781,8 +1768,9 @@
     const buyersMarketFlags: Record<string, { qualifies: number; stale: number }> = {};
     if (rawAllFeatures.length > 0) {
       for (const f of districtGeoJSON.features) {
-        const district = f.properties.district as string;
-        const city = f.properties.city as string | undefined;
+        const district = f.properties?.district as string | undefined;
+        const city = f.properties?.city as string | undefined;
+        if (!district) continue;
         const sig = computeBuyersMarketSignal(district, city);
         // Key by "city:district" to match how ageStat and buyersMarketMarkers avoid collision
         const key = `${city ?? ""}:${district}`;
