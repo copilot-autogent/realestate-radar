@@ -565,17 +565,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const post921Val = sp.get("post921");
       const post921El = document.getElementById("post921-toggle") as HTMLInputElement | null;
       if (post921El && post921Val !== null) post921El.checked = post921Val === "1";
-      // Overlay toggle checkboxes (visual state only; change events fired after map loads)
-      if (sp.has("choropleth")) {
-        const el = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
-        if (el) el.checked = sp.get("choropleth") !== "0";
-      }
-      const buyerScoreEl = document.getElementById("buyer-score-toggle") as HTMLInputElement | null;
-      if (buyerScoreEl) buyerScoreEl.checked = sp.get("buyerScore") === "1";
-      const volatilityEl = document.getElementById("volatility-toggle") as HTMLInputElement | null;
-      if (volatilityEl) volatilityEl.checked = sp.get("volatility") === "1";
-      const completionEl = document.getElementById("completion-overlay-toggle") as HTMLInputElement | null;
-      if (completionEl) completionEl.checked = sp.get("completion") === "1";
+      // NOTE: Overlay checkboxes (choropleth, buyerScore, volatility, completion) are
+      // intentionally NOT set here. applyOverlayStateFromHash() owns overlay state
+      // exclusively, comparing current checkbox state (= current map state) against
+      // the hash to compute correct ON→OFF and OFF→ON transitions.
       if (sp.get("address")) addressClearBtn.style.display = "block";
       return true;
     } catch {
@@ -764,24 +757,32 @@ const showBuyersMarket = !isStale && dataYear !== null;
     setTimeout(() => document.getElementById("search-btn")?.click(), 800);
   }
 
-  // Track whether Mapbox layers are registered (Map.astro dispatches "map-layers-ready").
-  let _mapLayersReady = false;
-  document.addEventListener("map-layers-ready", () => { _mapLayersReady = true; }, { once: true });
-
   // Apply overlay toggle state once map layers are confirmed ready.
   // Snapshot the raw hash NOW so the deferred handler sees the original page-load
   // URL, not a later edit by real-time updateHash() calls.
+  // Use a one-shot event + timeout fallback to guard against:
+  //   (a) map init failure — event never fires
+  //   (b) event fires before listener attaches (unlikely but possible on very fast maps)
   if (_hashRestored) {
     const _initialHashRaw = location.hash.startsWith("#") ? location.hash.slice(1) : "";
-    document.addEventListener("map-layers-ready", () => {
+    let _overlayApplied = false;
+    const _applyOverlayOnce = () => {
+      if (_overlayApplied) return;
+      _overlayApplied = true;
       applyOverlayStateFromHash(_initialHashRaw);
-    }, { once: true });
+    };
+    document.addEventListener("map-layers-ready", _applyOverlayOnce, { once: true });
+    // Fallback: after 3s, attempt overlay restore regardless of map-layers-ready.
+    // If layers aren't registered yet, the change-event handlers will bail gracefully.
+    setTimeout(_applyOverlayOnce, 3000);
   }
 
   /**
    * Reset all filter form fields to their default (empty) state.
    * Used before applying a popstate hash so stale filter values don't stick.
-   * Does not fire map-layer events (applyOverlayStateFromHash handles those).
+   * Intentionally does NOT touch overlay checkboxes — applyOverlayStateFromHash()
+   * owns overlay state and needs the pre-popstate checkbox values to compute
+   * correct ON→OFF and OFF→ON map-layer transitions.
    */
   function _resetFormFields(): void {
     const clearInputs = ["city-select","district-select","price-min","price-max",
@@ -793,33 +794,21 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
     const post921El = document.getElementById("post921-toggle") as HTMLInputElement | null;
     if (post921El) post921El.checked = false;
-    // Reset overlay checkboxes to their HTML defaults
-    const choroplethEl = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
-    if (choroplethEl) choroplethEl.checked = true;
-    for (const id of ["buyer-score-toggle","volatility-toggle","completion-overlay-toggle"]) {
-      const el = document.getElementById(id) as HTMLInputElement | null;
-      if (el) el.checked = false;
-    }
     if (addressClearBtn) addressClearBtn.style.display = "none";
     updateDistrictOptions("");
   }
 
   // ---- Back/forward navigation: rehydrate filters + re-run search ----
   window.addEventListener("popstate", () => {
-    // Reset first so absent-from-hash fields are cleared (prevents stale values sticking)
+    // Reset data filters so absent-from-hash keys clear their controls.
     _resetFormFields();
     const restored = loadFromHash();
     if (!restored) loadFromUrl();
     document.getElementById("search-btn")?.click();
-    if (restored) {
-      const _popRaw = location.hash.startsWith("#") ? location.hash.slice(1) : "";
-      if (_mapLayersReady) {
-        applyOverlayStateFromHash(_popRaw);
-      } else {
-        // Map not yet ready (rare: navigation during init); wait for layers
-        document.addEventListener("map-layers-ready", () => applyOverlayStateFromHash(_popRaw), { once: true });
-      }
-    }
+    // Always apply overlay state (even for empty-hash URLs so active overlays
+    // are correctly turned OFF when navigating back to a non-overlay state).
+    const _popRaw = location.hash.startsWith("#") ? location.hash.slice(1) : "";
+    applyOverlayStateFromHash(_popRaw);
   });
 
   // ---- Real-time hash updates as filters change ----
