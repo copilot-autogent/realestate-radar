@@ -21,8 +21,20 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { query, close } from "../db/connection.js";
 
-const EXPORT_LIMIT = parseInt(process.env.EXPORT_LIMIT ?? "10000", 10);
-const EXPORT_DAYS = parseInt(process.env.EXPORT_DAYS ?? "730", 10);
+const EXPORT_LIMIT_RAW = parseInt(process.env.EXPORT_LIMIT ?? "10000", 10);
+const EXPORT_DAYS_RAW = parseInt(process.env.EXPORT_DAYS ?? "730", 10);
+
+if (isNaN(EXPORT_LIMIT_RAW) || EXPORT_LIMIT_RAW < 1) {
+  console.error(`[error] Invalid EXPORT_LIMIT="${process.env.EXPORT_LIMIT}" — must be a positive integer`);
+  process.exit(1);
+}
+if (isNaN(EXPORT_DAYS_RAW) || EXPORT_DAYS_RAW < 1) {
+  console.error(`[error] Invalid EXPORT_DAYS="${process.env.EXPORT_DAYS}" — must be a positive integer`);
+  process.exit(1);
+}
+
+const EXPORT_LIMIT = EXPORT_LIMIT_RAW;
+const EXPORT_DAYS = EXPORT_DAYS_RAW;
 
 const OUT_PATH = path.resolve(
   import.meta.dirname,
@@ -63,12 +75,11 @@ async function exportStatic(): Promise<void> {
        WHERE lat IS NOT NULL
          AND lon IS NOT NULL
          AND unit_price > 0
-         AND transaction_date >= (
-             SELECT MAX(transaction_date) - $1::interval
-             FROM transactions
-             WHERE lat IS NOT NULL
+         AND transaction_date >= COALESCE(
+           (SELECT MAX(transaction_date) - $1::interval FROM transactions WHERE lat IS NOT NULL),
+           '-infinity'::date
          )
-       ORDER BY transaction_date DESC
+       ORDER BY transaction_date DESC, id DESC
        LIMIT $2`,
       [`${EXPORT_DAYS} days`, EXPORT_LIMIT]
     );
@@ -85,9 +96,12 @@ async function exportStatic(): Promise<void> {
         totalPrice: row.total_price,
         areaPing: row.area_ping != null ? +Number(row.area_ping).toFixed(1) : null,
         buildingType: row.building_type,
+        // node-pg returns DATE columns as plain strings ('YYYY-MM-DD') when the
+        // column type is DATE (not TIMESTAMP). Use the string form directly to
+        // avoid timezone-induced day-shift from toISOString() in non-UTC runtimes.
         date: typeof row.transaction_date === "string"
-          ? row.transaction_date.split("T")[0]
-          : (row.transaction_date as unknown as Date).toISOString().split("T")[0],
+          ? row.transaction_date.slice(0, 10)
+          : `${(row.transaction_date as unknown as Date).getFullYear()}-${String((row.transaction_date as unknown as Date).getMonth() + 1).padStart(2, "0")}-${String((row.transaction_date as unknown as Date).getDate()).padStart(2, "0")}`,
         address: row.address,
         city: row.city,
         district: row.district,

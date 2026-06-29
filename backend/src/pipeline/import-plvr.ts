@@ -253,8 +253,12 @@ async function importAll(): Promise<void> {
 
   console.log(`Found ${files.length} CSV files to import`);
 
-  // Incremental update: fetch the current high-water mark once before processing any file
-  const cutoffDate = await getMaxTransactionDate();
+  // Incremental update: fetch the current high-water mark once before processing any file.
+  // Normalize to UTC midnight to match parseRocDate's local-midnight semantics at the boundary.
+  const rawCutoff = await getMaxTransactionDate();
+  const cutoffDate = rawCutoff
+    ? new Date(Date.UTC(rawCutoff.getFullYear(), rawCutoff.getMonth(), rawCutoff.getDate()))
+    : null;
   if (cutoffDate) {
     console.log(`[incremental] Skipping records strictly before ${cutoffDate.toISOString().split("T")[0]} (boundary date re-imported for completeness)`);
   } else {
@@ -279,13 +283,16 @@ async function importAll(): Promise<void> {
 // CLI entry point
 if (import.meta.url === `file://${process.argv[1]}`) {
   // Guard: live pipeline requires explicit DATA_SOURCE=live to prevent
-  // accidentally clobbering the local sample-data fallback workflow.
+  // accidentally running against a dev DB without intending to.
   if (process.env.DATA_SOURCE !== "live") {
-    console.log(
-      "[info] DATA_SOURCE is not 'live' — running in sample-data mode.\n" +
-      "       Set DATA_SOURCE=live to enable live 內政部 ingestion."
+    // Exit 1 (not 0) so misconfigured CI runs fail visibly rather than
+    // silently producing stale data.
+    console.error(
+      "[error] DATA_SOURCE is not 'live' — live 內政部 ingestion requires DATA_SOURCE=live.\n" +
+      "        For local dev without PostGIS, use the sample-data fallback in\n" +
+      "        frontend/public/data/sample-transactions.json directly."
     );
-    process.exit(0);
+    process.exit(1);
   }
   await importAll();
 }

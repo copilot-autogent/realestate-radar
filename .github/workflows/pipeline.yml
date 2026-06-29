@@ -62,29 +62,23 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: backend
-        run: npm install
+        run: npm ci
 
       - name: Apply DB schema
         working-directory: backend
         run: |
-          PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar -f src/db/schema.sql
+          PGPASSWORD=${{ env.DB_PASSWORD }} psql -h localhost -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} \
+            -v ON_ERROR_STOP=1 -f src/db/schema.sql
 
       - name: Apply DB migrations (idempotent)
         working-directory: backend
-        # Each migration is written to be re-runnable (IF NOT EXISTS / DO NOTHING).
-        # Only suppress pg error 42P07 "already exists"; any other error fails the step.
+        # All migrations use IF NOT EXISTS / DO NOTHING — safe to re-run.
+        # ON_ERROR_STOP=1 ensures genuine migration errors fail the step.
         run: |
           for f in src/db/migrations/*.sql; do
             echo "Applying migration: $f"
-            if ! PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar -f "$f" 2>/tmp/mig_err; then
-              # Idempotent: tolerate "already exists" (42P07) only
-              if grep -qE "ERROR.*already exists" /tmp/mig_err; then
-                echo "[idempotent] migration already applied: $f"
-              else
-                cat /tmp/mig_err >&2
-                exit 1
-              fi
-            fi
+            PGPASSWORD=${{ env.DB_PASSWORD }} psql -h localhost -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} \
+              -v ON_ERROR_STOP=1 -f "$f"
           done
 
       - name: Force full import (if requested)
@@ -93,8 +87,8 @@ jobs:
         run: |
           echo "[force] Clearing transactions + import_log for full re-import"
           # WARNING: destructive — deletes all existing transaction records
-          PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar \
-            -c "TRUNCATE transactions, import_log CASCADE;"
+          PGPASSWORD=${{ env.DB_PASSWORD }} psql -h localhost -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} \
+            -v ON_ERROR_STOP=1 -c "TRUNCATE transactions, import_log CASCADE;"
 
       - name: Download current quarter CSV from 內政部
         working-directory: backend
@@ -113,7 +107,7 @@ jobs:
       - name: Verify geocoded record count before export
         working-directory: backend
         run: |
-          COUNT=$(PGPASSWORD=radar_dev psql -h localhost -U radar -d realestate_radar \
+          COUNT=$(PGPASSWORD=${{ env.DB_PASSWORD }} psql -h localhost -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} \
             -tAc "SELECT COUNT(*) FROM transactions WHERE lat IS NOT NULL AND lon IS NOT NULL AND unit_price > 0;")
           echo "[verify] $COUNT geocoded records available for export"
           if [ "$COUNT" -lt 10 ]; then
@@ -130,8 +124,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Ensure we are on main before committing
-          git checkout main
+          # Always operate on the default branch; -B creates local branch tracking origin/main
+          git checkout -B main origin/main
           git add frontend/public/data/sample-transactions.json
           if git diff --cached --quiet; then
             echo "No changes to commit — data is already up-to-date"
@@ -145,6 +139,8 @@ jobs:
 
 Automated pipeline run via .github/workflows/pipeline.yml
 Source: 內政部 plvr.land.moi.gov.tw open data"
+            # Pull-rebase before push to handle concurrent commits (e.g. another deploy)
+            git pull --rebase origin main
             git push origin main
             echo "pushed=true" >> "$GITHUB_OUTPUT"
           fi

@@ -76,7 +76,7 @@ cd backend && DATA_SOURCE=live npm run pipeline:export
 
 The file `frontend/public/data/sample-transactions.json` is used by the static site. The CI pipeline keeps it fresh. For local development **without** a PostGIS connection, this file serves as the data source automatically — no `DATA_SOURCE` env var is needed.
 
-The `pipeline:import` and `pipeline:export` scripts require `DATA_SOURCE=live` to prevent accidental overwrites of the fallback file during local dev.
+The `pipeline:import` and `pipeline:export` scripts require `DATA_SOURCE=live`. Without it, `pipeline:import` exits with an error to prevent accidental CI misconfiguration. For local development **without** a PostGIS connection, use the static `frontend/public/data/sample-transactions.json` file directly — no pipeline setup needed.
 
 ## Project Structure
 
