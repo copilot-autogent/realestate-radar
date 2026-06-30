@@ -1912,7 +1912,9 @@
     });
 
     // Separate by transaction type
-    // 預售屋 = pre-sale; anything else with a unit price = 成屋 (broadest interpretation)
+    // 預售屋 = pre-sale; 成屋 = existing home (building/land+building transactions)
+    // Exclude land-only (土地) and parking-only (車位) records that have different price semantics.
+    const EXCLUDE_TYPES = new Set(["土地", "車位", "停車位"]);
     const presale: number[] = [];
     const existing: number[] = [];
 
@@ -1925,6 +1927,9 @@
       const isPresale =
         txType === "預售屋" ||
         (buildType ?? "").includes("預售");
+
+      // Skip land-only / parking-only records (different price units, not comparable)
+      if (!isPresale && txType && EXCLUDE_TYPES.has(txType)) continue;
 
       if (isPresale) presale.push(price);
       else existing.push(price);
@@ -3887,6 +3892,9 @@
       } else if (mrtPremiumActive) {
         map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
         updateMrtPremiumLegend(true);
+      } else if (presaleSpreadActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
+        updatePresaleSpreadLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -3928,6 +3936,9 @@
       } else if (mrtPremiumActive) {
         map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
         updateMrtPremiumLegend(true);
+      } else if (presaleSpreadActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
+        updatePresaleSpreadLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -3970,6 +3981,9 @@
       } else if (buyerScoreActive) {
         map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
         updateBuyerScoreLegend(true);
+      } else if (presaleSpreadActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
+        updatePresaleSpreadLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -3994,11 +4008,10 @@
       const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
       if (choroplethToggle) choroplethToggle.checked = true;
 
+      // updateChoropleth already applies fill via priority chain when presaleSpreadActive=true;
+      // no redundant setPaintProperty needed here — just update data and legend.
       updateChoropleth();
-      if (!completionActive && !volatilityActive && !buyerScoreActive && !mrtPremiumActive) {
-        map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
-        updatePresaleSpreadLegend(true);
-      }
+      updatePresaleSpreadLegend(true);
       const legend = document.getElementById("choropleth-legend");
       if (legend) legend.style.opacity = "1";
     } else {
