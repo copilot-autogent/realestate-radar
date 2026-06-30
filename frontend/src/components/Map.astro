@@ -332,6 +332,35 @@
   .mrt-medium       { color: #c2410c; background: #fff7ed; border: 1px solid #fed7aa; }
   .mrt-high         { color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; }
 
+  /* ---- Pre-sale spread badge ---- */
+  .presale-spread-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+    gap: 8px;
+  }
+  .presale-spread-label {
+    font-size: 0.76rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+  .presale-spread-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .presale-insufficient { color: #94a3b8; font-size: 0.76rem; font-weight: 400; font-style: italic; }
+  .presale-premium-low     { color: #92400e; background: #fffbeb; border: 1px solid #fde68a; }
+  .presale-premium-medium  { color: #c2410c; background: #fff7ed; border: 1px solid #fed7aa; }
+  .presale-premium-high    { color: #7c2d12; background: #fef3c7; border: 1px solid #fcd34d; }
+  .presale-discount        { color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; }
+  .presale-neutral         { color: #475569; background: #f8fafc; border: 1px solid #cbd5e1; font-weight: 400; }
+
   .volatility-row {
     display: flex;
     justify-content: space-between;
@@ -1841,6 +1870,179 @@
     }
   }
 
+  // ---- Pre-sale spread (預售屋 vs 成屋) functions ----
+
+  /**
+   * Computes rolling 12-month average unit price for 預售屋 vs 成屋 in a district.
+   * Returns the spread percentage: (presale - existing) / existing * 100.
+   * Sentinel values: null = insufficient data (< 5 tx either side).
+   * Min gate: ≥5 transactions in each category.
+   */
+  function computePresaleSpread(district: string, city?: string): {
+    spread: number | null;
+    presaleAvg: number | null;
+    existingAvg: number | null;
+    presaleCount: number;
+    existingCount: number;
+  } {
+    if (!rawAllFeatures.length) {
+      return { spread: null, presaleAvg: null, existingAvg: null, presaleCount: 0, existingCount: 0 };
+    }
+
+    // Find anchor date for rolling 12-month window
+    const allDates = rawAllFeatures
+      .filter((f) => f.properties?.district === district && (!city || f.properties?.city === city))
+      .map((f) => new Date((f.properties?.date as string) ?? "").getTime())
+      .filter((t) => !isNaN(t));
+
+    if (!allDates.length) {
+      return { spread: null, presaleAvg: null, existingAvg: null, presaleCount: 0, existingCount: 0 };
+    }
+
+    const maxTime = Math.max(...allDates);
+    const cutoff = maxTime - 365 * 24 * 60 * 60 * 1000;
+
+    const recent = rawAllFeatures.filter((f) => {
+      if (f.properties?.district !== district) return false;
+      if (city && f.properties?.city !== city) return false;
+      const t = new Date((f.properties?.date as string) ?? "").getTime();
+      if (isNaN(t) || t < cutoff) return false;
+      const up = f.properties?.unitPrice as number;
+      return typeof up === "number" && up > 0;
+    });
+
+    // Separate by transaction type
+    // 預售屋 = pre-sale; 成屋 = existing home (building/land+building transactions)
+    // Exclude land-only (土地) and parking-only (車位) records that have different price semantics.
+    const EXCLUDE_TYPES = new Set(["土地", "車位", "停車位"]);
+    const presale: number[] = [];
+    const existing: number[] = [];
+
+    for (const f of recent) {
+      const txType = f.properties?.transactionType as string | undefined;
+      const buildType = f.properties?.buildingType as string | undefined;
+      const price = f.properties?.unitPrice as number;
+
+      // Pre-sale: explicit transactionType = "預售屋" OR buildingType contains "預售"
+      const isPresale =
+        txType === "預售屋" ||
+        (buildType ?? "").includes("預售");
+
+      // Skip land-only / parking-only records (different price units, not comparable)
+      // Also exclude mixed types that include 車位 (car parking significantly skews unit price)
+      if (!isPresale && txType && (EXCLUDE_TYPES.has(txType) || txType.includes("車位"))) continue;
+
+      if (isPresale) presale.push(price);
+      else existing.push(price);
+    }
+
+    const presaleCount = presale.length;
+    const existingCount = existing.length;
+    const MIN_TX = 5;
+
+    if (presaleCount < MIN_TX || existingCount < MIN_TX) {
+      return { spread: null, presaleAvg: null, existingAvg: null, presaleCount, existingCount };
+    }
+
+    const presaleAvg = presale.reduce((a, b) => a + b, 0) / presale.length;
+    const existingAvg = existing.reduce((a, b) => a + b, 0) / existing.length;
+    const spread = ((presaleAvg - existingAvg) / existingAvg) * 100;
+
+    return { spread, presaleAvg, existingAvg, presaleCount, existingCount };
+  }
+
+  /** Renders the pre-sale spread badge HTML for district click popup. */
+  function renderPresaleSpreadBadgeHtml(district: string, city?: string): string {
+    if (!rawAllFeatures.length) return "";
+    const { spread, presaleAvg, existingAvg, presaleCount, existingCount } = computePresaleSpread(district, city);
+
+    if (spread === null) {
+      const detail = presaleCount === 0 && existingCount === 0
+        ? "無資料"
+        : `預售${presaleCount}筆 / 成屋${existingCount}筆`;
+      return `<div class="presale-spread-row">
+        <span class="presale-spread-label">🏗 預售 vs 成屋</span>
+        <span class="presale-spread-badge presale-insufficient">資料不足 (${detail})</span>
+      </div>`;
+    }
+
+    const sign  = spread >= 0 ? "+" : "−";
+    const absPct = Math.abs(spread).toFixed(1);
+    const presaleWan = presaleAvg !== null ? (presaleAvg / 10_000).toFixed(0) : "—";
+    const existingWan = existingAvg !== null ? (existingAvg / 10_000).toFixed(0) : "—";
+
+    let badgeClass: string;
+    let label: string;
+    if (spread < -2) {
+      badgeClass = "presale-discount";
+      label = `預售折價 ${sign}${absPct}%`;
+    } else if (spread < 3) {
+      badgeClass = "presale-neutral";
+      label = `持平 (${sign}${absPct}%)`;
+    } else if (spread < 10) {
+      badgeClass = "presale-premium-low";
+      label = `預售溢價 +${absPct}%`;
+    } else if (spread < 20) {
+      badgeClass = "presale-premium-medium";
+      label = `預售溢價 +${absPct}%`;
+    } else {
+      badgeClass = "presale-premium-high";
+      label = `預售溢價 +${absPct}%`;
+    }
+
+    return `<div class="presale-spread-row">
+      <span class="presale-spread-label">🏗 預售溢價</span>
+      <span class="presale-spread-badge ${badgeClass}" title="預售 ${presaleWan}萬/坪 (${presaleCount}筆) vs 成屋 ${existingWan}萬/坪 (${existingCount}筆)">${label}</span>
+    </div>`;
+  }
+
+  /**
+   * MapLibre fill-color expression for the pre-sale spread choropleth.
+   * Sentinel -9999 = insufficient data.
+   * Real values: negative = discount, positive = premium.
+   */
+  function getPresaleSpreadFillColor(): any {
+    // Use a let binding for the coalesced value to ensure null/missing → -9999 everywhere
+    return [
+      "case",
+      // Insufficient data (null, missing, or sentinel -9999) → light gray
+      ["==", ["coalesce", ["get", "presaleSpread"], -9999], -9999], "#d1d5db",
+      // Discount < -2%: blue
+      ["<", ["coalesce", ["get", "presaleSpread"], -9999], -2], "#3b82f6",
+      // Near-flat (-2% to +3%): neutral
+      ["<", ["coalesce", ["get", "presaleSpread"], -9999], 3],  "#e2e8f0",
+      // Low premium (3–10%): warm yellow
+      ["<", ["coalesce", ["get", "presaleSpread"], -9999], 10], "#fde047",
+      // Medium premium (10–20%): orange
+      ["<", ["coalesce", ["get", "presaleSpread"], -9999], 20], "#f97316",
+      // High premium ≥20%: deep amber
+      "#b45309",
+    ];
+  }
+
+  function updatePresaleSpreadLegend(active: boolean): void {
+    const legend = document.getElementById("choropleth-legend");
+    if (!legend) return;
+    if (active && !completionActive && !volatilityActive && !buyerScoreActive && !mrtPremiumActive) {
+      legend.innerHTML = `
+        <div class="legend-title">🏗 預售溢價幅度</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="legend-swatch" style="background:#b45309"></span>≥ 20%</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f97316"></span>10–20%</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#fde047"></span>3–10%</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#e2e8f0"></span>持平 ±3%</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#3b82f6"></span>預售折價 &lt; −2%</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
+        </div>`;
+    } else if (!active) {
+      if (completionActive) return;
+      if (volatilityActive) { updateVolatilityLegend(true); return; }
+      if (buyerScoreActive)  { updateBuyerScoreLegend(true); return; }
+      if (mrtPremiumActive)  { updateMrtPremiumLegend(true); return; }
+      updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
+    }
+  }
+
   // ---- Affordability overlay state ----
   let affordabilityActive = false;
   let affordabilityThreshold = 0; // TWD per ping
@@ -1853,6 +2055,9 @@
 
   // ---- MRT premium overlay state ----
   let mrtPremiumActive = false;
+
+  // ---- Pre-sale spread overlay state ----
+  let presaleSpreadActive = false;
 
   // ---- Completion overlay state ----
   let completionActive = false;
@@ -2345,6 +2550,18 @@
       }
     }
 
+    // Pre-compute pre-sale spread for all districts (always, so badge appears in all click popups)
+    const presaleSpreads: Record<string, number> = {};
+    if (rawAllFeatures.length > 0) {
+      for (const f of districtGeoJSON.features) {
+        const district = f.properties.district as string;
+        const city = f.properties.city as string | undefined;
+        const key = `${city ?? ""}:${district}`;
+        const { spread } = computePresaleSpread(district, city);
+        presaleSpreads[key] = spread !== null ? spread : -9999;
+      }
+    }
+
     // Pre-compute buyers market signal flags for hover tooltip (always, not gated on overlay mode)
     const buyersMarketFlags: Record<string, { qualifies: number; stale: number }> = {};
     const buyersMarketQualifyingKeys = new Set<string>();
@@ -2390,13 +2607,14 @@
         if (buyerScoreActive) {
           props.buyerScore = buyerScores[district] ?? -1;
         }
-        props.volatilityCV = volatilityCVs[`${city ?? ""}:${district}`] ?? -1;
-        props.mrtPremium   = mrtPremiums[`${city ?? ""}:${district}`] ?? -9998;
+        props.volatilityCV  = volatilityCVs[`${city ?? ""}:${district}`] ?? -1;
+        props.mrtPremium    = mrtPremiums[`${city ?? ""}:${district}`] ?? -9998;
+        props.presaleSpread = presaleSpreads[`${city ?? ""}:${district}`] ?? -9999;
         return { ...f, properties: props };
       }),
     };
     src.setData(updated);
-    // Re-apply overlay fill in priority order: completion > volatility > buyer-score > mrt-premium > affordability > default
+    // Re-apply overlay fill in priority order: completion > volatility > buyer-score > mrt-premium > presale-spread > affordability > default
     if (completionActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
     } else if (volatilityActive && map.getLayer("districts-fill")) {
@@ -2405,6 +2623,8 @@
       map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
     } else if (mrtPremiumActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
+    } else if (presaleSpreadActive && map.getLayer("districts-fill")) {
+      map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
     }
 
     // Update pulsing ring markers for qualifying buyer's market districts
@@ -3105,6 +3325,10 @@
     const featureCityForMrt = (e.features[0].properties.city as string | undefined) ?? activeCity ?? undefined;
     const mrtPremiumClickHtml = renderMrtPremiumBadgeHtml(district, featureCityForMrt);
 
+    // Pre-sale spread badge — always shown in click popup
+    const featureCityForPresale = (e.features[0].properties.city as string | undefined) ?? activeCity ?? undefined;
+    const presaleSpreadClickHtml = renderPresaleSpreadBadgeHtml(district, featureCityForPresale);
+
     // Building age stats for click popup — use the district feature's own city for cache lookup
     // (more reliable than activeCity which may be missing if city dropdown is blank).
     // No cross-city fallback: if the exact city:district key misses, skip the age block rather
@@ -3148,6 +3372,7 @@
          ${buyerScoreClickHtml}
          ${volatilityClickHtml}
          ${mrtPremiumClickHtml}
+         ${presaleSpreadClickHtml}
          ${ageClickHtml}
          ${sparkSection}
          ${volumeSparkSection}
@@ -3668,6 +3893,9 @@
       } else if (mrtPremiumActive) {
         map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
         updateMrtPremiumLegend(true);
+      } else if (presaleSpreadActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
+        updatePresaleSpreadLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -3709,6 +3937,9 @@
       } else if (mrtPremiumActive) {
         map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
         updateMrtPremiumLegend(true);
+      } else if (presaleSpreadActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
+        updatePresaleSpreadLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -3751,6 +3982,9 @@
       } else if (buyerScoreActive) {
         map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
         updateBuyerScoreLegend(true);
+      } else if (presaleSpreadActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
+        updatePresaleSpreadLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -3759,6 +3993,49 @@
         updateAffordabilityLegend(false);
       }
       updateMrtPremiumLegend(false);
+    }
+  });
+
+  document.addEventListener("presale-spread-mode-change", (e: Event) => {
+    const detail = (e as CustomEvent).detail as { enabled: boolean };
+    presaleSpreadActive = detail.enabled;
+
+    if (!map.getLayer("districts-fill")) return;
+
+    if (presaleSpreadActive) {
+      for (const id of ["districts-fill", "districts-line"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      }
+      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethToggle) choroplethToggle.checked = true;
+
+      // updateChoropleth already applies fill via priority chain when presaleSpreadActive=true;
+      // no redundant setPaintProperty needed here — just update data and legend.
+      updateChoropleth();
+      updatePresaleSpreadLegend(true);
+      const legend = document.getElementById("choropleth-legend");
+      if (legend) legend.style.opacity = "1";
+    } else {
+      updateChoropleth();
+      if (completionActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
+      } else if (volatilityActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
+        updateVolatilityLegend(true);
+      } else if (buyerScoreActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
+        updateBuyerScoreLegend(true);
+      } else if (mrtPremiumActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
+        updateMrtPremiumLegend(true);
+      } else if (affordabilityActive && affordabilityThreshold > 0) {
+        map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
+        updateAffordabilityLegend(true, affordabilityThreshold / 10000);
+      } else {
+        map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+        updateAffordabilityLegend(false);
+      }
+      updatePresaleSpreadLegend(false);
     }
   });
 
