@@ -2123,8 +2123,8 @@
    * Requires ≥24 distinct (year, month) pairs for the district.
    * Returns { sufficient, monthAvgs, annualAvg } where monthAvgs is a 12-element
    * array (index 0 = Jan) of average transaction counts.
-   * annualAvg = mean of non-empty month averages (months with no transactions are excluded
-   * from the denominator to avoid deflating the 70% buyer-window threshold).
+   * annualAvg = count-weighted mean: SUM(all yr-mo counts) / COUNT(yr-mo pairs),
+   * matching the backend SQL computation for consistent buyer-window thresholds.
    */
   function computeSeasonality(district: string, city?: string): {
     sufficient: boolean;
@@ -2138,12 +2138,8 @@
     const yrMoCounts: Record<string, number> = {};
     for (const f of rawAllFeatures) {
       if (f.properties.district !== district) continue;
-      if (!city || f.properties.city === city) {
-        // Include: either no city filter, or city matches exactly.
-        // Features with a missing/null city property are excluded when city is specified.
-      } else {
-        continue;
-      }
+      // Exclude when city filter is active and property doesn't match
+      if (city && f.properties.city !== city) continue;
       const d = f.properties.date as string | undefined;
       if (!d || typeof d !== "string") continue;
       const m = /^(\d{4})-(\d{2})/.exec(d);

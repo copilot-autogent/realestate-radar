@@ -327,6 +327,7 @@ export function transactionsRouter(): Router {
            FROM transactions
            WHERE city = $1
              AND ($2::text IS NULL OR district = $2)
+             AND transaction_date IS NOT NULL
            GROUP BY yr, mo
          ),
          pair_count AS (

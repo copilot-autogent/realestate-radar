@@ -2345,7 +2345,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const threshold = annualAvg * 0.7;
     const buyerMonthNames: string[] = [];
     const barColors = monthAvgs.map((v, i) => {
-      if (v < threshold) {
+      if (v > 0 && v < threshold) {
         buyerMonthNames.push(MONTH_LABELS[i]);
         return "rgba(13,148,136,0.75)";   // teal — buyer window
       }
@@ -2373,7 +2373,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
               label: (ctx: any) => {
                 const v = ctx.parsed.y as number;
                 const mo = ctx.dataIndex;
-                const isBuyer = monthAvgs[mo] < threshold;
+                const isBuyer = monthAvgs[mo] > 0 && monthAvgs[mo] < threshold;
                 return `均${v}筆${isBuyer ? " 🟢買方季" : ""}`;
               },
             },
