@@ -308,6 +308,11 @@ export function transactionsRouter(): Router {
       return;
     }
 
+    // Coerce to string and guard against array params
+    const cityStr = Array.isArray(city) ? String(city[0]) : String(city);
+    const districtStr = district && !Array.isArray(district) && String(district) !== ""
+      ? String(district) : null;
+
     try {
       const result = await query(
         `WITH monthly_counts AS (
@@ -330,8 +335,10 @@ export function transactionsRouter(): Router {
            FROM monthly_counts
            GROUP BY mo
          ),
+         -- Count-weighted annual average: use SUM/COUNT across all (yr,mo) pairs
+         -- to avoid mean-of-means bias when months have unequal year coverage.
          annual AS (
-           SELECT AVG(avg_count) AS annual_avg FROM month_avgs
+           SELECT SUM(cnt)::float / NULLIF(COUNT(*), 0) AS annual_avg FROM monthly_counts
          )
          SELECT
            ma.mo,
@@ -340,7 +347,7 @@ export function transactionsRouter(): Router {
            pc.n AS pair_count
          FROM month_avgs ma, annual a, pair_count pc
          ORDER BY ma.mo`,
-        [city, district || null]
+        [cityStr, districtStr]
       );
 
       if (result.rows.length === 0 || Number(result.rows[0].pair_count) < 24) {

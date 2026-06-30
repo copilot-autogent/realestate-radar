@@ -370,7 +370,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       <!-- ── Seasonal deal-flow calendar ── -->
       <div id="seasonal-panel" class="seasonal-panel" style="display:none">
         <h3>📅 買方季曆<span id="seasonal-district-label" class="seasonal-district-label"></span></h3>
-        <p class="seasonal-note">月均成交量（近2年）</p>
+        <p class="seasonal-note">月均成交量（歷年平均）</p>
         <div id="seasonal-insufficient" class="seasonal-insufficient" style="display:none">資料不足（需 ≥24 個月歷史）</div>
         <canvas id="seasonal-chart" width="260" height="140"></canvas>
         <div id="seasonal-summary" class="seasonal-summary" style="display:none"></div>
@@ -2301,8 +2301,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // ── Seasonal deal-flow calendar chart ─────────────────────────────────────
   let seasonalChartInstance: any = null;
+  let seasonalRenderSeq = 0;  // stale-event guard
 
   document.addEventListener("district-seasonality", async (e: Event) => {
+    const seq = ++seasonalRenderSeq;
     const { district, monthAvgs, annualAvg, sufficient } = (e as CustomEvent).detail as {
       district: string;
       monthAvgs: number[];        // 12 values, index 0 = Jan
@@ -2332,6 +2334,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     canvas.style.display   = "block";
 
     await ensureChart();
+    if (seq !== seasonalRenderSeq) return; // stale event — newer click already in progress
 
     if (seasonalChartInstance) {
       seasonalChartInstance.destroy();
@@ -2375,7 +2378,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
               },
             },
           },
-          annotation: undefined,
         },
         scales: {
           y: {

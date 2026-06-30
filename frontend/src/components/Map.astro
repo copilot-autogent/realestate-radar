@@ -2123,6 +2123,8 @@
    * Requires ≥24 distinct (year, month) pairs for the district.
    * Returns { sufficient, monthAvgs, annualAvg } where monthAvgs is a 12-element
    * array (index 0 = Jan) of average transaction counts.
+   * annualAvg = mean of non-empty month averages (months with no transactions are excluded
+   * from the denominator to avoid deflating the 70% buyer-window threshold).
    */
   function computeSeasonality(district: string, city?: string): {
     sufficient: boolean;
@@ -2136,7 +2138,11 @@
     const yrMoCounts: Record<string, number> = {};
     for (const f of rawAllFeatures) {
       if (f.properties.district !== district) continue;
-      if (city && f.properties.city && f.properties.city !== city) continue;
+      if (!city || f.properties.city === city) {
+        // only filter by city when city is provided; include features missing city property
+      } else {
+        continue;
+      }
       const d = f.properties.date as string | undefined;
       if (!d || typeof d !== "string") continue;
       const m = /^(\d{4})-(\d{2})/.exec(d);
@@ -2158,7 +2164,11 @@
     const monthAvgs = monthBuckets.map(bucket =>
       bucket.length > 0 ? bucket.reduce((a, b) => a + b, 0) / bucket.length : 0
     );
-    const annualAvg = monthAvgs.reduce((a, b) => a + b, 0) / 12;
+    // Divide by non-empty months only to avoid deflating the threshold for sparse datasets
+    const nonEmptyMonths = monthAvgs.filter(v => v > 0);
+    const annualAvg = nonEmptyMonths.length > 0
+      ? nonEmptyMonths.reduce((a, b) => a + b, 0) / nonEmptyMonths.length
+      : 0;
 
     return { sufficient: true, monthAvgs, annualAvg };
   }
@@ -3083,7 +3093,8 @@
 
       // ── Seasonal deal-flow calendar (dot click) ───────────────────────────
       {
-        const seasonality = computeSeasonality(txDistrict);
+        const txCity = props.city as string | undefined;
+        const seasonality = computeSeasonality(txDistrict, txCity || undefined);
         document.dispatchEvent(new CustomEvent("district-seasonality", {
           detail: {
             district: txDistrict,
@@ -3381,11 +3392,16 @@
       }));
     }
 
+    // Get the clicked district's city from the feature properties (most reliable source)
+    const clickedCity = (e.features[0].properties.city as string | undefined)
+      || (document.getElementById("city-select") as HTMLSelectElement | null)?.value
+      || "";
+
     // ── Seasonal deal-flow calendar ──────────────────────────────────────────
     // Compute avg monthly transaction count for this district across all years
     // from rawAllFeatures (unfiltered). Requires ≥24 (year, month) pairs.
     {
-      const seasonality = computeSeasonality(district);
+      const seasonality = computeSeasonality(district, clickedCity || undefined);
       document.dispatchEvent(new CustomEvent("district-seasonality", {
         detail: {
           district,
@@ -3395,11 +3411,6 @@
         },
       }));
     }
-
-    // Get the clicked district's city from the feature properties (most reliable source)
-    const clickedCity = (e.features[0].properties.city as string | undefined)
-      || (document.getElementById("city-select") as HTMLSelectElement | null)?.value
-      || "";
 
     // Dispatch price histogram for the selected district — last 12 months only.
     // Compute cutoff as local-time YYYY-MM-DD to avoid toISOString() UTC shift.
