@@ -2117,6 +2117,58 @@
     return { qualifies: true, isDataSufficient: true, isStale };
   }
 
+/**
+   * Computes seasonal deal-flow statistics for a district from rawAllFeatures.
+   * Groups transactions by (year, month), averages count per month across years.
+   * Requires ≥24 distinct (year, month) pairs for the district.
+   * Returns { sufficient, monthAvgs, annualAvg } where monthAvgs is a 12-element
+   * array (index 0 = Jan) of average transaction counts.
+   * annualAvg = count-weighted mean: SUM(all yr-mo counts) / COUNT(yr-mo pairs),
+   * matching the backend SQL computation for consistent buyer-window thresholds.
+   */
+  function computeSeasonality(district: string, city?: string): {
+    sufficient: boolean;
+    monthAvgs: number[];
+    annualAvg: number;
+  } {
+    const EMPTY = { sufficient: false, monthAvgs: new Array(12).fill(0), annualAvg: 0 };
+    if (!rawAllFeatures.length) return EMPTY;
+
+    // Group transaction counts by (year, month) pair
+    const yrMoCounts: Record<string, number> = {};
+    for (const f of rawAllFeatures) {
+      if (f.properties.district !== district) continue;
+      // Exclude when city filter is active and property doesn't match
+      if (city && f.properties.city !== city) continue;
+      const d = f.properties.date as string | undefined;
+      if (!d || typeof d !== "string") continue;
+      const m = /^(\d{4})-(\d{2})/.exec(d);
+      if (!m) continue;
+      const key = `${m[1]}-${m[2]}`;
+      yrMoCounts[key] = (yrMoCounts[key] ?? 0) + 1;
+    }
+
+    const allPairs = Object.values(yrMoCounts);
+    if (allPairs.length < 24) return EMPTY;
+
+    // Aggregate per calendar month
+    const monthBuckets: number[][] = Array.from({ length: 12 }, () => []);
+    for (const [key, count] of Object.entries(yrMoCounts)) {
+      const mo = parseInt(key.slice(5, 7), 10) - 1; // 0-indexed
+      if (mo >= 0 && mo < 12) monthBuckets[mo].push(count);
+    }
+
+    const monthAvgs = monthBuckets.map(bucket =>
+      bucket.length > 0 ? bucket.reduce((a, b) => a + b, 0) / bucket.length : 0
+    );
+    // Count-weighted average: SUM(all yr-mo counts) / COUNT(yr-mo pairs)
+    // Matches backend SQL: SUM(cnt)/COUNT(*) across all (year, month) pairs.
+    // More robust than mean-of-means when months have unequal year coverage.
+    const annualAvg = allPairs.reduce((a, b) => a + b, 0) / allPairs.length;
+
+    return { sufficient: true, monthAvgs, annualAvg };
+  }
+
   /**
    * Renders the 「買方市場訊號」 banner HTML for the click popup and sidebar panel.
    * Returns empty string when the district doesn't qualify.
@@ -3034,6 +3086,20 @@
           detail: { district: txDistrict, labels: ageBandLabels, medians: ageBandMedians },
         }));
       }
+
+      // ── Seasonal deal-flow calendar (dot click) ───────────────────────────
+      {
+        const txCity = props.city as string | undefined;
+        const seasonality = computeSeasonality(txDistrict, txCity || undefined);
+        document.dispatchEvent(new CustomEvent("district-seasonality", {
+          detail: {
+            district: txDistrict,
+            monthAvgs: seasonality.monthAvgs,
+            annualAvg: seasonality.annualAvg,
+            sufficient: seasonality.sufficient,
+          },
+        }));
+      }
     }
   });
 
@@ -3326,6 +3392,21 @@
     const clickedCity = (e.features[0].properties.city as string | undefined)
       || (document.getElementById("city-select") as HTMLSelectElement | null)?.value
       || "";
+
+    // ── Seasonal deal-flow calendar ──────────────────────────────────────────
+    // Compute avg monthly transaction count for this district across all years
+    // from rawAllFeatures (unfiltered). Requires ≥24 (year, month) pairs.
+    {
+      const seasonality = computeSeasonality(district, clickedCity || undefined);
+      document.dispatchEvent(new CustomEvent("district-seasonality", {
+        detail: {
+          district,
+          monthAvgs: seasonality.monthAvgs,
+          annualAvg: seasonality.annualAvg,
+          sufficient: seasonality.sufficient,
+        },
+      }));
+    }
 
     // Dispatch price histogram for the selected district — last 12 months only.
     // Compute cutoff as local-time YYYY-MM-DD to avoid toISOString() UTC shift.
