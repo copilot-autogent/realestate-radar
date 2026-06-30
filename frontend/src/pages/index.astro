@@ -2197,6 +2197,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   let currentPricesWan: number[] = [];
   let currentThresholdWan: number | undefined;
   let currentDistrictLabel: string = "";
+  let currentDistrictKey: string = ""; // "city|district" for collision-safe equality check
   let histogramTargetPriceWan: number | undefined;
 
   function renderPriceHistogram(): void {
@@ -2300,17 +2301,21 @@ const showBuyersMarket = !isStale && dataYear !== null;
       if (targetWan !== undefined && Number.isFinite(targetWan) && targetWan > 0) {
         const sorted = [...prices].sort((a, b) => a - b);
         const below = sorted.filter(p => p < targetWan).length;
-        // Use raw count to avoid rounding masking true edge cases
-        if (below === 0) {
+        const atOrBelow = sorted.filter(p => p <= targetWan).length;
+        // Edge cases: use atOrBelow to correctly handle ties at boundary
+        if (atOrBelow === 0) {
           percentileLabel.textContent = `您的目標價比所有成交價都低`;
         } else if (below === sorted.length) {
           percentileLabel.textContent = `您的目標價比所有成交價都高`;
         } else {
+          // pct = % of prices strictly below target (percentile rank)
+          // "比 X% 的成交價高" when more than half are below (price is above median)
+          // "比 X% 的成交價低" when fewer than half are below (price is below median)
           const pct = Math.round((below / sorted.length) * 100);
-          if (pct <= 50) {
-            percentileLabel.textContent = `比 ${pct}% 的成交價低`;
+          if (pct >= 50) {
+            percentileLabel.textContent = `比 ${pct}% 的成交價高`;
           } else {
-            percentileLabel.textContent = `比 ${100 - pct}% 的成交價高`;
+            percentileLabel.textContent = `比 ${100 - pct}% 的成交價低`;
           }
         }
       } else {
@@ -2320,16 +2325,19 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   document.addEventListener("stats-histogram", (e: Event) => {
-    const { pricesWan, district } = (e as CustomEvent).detail as { pricesWan?: number[]; district?: string };
+    const { pricesWan, district, city } = (e as CustomEvent).detail as { pricesWan?: number[]; district?: string; city?: string };
     currentPricesWan = pricesWan ?? [];
     const newDistrict = district ?? "";
-    // Clear target price only when switching to a different district
-    if (newDistrict !== currentDistrictLabel) {
+    const newCity = city ?? "";
+    const newKey = `${newCity}|${newDistrict}`;
+    // Clear target price only when switching to a different district (city+district keyed)
+    if (newKey !== currentDistrictKey) {
       histogramTargetPriceWan = undefined;
       const targetInput = document.getElementById("histogram-target-price") as HTMLInputElement | null;
       if (targetInput) targetInput.value = "";
     }
     currentDistrictLabel = newDistrict;
+    currentDistrictKey = newKey;
     renderPriceHistogram();
   });
 

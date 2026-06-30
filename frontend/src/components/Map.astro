@@ -3007,22 +3007,31 @@
       new CustomEvent("district-trend", { detail: { district, quarters: allSortedKeys, medians: trendMedians } })
     );
 
-    // Dispatch price histogram for the selected district — last 12 months only
-    // Use date-only string comparison (YYYY-MM-DD) to avoid timezone skew
-    const now = new Date();
-    const cutoff12mDate = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
-    const cutoff12mStr = cutoff12mDate.toISOString().slice(0, 10);
+    // Dispatch price histogram for the selected district — last 12 months only.
+    // Build cutoff as a local-time YYYY-MM-DD string to avoid toISOString() UTC shift.
+    const _now = new Date();
+    const _cy = _now.getFullYear(), _cm = _now.getMonth() - 12, _cd = _now.getDate();
+    const _cutoffDate = new Date(_cy, _cm, _cd); // JS normalises negative months
+    const _pad = (n: number) => String(n).padStart(2, "0");
+    const cutoff12mStr = `${_cutoffDate.getFullYear()}-${_pad(_cutoffDate.getMonth() + 1)}-${_pad(_cutoffDate.getDate())}`;
+    // Compute city inline for district+city keying (resolves same-name collisions)
+    const _cityForHistogram = (rawAllFeatures.find(
+      (f) => f.properties?.district === district
+    )?.properties?.city as string | undefined)
+      || (document.getElementById("city-select") as HTMLSelectElement | null)?.value
+      || "";
     const last12mPricesWan = txFeatures
       .filter((f: any) => {
         if (f.properties.district !== district) return false;
         const p = f.properties.unitPrice as number | undefined;
         if (!p || p <= 0) return false;
         const d = f.properties.date as string | undefined;
-        return typeof d === "string" && d >= cutoff12mStr;
+        // Requires YYYY-MM-DD format (matches data schema); non-conforming dates are skipped
+        return typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) && d >= cutoff12mStr;
       })
       .map((f: any) => (f.properties.unitPrice as number) / 10000);
     document.dispatchEvent(new CustomEvent("stats-histogram", {
-      detail: { pricesWan: last12mPricesWan, district },
+      detail: { pricesWan: last12mPricesWan, district, city: _cityForHistogram },
     }));
 
     // Compute activeCity once; reused for both yoy-signal dispatch and popup rendering.
