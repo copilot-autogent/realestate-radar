@@ -205,6 +205,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <label for="volatility-toggle">📊 顯示價格波動度</label>
       </div>
 
+      <!-- MRT proximity premium overlay toggle -->
+      <div class="toggle-row">
+        <input type="checkbox" id="mrt-premium-toggle" />
+        <label for="mrt-premium-toggle">🚇 捷運溢價熱力圖</label>
+      </div>
+
       <!-- MRT stations layer toggle (shown when MRT filter active) -->
       <div class="toggle-row" id="mrt-layer-toggle-row" style="display:none">
         <input type="checkbox" id="mrt-layer-toggle" checked />
@@ -491,6 +497,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const choropleth    = (document.getElementById("choropleth-toggle")        as HTMLInputElement)?.checked ?? true;
     const buyerScore    = (document.getElementById("buyer-score-toggle")       as HTMLInputElement)?.checked;
     const volatility    = (document.getElementById("volatility-toggle")        as HTMLInputElement)?.checked;
+    const mrtPremium    = (document.getElementById("mrt-premium-toggle")       as HTMLInputElement)?.checked;
     const completion    = (document.getElementById("completion-overlay-toggle") as HTMLInputElement)?.checked;
 
     if (city)          params.city = city;
@@ -512,6 +519,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (!choropleth)   params.choropleth = "0";
     if (buyerScore)    params.buyerScore = "1";
     if (volatility)    params.volatility = "1";
+    if (mrtPremium)    params.mrtPremium = "1";
     if (completion)    params.completion = "1";
     return params;
   }
@@ -536,7 +544,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       // Guard: at least one recognized key must be present
       const KNOWN_KEYS = ["city","district","minPrice","maxPrice","totalPriceMin","totalPriceMax",
         "areaMin","areaMax","buildingType","address","dateFrom","dateTo","mrtWalkMin",
-        "buildAgeRange","post921","choropleth","buyerScore","volatility","completion"];
+        "buildAgeRange","post921","choropleth","buyerScore","volatility","mrtPremium","completion"];
       if (!KNOWN_KEYS.some(k => sp.has(k))) return false;
 
       const set = (id: string, key: string) => {
@@ -596,6 +604,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const overlays: [string, string][] = [
         ["buyer-score-toggle",       "buyerScore"],
         ["volatility-toggle",        "volatility"],
+        ["mrt-premium-toggle",       "mrtPremium"],
         ["completion-overlay-toggle","completion"],
       ];
       for (const [elId, key] of overlays) {
@@ -831,7 +840,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     document.getElementById(_id)?.addEventListener("change", updateHash);
   }
   // Checkboxes: update hash immediately
-  for (const _id of ["post921-toggle", "choropleth-toggle", "buyer-score-toggle", "volatility-toggle", "completion-overlay-toggle"]) {
+  for (const _id of ["post921-toggle", "choropleth-toggle", "buyer-score-toggle", "volatility-toggle", "mrt-premium-toggle", "completion-overlay-toggle"]) {
     document.getElementById(_id)?.addEventListener("change", updateHash);
   }
 
@@ -2544,5 +2553,17 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   volatilityToggle?.addEventListener("change", updateVolatilityOverlay);
+
+  // ── MRT premium overlay toggle → dispatch to Map.astro ─────────────────────
+  const mrtPremiumToggle = document.getElementById("mrt-premium-toggle") as HTMLInputElement | null;
+
+  function updateMrtPremiumOverlay(): void {
+    const enabled = mrtPremiumToggle?.checked ?? false;
+    document.dispatchEvent(new CustomEvent("mrt-premium-mode-change", {
+      detail: { enabled },
+    }));
+  }
+
+  mrtPremiumToggle?.addEventListener("change", updateMrtPremiumOverlay);
 
 </script>
