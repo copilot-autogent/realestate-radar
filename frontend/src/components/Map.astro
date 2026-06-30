@@ -1912,10 +1912,7 @@
     });
 
     // Separate by transaction type
-    // 預售屋 = pre-sale; anything else with a building/unit price = 成屋
-    const PRESALE_TYPES = new Set(["預售屋"]);
-    const EXISTING_TYPES = new Set(["房地(土地+建物)", "建物", "房地", "住宅", "房地(土地+建物+車位)"]);
-
+    // 預售屋 = pre-sale; anything else with a unit price = 成屋 (broadest interpretation)
     const presale: number[] = [];
     const existing: number[] = [];
 
@@ -1924,20 +1921,13 @@
       const buildType = f.properties?.buildingType as string | undefined;
       const price = f.properties?.unitPrice as number;
 
-      // Classify: presale wins if transactionType says so, or buildingType hints pre-sale
+      // Pre-sale: explicit transactionType = "預售屋" OR buildingType contains "預售"
       const isPresale =
-        PRESALE_TYPES.has(txType ?? "") ||
+        txType === "預售屋" ||
         (buildType ?? "").includes("預售");
 
-      // Classify as existing: explicit type or default (backwards-compat with old data lacking transactionType)
-      const isExisting =
-        !isPresale && (
-          EXISTING_TYPES.has(txType ?? "") ||
-          (!txType && !((buildType ?? "").includes("預售")))
-        );
-
       if (isPresale) presale.push(price);
-      else if (isExisting) existing.push(price);
+      else existing.push(price);
     }
 
     const presaleCount = presale.length;
@@ -2006,19 +1996,20 @@
    * Real values: negative = discount, positive = premium.
    */
   function getPresaleSpreadFillColor(): any {
+    // Use a let binding for the coalesced value to ensure null/missing → -9999 everywhere
     return [
       "case",
-      // Insufficient data → light gray
+      // Insufficient data (null, missing, or sentinel -9999) → light gray
       ["==", ["coalesce", ["get", "presaleSpread"], -9999], -9999], "#d1d5db",
-      // Discount < -2%: blue tones
-      ["<", ["get", "presaleSpread"], -2], "#3b82f6",
+      // Discount < -2%: blue
+      ["<", ["coalesce", ["get", "presaleSpread"], -9999], -2], "#3b82f6",
       // Near-flat (-2% to +3%): neutral
-      ["<", ["get", "presaleSpread"], 3],  "#e2e8f0",
+      ["<", ["coalesce", ["get", "presaleSpread"], -9999], 3],  "#e2e8f0",
       // Low premium (3–10%): warm yellow
-      ["<", ["get", "presaleSpread"], 10], "#fde047",
+      ["<", ["coalesce", ["get", "presaleSpread"], -9999], 10], "#fde047",
       // Medium premium (10–20%): orange
-      ["<", ["get", "presaleSpread"], 20], "#f97316",
-      // High premium ≥20%: deep amber/red
+      ["<", ["coalesce", ["get", "presaleSpread"], -9999], 20], "#f97316",
+      // High premium ≥20%: deep amber
       "#b45309",
     ];
   }
