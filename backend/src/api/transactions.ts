@@ -308,8 +308,12 @@ export function transactionsRouter(): Router {
       return;
     }
 
-    // Coerce to string and guard against array params
+    // Coerce to string and guard against array params or empty string
     const cityStr = Array.isArray(city) ? String(city[0]) : String(city);
+    if (!cityStr.trim()) {
+      res.status(400).json({ error: "city parameter must be non-empty" });
+      return;
+    }
     const districtStr = district && !Array.isArray(district) && String(district) !== ""
       ? String(district) : null;
 
@@ -359,13 +363,19 @@ export function transactionsRouter(): Router {
       const threshold = annualAvg * 0.7;
 
       const MONTH_LABELS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
-      const months = result.rows.map(r => {
-        const mo = Number(r.mo);
-        const avgCount = Math.round(Number(r.avg_count) * 10) / 10;
-        const isBuyerWindow = avgCount < threshold;
+
+      // Build a lookup from SQL results (sparse — only months with transactions present)
+      const rowByMonth = new Map(result.rows.map(r => [Number(r.mo), r]));
+
+      // Fill all 12 months so the response is always 12 elements (predictable array index)
+      const months = Array.from({ length: 12 }, (_, i) => {
+        const mo = i + 1;
+        const row = rowByMonth.get(mo);
+        const avgCount = row ? Math.round(Number(row.avg_count) * 10) / 10 : 0;
+        const isBuyerWindow = avgCount > 0 && avgCount < threshold;
         return {
           month: mo,
-          label: MONTH_LABELS[mo - 1] ?? `${mo}月`,
+          label: MONTH_LABELS[i],
           avgCount,
           isBuyerWindow,
         };

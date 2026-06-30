@@ -2312,25 +2312,25 @@ const showBuyersMarket = !isStale && dataYear !== null;
       sufficient: boolean;
     };
 
-    const panel      = document.getElementById("seasonal-panel")      as HTMLDivElement;
-    const distLabel  = document.getElementById("seasonal-district-label") as HTMLSpanElement;
-    const insuffEl   = document.getElementById("seasonal-insufficient") as HTMLDivElement;
-    const canvas     = document.getElementById("seasonal-chart")       as HTMLCanvasElement;
-    const summaryEl  = document.getElementById("seasonal-summary")     as HTMLDivElement;
+    const panel      = document.getElementById("seasonal-panel")      as HTMLDivElement | null;
+    const distLabel  = document.getElementById("seasonal-district-label") as HTMLSpanElement | null;
+    const insuffEl   = document.getElementById("seasonal-insufficient") as HTMLDivElement | null;
+    const canvas     = document.getElementById("seasonal-chart")       as HTMLCanvasElement | null;
+    const summaryEl  = document.getElementById("seasonal-summary")     as HTMLDivElement | null;
     if (!panel || !canvas) return;
 
-    distLabel.textContent = district ? `— ${district}` : "";
+    if (distLabel) distLabel.textContent = district ? `— ${district}` : "";
     panel.style.display   = "block";
 
     if (!sufficient) {
-      insuffEl.style.display  = "block";
+      if (insuffEl) insuffEl.style.display  = "block";
       canvas.style.display    = "none";
-      summaryEl.style.display = "none";
+      if (summaryEl) summaryEl.style.display = "none";
       if (seasonalChartInstance) { seasonalChartInstance.destroy(); seasonalChartInstance = null; }
       return;
     }
 
-    insuffEl.style.display = "none";
+    if (insuffEl) insuffEl.style.display = "none";
     canvas.style.display   = "block";
 
     await ensureChart();
@@ -2394,11 +2394,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
     });
 
     // Summary callout
-    if (buyerMonthNames.length > 0) {
-      summaryEl.textContent = `歷史買方季：${buyerMonthNames.join("、")}（成交量 < 年均 70%，競爭者較少）`;
-      summaryEl.style.display = "block";
-    } else {
-      summaryEl.style.display = "none";
+    if (summaryEl) {
+      if (buyerMonthNames.length > 0) {
+        summaryEl.textContent = `歷史買方季：${buyerMonthNames.join("、")}（成交量 < 年均 70%，競爭者較少）`;
+        summaryEl.style.display = "block";
+      } else {
+        summaryEl.style.display = "none";
+      }
     }
   });
 

@@ -2139,7 +2139,8 @@
     for (const f of rawAllFeatures) {
       if (f.properties.district !== district) continue;
       if (!city || f.properties.city === city) {
-        // only filter by city when city is provided; include features missing city property
+        // Include: either no city filter, or city matches exactly.
+        // Features with a missing/null city property are excluded when city is specified.
       } else {
         continue;
       }
@@ -2151,8 +2152,8 @@
       yrMoCounts[key] = (yrMoCounts[key] ?? 0) + 1;
     }
 
-    const totalPairs = Object.keys(yrMoCounts).length;
-    if (totalPairs < 24) return EMPTY;
+    const allPairs = Object.values(yrMoCounts);
+    if (allPairs.length < 24) return EMPTY;
 
     // Aggregate per calendar month
     const monthBuckets: number[][] = Array.from({ length: 12 }, () => []);
@@ -2164,11 +2165,10 @@
     const monthAvgs = monthBuckets.map(bucket =>
       bucket.length > 0 ? bucket.reduce((a, b) => a + b, 0) / bucket.length : 0
     );
-    // Divide by non-empty months only to avoid deflating the threshold for sparse datasets
-    const nonEmptyMonths = monthAvgs.filter(v => v > 0);
-    const annualAvg = nonEmptyMonths.length > 0
-      ? nonEmptyMonths.reduce((a, b) => a + b, 0) / nonEmptyMonths.length
-      : 0;
+    // Count-weighted average: SUM(all yr-mo counts) / COUNT(yr-mo pairs)
+    // Matches backend SQL: SUM(cnt)/COUNT(*) across all (year, month) pairs.
+    // More robust than mean-of-means when months have unequal year coverage.
+    const annualAvg = allPairs.reduce((a, b) => a + b, 0) / allPairs.length;
 
     return { sufficient: true, monthAvgs, annualAvg };
   }
