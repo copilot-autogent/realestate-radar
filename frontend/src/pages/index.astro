@@ -2300,23 +2300,23 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (percentileLabel) {
       if (targetWan !== undefined && Number.isFinite(targetWan) && targetWan > 0) {
         const sorted = [...prices].sort((a, b) => a - b);
-        const below = sorted.filter(p => p < targetWan).length;
-        const atOrBelow = sorted.filter(p => p <= targetWan).length;
-        // Edge cases: use atOrBelow to correctly handle ties at boundary
+        const below = sorted.filter(p => p < targetWan).length;      // strictly below
+        const atOrBelow = sorted.filter(p => p <= targetWan).length; // at or below
+        const above = sorted.length - atOrBelow;                      // strictly above
         if (atOrBelow === 0) {
           percentileLabel.textContent = `您的目標價比所有成交價都低`;
-        } else if (below === sorted.length) {
+        } else if (above === 0) {
           percentileLabel.textContent = `您的目標價比所有成交價都高`;
-        } else {
-          // pct = % of prices strictly below target (percentile rank)
-          // "比 X% 的成交價高" when more than half are below (price is above median)
-          // "比 X% 的成交價低" when fewer than half are below (price is below median)
+        } else if (below >= sorted.length / 2) {
+          // More than half the prices are below → target is above median
+          // "比 N% 的成交價高": N = % strictly below
           const pct = Math.round((below / sorted.length) * 100);
-          if (pct >= 50) {
-            percentileLabel.textContent = `比 ${pct}% 的成交價高`;
-          } else {
-            percentileLabel.textContent = `比 ${100 - pct}% 的成交價低`;
-          }
+          percentileLabel.textContent = `比 ${pct}% 的成交價高`;
+        } else {
+          // Less than half the prices are below → target is below median
+          // "比 N% 的成交價低": N = % strictly above
+          const pct = Math.round((above / sorted.length) * 100);
+          percentileLabel.textContent = `比 ${pct}% 的成交價低`;
         }
       } else {
         percentileLabel.textContent = "";
