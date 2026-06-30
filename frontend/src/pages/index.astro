@@ -359,6 +359,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <p id="trend-note" class="trend-note"></p>
       </div>
 
+      <!-- ── Building-age depreciation curve ── -->
+      <div id="age-curve-panel" class="age-curve-panel" style="display:none">
+        <h3>🏗 屋齡折舊曲線<span id="age-curve-district-label" class="age-curve-district-label"></span></h3>
+        <p class="age-curve-note">中位數單價 (萬/坪) by 屋齡</p>
+        <div id="age-curve-insufficient" class="age-curve-insufficient" style="display:none">資料不足（需 ≥3 屋齡區間，每區間 ≥5 筆）</div>
+        <canvas id="age-curve-chart" width="260" height="160"></canvas>
+      </div>
+
       <div id="histogram-panel" class="histogram-panel" style="display:none">
         <h3>單價分佈 (萬/坪)<span id="histogram-district-label" class="histogram-district-label"></span></h3>
         <p class="histogram-note">近 12 個月成交</p>
@@ -1444,6 +1452,41 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
   .reset-btn:hover { background: #e2e8f0; }
 
+  /* ── Building-age depreciation curve panel ── */
+  .age-curve-panel {
+    margin-top: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .age-curve-panel h3 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .age-curve-district-label {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #64748b;
+    margin-left: 4px;
+  }
+  .age-curve-note {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    margin: 0 0 6px;
+  }
+  .age-curve-insufficient {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    font-style: italic;
+    margin-top: 4px;
+  }
+
   .histogram-panel {
     margin-top: 12px;
     background: #fff;
@@ -2196,6 +2239,88 @@ const showBuyersMarket = !isStale && dataYear !== null;
           },
           x: {
             ticks: { font: { size: 10 }, maxRotation: 45 },
+          },
+        },
+      },
+    });
+  });
+
+  // ── Building-age depreciation curve chart ───────────────────────────────────
+  let ageCurveChartInstance: any = null;
+
+  document.addEventListener("district-age-curve", async (e: Event) => {
+    const { district, labels, medians } = (e as CustomEvent).detail as {
+      district: string;
+      labels: string[];
+      medians: number[];
+    };
+
+    const panel       = document.getElementById("age-curve-panel")          as HTMLDivElement;
+    const distLabel   = document.getElementById("age-curve-district-label") as HTMLSpanElement;
+    const insuffEl    = document.getElementById("age-curve-insufficient")   as HTMLDivElement;
+    const canvas      = document.getElementById("age-curve-chart")          as HTMLCanvasElement;
+    if (!panel || !canvas) return;
+
+    distLabel.textContent = district ? `— ${district}` : "";
+
+    // ≥3 bands required to render
+    const MIN_BANDS = 3;
+    if (labels.length < MIN_BANDS) {
+      insuffEl.style.display = "block";
+      canvas.style.display   = "none";
+      panel.style.display    = "block";
+      if (ageCurveChartInstance) { ageCurveChartInstance.destroy(); ageCurveChartInstance = null; }
+      return;
+    }
+
+    insuffEl.style.display = "none";
+    canvas.style.display   = "block";
+    panel.style.display    = "block";
+
+    await ensureChart();
+
+    if (ageCurveChartInstance) {
+      ageCurveChartInstance.destroy();
+      ageCurveChartInstance = null;
+    }
+
+    const dataWan = medians.map((p: number) => Math.round(p / 10000));
+
+    ageCurveChartInstance = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "中位數單價 (萬/坪)",
+          data: dataWan,
+          borderColor: "#d97706",
+          backgroundColor: "rgba(217,119,6,0.1)",
+          tension: 0.25,
+          pointRadius: 5,
+          pointBackgroundColor: "#d97706",
+          fill: true,
+        }],
+      },
+      options: {
+        responsive: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => `${ctx.parsed.y} 萬/坪`,
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: false,
+            ticks: {
+              callback: (v: any) => `${v}萬`,
+              font: { size: 10 },
+            },
+          },
+          x: {
+            ticks: { font: { size: 10 }, maxRotation: 30 },
           },
         },
       },

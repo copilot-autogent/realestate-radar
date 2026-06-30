@@ -180,6 +180,108 @@ export function transactionsRouter(): Router {
   });
 
   /**
+   * GET /api/transactions/age-curve
+   * Building-age depreciation curve for a specific district.
+   *
+   * Returns median unit price per age band:
+   *   0–5, 5–10, 10–20, 20–30, 30+ years
+   *
+   * Query params:
+   *   city     - required
+   *   district - required
+   *
+   * Gates:
+   *   ≥5 transactions per band (bands below threshold are suppressed)
+   *   ≥3 bands required to return data (returns { insufficient: true } otherwise)
+   */
+  router.get("/age-curve", async (req: Request, res: Response) => {
+    const { city, district } = req.query;
+    if (!city || !district) {
+      res.status(400).json({ error: "city and district parameters required" });
+      return;
+    }
+
+    try {
+      const result = await query(
+        `WITH aged AS (
+           SELECT
+             unit_price,
+             CASE
+               WHEN build_year IS NULL OR build_year <= 0 THEN NULL
+               -- ROC year (< 200) → add 1911; otherwise treat as western year
+               WHEN build_year < 200 THEN
+                 EXTRACT(YEAR FROM transaction_date)::int - (build_year + 1911)
+               ELSE
+                 EXTRACT(YEAR FROM transaction_date)::int - build_year
+             END AS building_age
+           FROM transactions
+           WHERE city = $1
+             AND district = $2
+             AND unit_price IS NOT NULL
+             AND unit_price > 0
+             AND build_year IS NOT NULL
+             AND build_year > 0
+         ),
+         banded AS (
+           SELECT
+             unit_price,
+             CASE
+               WHEN building_age >= 0  AND building_age < 5   THEN '0–5 年'
+               WHEN building_age >= 5  AND building_age < 10  THEN '5–10 年'
+               WHEN building_age >= 10 AND building_age < 20  THEN '10–20 年'
+               WHEN building_age >= 20 AND building_age < 30  THEN '20–30 年'
+               WHEN building_age >= 30 AND building_age < 200 THEN '30+ 年'
+               ELSE NULL
+             END AS band,
+             CASE
+               WHEN building_age >= 0  AND building_age < 5   THEN 1
+               WHEN building_age >= 5  AND building_age < 10  THEN 2
+               WHEN building_age >= 10 AND building_age < 20  THEN 3
+               WHEN building_age >= 20 AND building_age < 30  THEN 4
+               WHEN building_age >= 30 AND building_age < 200 THEN 5
+               ELSE NULL
+             END AS band_order
+           FROM aged
+           WHERE building_age >= 0 AND building_age < 200
+         ),
+         agg AS (
+           SELECT
+             band,
+             band_order,
+             COUNT(*)                                 AS tx_count,
+             PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY unit_price) AS median_unit_price
+           FROM banded
+           WHERE band IS NOT NULL
+           GROUP BY band, band_order
+           HAVING COUNT(*) >= 5
+         )
+         SELECT band, band_order, tx_count, ROUND(median_unit_price) AS median_unit_price
+         FROM agg
+         ORDER BY band_order`,
+        [city, district]
+      );
+
+      const bands = result.rows;
+      if (bands.length < 3) {
+        res.json({ insufficient: true, bands: [] });
+        return;
+      }
+
+      res.json({
+        insufficient: false,
+        bands: bands.map(r => ({
+          label: r.band,
+          txCount: Number(r.tx_count),
+          medianUnitPrice: Number(r.median_unit_price),
+        })),
+      });
+    } catch (err) {
+      console.error("Age-curve query error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
    * GET /api/transactions/history
    * Price history for a specific address/building
    */
