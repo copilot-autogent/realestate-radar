@@ -1782,16 +1782,17 @@
     // Show 資料不足 badge even when stations haven't loaded yet (mrtStations may be empty)
     const premium = computeMrtPremium(district, city);
     if (premium === -9999) {
-      return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-no-coverage">無捷運站</span></div>`;
+      return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-no-coverage">無近捷運交易</span></div>`;
     }
     if (premium === -9998) {
       return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-insufficient">資料不足</span></div>`;
     }
     const pct = premium.toFixed(1);
-    if (Math.abs(premium) < 5) {
+    // Negatives and small positives (<5%) are treated as no-effect, matching choropleth neutral bucket
+    if (premium < 5) {
       return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-neutral">無捷運效應 (${pct}%)</span></div>`;
     }
-    const sign  = premium > 0 ? "+" : "";
+    const sign  = "+";
     const cls   = premium >= 20 ? "mrt-high" : premium >= 10 ? "mrt-medium" : "mrt-low";
     return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge ${cls}">${sign}${pct}%</span></div>`;
   }
@@ -1829,7 +1830,7 @@
           <div class="legend-item"><span class="legend-swatch" style="background:#f97316"></span>10–20%</div>
           <div class="legend-item"><span class="legend-swatch" style="background:#fde047"></span>5–10%</div>
           <div class="legend-item"><span class="legend-swatch" style="background:#fef9c3"></span>&lt; 5% 無效應</div>
-          <div class="legend-item"><span class="legend-swatch" style="background:#cbd5e1"></span>無捷運站</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#cbd5e1"></span>無近捷運交易</div>
           <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
         </div>`;
     } else if (!active) {
@@ -3407,7 +3408,16 @@
       if (!map.getLayer("districts-fill")) return;
       // Strip stale completionCount and restore prior fill
       updateChoropleth();
-      if (affordabilityActive && affordabilityThreshold > 0) {
+      if (volatilityActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
+        updateVolatilityLegend(true);
+      } else if (buyerScoreActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
+        updateBuyerScoreLegend(true);
+      } else if (mrtPremiumActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
+        updateMrtPremiumLegend(true);
+      } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
       } else {
         map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
