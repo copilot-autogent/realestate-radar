@@ -49,6 +49,7 @@ interface ExportRow {
   total_price: number;
   area_ping: string | null;
   building_type: string | null;
+  transaction_type: string;
   transaction_date: string;
   address: string | null;
   city: string;
@@ -68,7 +69,7 @@ async function exportStatic(): Promise<void> {
     const result = await query<ExportRow>(
       `SELECT
          id, lon, lat, unit_price, total_price, area_ping,
-         building_type, transaction_date, address, city, district,
+         building_type, transaction_type, transaction_date, address, city, district,
          floor, floors_total, rooms, build_year,
          assessed_value_per_sqm, assessed_to_market_ratio
        FROM transactions
@@ -96,6 +97,7 @@ async function exportStatic(): Promise<void> {
         totalPrice: row.total_price,
         areaPing: row.area_ping != null ? +Number(row.area_ping).toFixed(1) : null,
         buildingType: row.building_type,
+        transactionType: row.transaction_type,
         // node-pg returns DATE columns as plain strings ('YYYY-MM-DD') when the
         // column type is DATE (not TIMESTAMP). Use the string form directly to
         // avoid timezone-induced day-shift from toISOString() in non-UTC runtimes.

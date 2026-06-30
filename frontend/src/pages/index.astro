@@ -211,6 +211,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <label for="mrt-premium-toggle">🚇 捷運溢價熱力圖</label>
       </div>
 
+      <!-- Pre-sale spread overlay toggle -->
+      <div class="toggle-row">
+        <input type="checkbox" id="presale-spread-toggle" />
+        <label for="presale-spread-toggle">🏗 預售溢價熱力圖</label>
+      </div>
+
       <!-- MRT stations layer toggle (shown when MRT filter active) -->
       <div class="toggle-row" id="mrt-layer-toggle-row" style="display:none">
         <input type="checkbox" id="mrt-layer-toggle" checked />
@@ -506,6 +512,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const buyerScore    = (document.getElementById("buyer-score-toggle")       as HTMLInputElement)?.checked;
     const volatility    = (document.getElementById("volatility-toggle")        as HTMLInputElement)?.checked;
     const mrtPremium    = (document.getElementById("mrt-premium-toggle")       as HTMLInputElement)?.checked;
+    const presaleSpread = (document.getElementById("presale-spread-toggle")    as HTMLInputElement)?.checked;
     const completion    = (document.getElementById("completion-overlay-toggle") as HTMLInputElement)?.checked;
 
     if (city)          params.city = city;
@@ -528,6 +535,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (buyerScore)    params.buyerScore = "1";
     if (volatility)    params.volatility = "1";
     if (mrtPremium)    params.mrtPremium = "1";
+    if (presaleSpread) params.presaleSpread = "1";
     if (completion)    params.completion = "1";
     return params;
   }
@@ -552,7 +560,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       // Guard: at least one recognized key must be present
       const KNOWN_KEYS = ["city","district","minPrice","maxPrice","totalPriceMin","totalPriceMax",
         "areaMin","areaMax","buildingType","address","dateFrom","dateTo","mrtWalkMin",
-        "buildAgeRange","post921","choropleth","buyerScore","volatility","mrtPremium","completion"];
+        "buildAgeRange","post921","choropleth","buyerScore","volatility","mrtPremium","presaleSpread","completion"];
       if (!KNOWN_KEYS.some(k => sp.has(k))) return false;
 
       const set = (id: string, key: string) => {
@@ -613,6 +621,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         ["buyer-score-toggle",       "buyerScore"],
         ["volatility-toggle",        "volatility"],
         ["mrt-premium-toggle",       "mrtPremium"],
+        ["presale-spread-toggle",    "presaleSpread"],
         ["completion-overlay-toggle","completion"],
       ];
       for (const [elId, key] of overlays) {
@@ -2705,5 +2714,17 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   mrtPremiumToggle?.addEventListener("change", updateMrtPremiumOverlay);
+
+  // ── Pre-sale spread overlay toggle → dispatch to Map.astro ─────────────────────
+  const presaleSpreadToggle = document.getElementById("presale-spread-toggle") as HTMLInputElement | null;
+
+  function updatePresaleSpreadOverlay(): void {
+    const enabled = presaleSpreadToggle?.checked ?? false;
+    document.dispatchEvent(new CustomEvent("presale-spread-mode-change", {
+      detail: { enabled },
+    }));
+  }
+
+  presaleSpreadToggle?.addEventListener("change", updatePresaleSpreadOverlay);
 
 </script>
