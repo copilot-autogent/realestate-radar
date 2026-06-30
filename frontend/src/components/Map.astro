@@ -3007,10 +3007,35 @@
       new CustomEvent("district-trend", { detail: { district, quarters: allSortedKeys, medians: trendMedians } })
     );
 
-    // Dispatch price histogram for the selected district; empty array clears the panel
-    document.dispatchEvent(new CustomEvent("stats-histogram", {
-      detail: { pricesWan: allPrices.map((p: number) => p / 10000), district },
-    }));
+    // Get the clicked district's city from the feature properties (most reliable source)
+    const clickedCity = (e.features[0].properties.city as string | undefined)
+      || (document.getElementById("city-select") as HTMLSelectElement | null)?.value
+      || "";
+
+    // Dispatch price histogram for the selected district — last 12 months only.
+    // Compute cutoff as local-time YYYY-MM-DD to avoid toISOString() UTC shift.
+    // Subtract exactly 1 year and clamp day to avoid leap-year / month-length overflow.
+    {
+      const _n = new Date();
+      const _y = _n.getFullYear() - 1, _m = _n.getMonth();
+      const _maxDay = new Date(_y, _m + 1, 0).getDate(); // last day of target month
+      const _d = Math.min(_n.getDate(), _maxDay);
+      const _p = (n: number) => String(n).padStart(2, "0");
+      const cutoff12mStr = `${_y}-${_p(_m + 1)}-${_p(_d)}`;
+      const last12mPricesWan = txFeatures
+        .filter((f: any) => {
+          if (f.properties.district !== district) return false;
+          if (clickedCity && f.properties.city && f.properties.city !== clickedCity) return false;
+          const p = f.properties.unitPrice as number | undefined;
+          if (!p || p <= 0) return false;
+          const d = f.properties.date as string | undefined;
+          return typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) && d >= cutoff12mStr;
+        })
+        .map((f: any) => (f.properties.unitPrice as number) / 10000);
+      document.dispatchEvent(new CustomEvent("stats-histogram", {
+        detail: { pricesWan: last12mPricesWan, district, city: clickedCity },
+      }));
+    }
 
     // Compute activeCity once; reused for both yoy-signal dispatch and popup rendering.
     // Prefer city derived from transaction data for the clicked district (more reliable
@@ -3018,9 +3043,7 @@
     const cityFromData = rawAllFeatures.find(
       (f) => f.properties?.district === district
     )?.properties?.city as string | undefined;
-    const activeCity = cityFromData
-      || (document.getElementById("city-select") as HTMLSelectElement | null)?.value
-      || undefined;
+    const activeCity = clickedCity || cityFromData || undefined;
     const yoyHtml = renderYoYHtml(district, activeCity);
 
     // Buyers market banner (always computed — shown unconditionally when conditions met)
