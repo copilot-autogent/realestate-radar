@@ -1717,15 +1717,18 @@
    *
    * Return values encoded as numbers for GeoJSON property:
    *   -999  = no MRT coverage (no station within 2 km of any transaction in district)
-   *   -1    = insufficient data (fewer than 5 tx in one or both buckets, but MRT exists)
-   *   0–∞   = actual premium %; negative means discount (stations correlate with lower price)
+   *   -9999 = no MRT coverage (no station within 2 km of any transaction in district)
+   *   -9998 = insufficient data (fewer than 5 tx in one or both buckets, but MRT exists;
+   *           also returned when station data has not yet loaded)
+   *   real  = actual premium %; can be negative (near-MRT is cheaper — rare discount case)
    */
   function computeMrtPremium(district: string, city?: string): number {
     const MIN_BUCKET = 5;
     const NEAR_M = 500;
     const COVERAGE_M = 2000;
 
-    if (mrtStations.length === 0) return -1;
+    // Stations not loaded yet — insufficient data, not "no coverage"
+    if (mrtStations.length === 0) return -9998;
 
     const features = rawAllFeatures.filter(
       (f) =>
@@ -1735,7 +1738,7 @@
         f.geometry?.coordinates?.length >= 2
     );
 
-    if (features.length === 0) return -1;
+    if (features.length === 0) return -9998;
 
     const nearPrices: number[] = [];
     const farPrices: number[] = [];
@@ -1754,20 +1757,22 @@
         const [lng, lat] = f.geometry.coordinates as [number, number];
         return distToNearestMrt(lng, lat) <= COVERAGE_M;
       });
-      if (!hasCoverage) return -999; // no MRT in district
-      return -1; // MRT exists but too few near-MRT transactions
+      if (!hasCoverage) return -9999; // no MRT in district
+      return -9998; // MRT exists but too few near-MRT transactions
     }
 
-    if (farPrices.length < MIN_BUCKET) return -1;
+    if (farPrices.length < MIN_BUCKET) return -9998;
 
+    // Proper median: average two middle elements for even-length arrays
     const median = (arr: number[]) => {
       const s = [...arr].sort((a, b) => a - b);
-      return s[Math.floor(s.length / 2)];
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
     };
 
     const nearMed = median(nearPrices);
     const farMed  = median(farPrices);
-    if (farMed === 0) return -1;
+    if (farMed === 0) return -9998;
 
     return ((nearMed - farMed) / farMed) * 100;
   }
@@ -1776,10 +1781,10 @@
   function renderMrtPremiumBadgeHtml(district: string, city?: string): string {
     if (!rawAllFeatures.length || mrtStations.length === 0) return "";
     const premium = computeMrtPremium(district, city);
-    if (premium === -999) {
+    if (premium === -9999) {
       return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-no-coverage">無捷運站</span></div>`;
     }
-    if (premium === -1) {
+    if (premium === -9998) {
       return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-insufficient">資料不足</span></div>`;
     }
     const pct = premium.toFixed(1);
@@ -1791,15 +1796,18 @@
     return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge ${cls}">${sign}${pct}%</span></div>`;
   }
 
-  /** MapLibre fill-color expression for the MRT premium choropleth. */
+  /** MapLibre fill-color expression for the MRT premium choropleth.
+   *  Sentinels: -9999 = no MRT; -9998 = insufficient; null → coalesces to -9998.
+   *  Real values can be negative (MRT discount); treated as < 5% no-effect range.
+   */
   function getMrtPremiumFillColor(): any {
     return [
       "case",
-      // -999 = no MRT coverage → light slate
-      ["<=", ["coalesce", ["get", "mrtPremium"], -1], -100], "#cbd5e1",
-      // -1 = insufficient data → gray
-      ["<",  ["coalesce", ["get", "mrtPremium"], -1], 0],    "#d1d5db",
-      // 0–5% = neutral (no effect)
+      // == -9999 → no MRT coverage → light slate
+      ["==", ["coalesce", ["get", "mrtPremium"], -9998], -9999], "#cbd5e1",
+      // == -9998 or null → insufficient data → gray
+      ["==", ["coalesce", ["get", "mrtPremium"], -9998], -9998], "#d1d5db",
+      // Real values: negatives and 0–4.9% = neutral (no measurable effect)
       ["<",  ["get", "mrtPremium"], 5],  "#fef9c3",
       // 5–10% = low premium
       ["<",  ["get", "mrtPremium"], 10], "#fde047",
@@ -2382,7 +2390,7 @@
           props.buyerScore = buyerScores[district] ?? -1;
         }
         props.volatilityCV = volatilityCVs[`${city ?? ""}:${district}`] ?? -1;
-        props.mrtPremium   = mrtPremiums[`${city ?? ""}:${district}`] ?? -1;
+        props.mrtPremium   = mrtPremiums[`${city ?? ""}:${district}`] ?? -9998;
         return { ...f, properties: props };
       }),
     };
