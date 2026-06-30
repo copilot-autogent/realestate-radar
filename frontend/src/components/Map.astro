@@ -1929,7 +1929,8 @@
         (buildType ?? "").includes("預售");
 
       // Skip land-only / parking-only records (different price units, not comparable)
-      if (!isPresale && txType && EXCLUDE_TYPES.has(txType)) continue;
+      // Also exclude mixed types that include 車位 (car parking significantly skews unit price)
+      if (!isPresale && txType && (EXCLUDE_TYPES.has(txType) || txType.includes("車位"))) continue;
 
       if (isPresale) presale.push(price);
       else existing.push(price);
