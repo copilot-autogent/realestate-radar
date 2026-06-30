@@ -1716,7 +1716,6 @@
    * buckets have ≥5 transactions.
    *
    * Return values encoded as numbers for GeoJSON property:
-   *   -999  = no MRT coverage (no station within 2 km of any transaction in district)
    *   -9999 = no MRT coverage (no station within 2 km of any transaction in district)
    *   -9998 = insufficient data (fewer than 5 tx in one or both buckets, but MRT exists;
    *           also returned when station data has not yet loaded)
@@ -1779,7 +1778,8 @@
 
   /** Renders the MRT premium badge HTML for district click popups. */
   function renderMrtPremiumBadgeHtml(district: string, city?: string): string {
-    if (!rawAllFeatures.length || mrtStations.length === 0) return "";
+    if (!rawAllFeatures.length) return "";
+    // Show 資料不足 badge even when stations haven't loaded yet (mrtStations may be empty)
     const premium = computeMrtPremium(district, city);
     if (premium === -9999) {
       return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-no-coverage">無捷運站</span></div>`;
@@ -2666,6 +2666,10 @@
 
     // 4. Load MRT stations layer (hidden initially, shown when filter active)
     await loadMrtStations();
+    // Refresh choropleth now that MRT station data is available — the initial
+    // updateChoropleth() call (step 3) ran before stations were loaded, so
+    // mrtPremium properties were all -9998. Re-run to get real premium values.
+    updateChoropleth();
     const mrtGeojson = {
       type: "FeatureCollection",
       features: mrtStations.map((st) => ({
