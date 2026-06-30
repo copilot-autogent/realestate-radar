@@ -282,6 +282,98 @@ export function transactionsRouter(): Router {
   });
 
   /**
+   * GET /api/transactions/seasonality
+   * Seasonal deal-flow calendar for a district (or city-wide).
+   *
+   * Groups transactions by (year, month) → avg count per calendar month across years.
+   * Buyer-window months are those with avg count < 70% of the annual average.
+   *
+   * Query params:
+   *   city     - required
+   *   district - optional; omit for city-wide view
+   *
+   * Gates:
+   *   ≥24 distinct (year, month) pairs required (returns { insufficient: true } otherwise)
+   *
+   * Response:
+   *   insufficient: boolean
+   *   months: Array<{ month, label, avgCount, isBuyerWindow }>
+   *   annualAvg: number
+   *   buyerWindowMonths: string[]  — human-readable month labels
+   */
+  router.get("/seasonality", async (req: Request, res: Response) => {
+    const { city, district } = req.query;
+    if (!city) {
+      res.status(400).json({ error: "city parameter required" });
+      return;
+    }
+
+    try {
+      const result = await query(
+        `WITH monthly_counts AS (
+           SELECT
+             EXTRACT(YEAR  FROM transaction_date)::int AS yr,
+             EXTRACT(MONTH FROM transaction_date)::int AS mo,
+             COUNT(*)                                  AS cnt
+           FROM transactions
+           WHERE city = $1
+             AND ($2::text IS NULL OR district = $2)
+           GROUP BY yr, mo
+         ),
+         pair_count AS (
+           SELECT COUNT(*) AS n FROM monthly_counts
+         ),
+         month_avgs AS (
+           SELECT
+             mo,
+             AVG(cnt) AS avg_count
+           FROM monthly_counts
+           GROUP BY mo
+         ),
+         annual AS (
+           SELECT AVG(avg_count) AS annual_avg FROM month_avgs
+         )
+         SELECT
+           ma.mo,
+           ma.avg_count,
+           a.annual_avg,
+           pc.n AS pair_count
+         FROM month_avgs ma, annual a, pair_count pc
+         ORDER BY ma.mo`,
+        [city, district || null]
+      );
+
+      if (result.rows.length === 0 || Number(result.rows[0].pair_count) < 24) {
+        res.json({ insufficient: true, months: [], annualAvg: 0, buyerWindowMonths: [] });
+        return;
+      }
+
+      const annualAvg = Number(result.rows[0].annual_avg);
+      const threshold = annualAvg * 0.7;
+
+      const MONTH_LABELS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+      const months = result.rows.map(r => {
+        const mo = Number(r.mo);
+        const avgCount = Math.round(Number(r.avg_count) * 10) / 10;
+        const isBuyerWindow = avgCount < threshold;
+        return {
+          month: mo,
+          label: MONTH_LABELS[mo - 1] ?? `${mo}月`,
+          avgCount,
+          isBuyerWindow,
+        };
+      });
+
+      const buyerWindowMonths = months.filter(m => m.isBuyerWindow).map(m => m.label);
+
+      res.json({ insufficient: false, months, annualAvg: Math.round(annualAvg * 10) / 10, buyerWindowMonths });
+    } catch (err) {
+      console.error("Seasonality query error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
    * GET /api/transactions/history
    * Price history for a specific address/building
    */

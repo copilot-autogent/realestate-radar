@@ -367,6 +367,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <canvas id="age-curve-chart" width="260" height="160"></canvas>
       </div>
 
+      <!-- ── Seasonal deal-flow calendar ── -->
+      <div id="seasonal-panel" class="seasonal-panel" style="display:none">
+        <h3>📅 買方季曆<span id="seasonal-district-label" class="seasonal-district-label"></span></h3>
+        <p class="seasonal-note">月均成交量（近2年）</p>
+        <div id="seasonal-insufficient" class="seasonal-insufficient" style="display:none">資料不足（需 ≥24 個月歷史）</div>
+        <canvas id="seasonal-chart" width="260" height="140"></canvas>
+        <div id="seasonal-summary" class="seasonal-summary" style="display:none"></div>
+      </div>
+
       <div id="histogram-panel" class="histogram-panel" style="display:none">
         <h3>單價分佈 (萬/坪)<span id="histogram-district-label" class="histogram-district-label"></span></h3>
         <p class="histogram-note">近 12 個月成交</p>
@@ -1487,6 +1496,51 @@ const showBuyersMarket = !isStale && dataYear !== null;
     margin-top: 4px;
   }
 
+  /* ── Seasonal deal-flow calendar panel ── */
+  .seasonal-panel {
+    margin-top: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .seasonal-panel h3 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .seasonal-district-label {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #64748b;
+    margin-left: 4px;
+  }
+  .seasonal-note {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    margin: 0 0 6px;
+  }
+  .seasonal-insufficient {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    font-style: italic;
+    margin-top: 4px;
+  }
+  .seasonal-summary {
+    margin-top: 8px;
+    font-size: 0.72rem;
+    color: #0f766e;
+    background: #f0fdfa;
+    border-left: 3px solid #0d9488;
+    border-radius: 4px;
+    padding: 5px 8px;
+    line-height: 1.5;
+  }
+
   .histogram-panel {
     margin-top: 12px;
     background: #fff;
@@ -2243,6 +2297,107 @@ const showBuyersMarket = !isStale && dataYear !== null;
         },
       },
     });
+  });
+
+  // ── Seasonal deal-flow calendar chart ─────────────────────────────────────
+  let seasonalChartInstance: any = null;
+
+  document.addEventListener("district-seasonality", async (e: Event) => {
+    const { district, monthAvgs, annualAvg, sufficient } = (e as CustomEvent).detail as {
+      district: string;
+      monthAvgs: number[];        // 12 values, index 0 = Jan
+      annualAvg: number;
+      sufficient: boolean;
+    };
+
+    const panel      = document.getElementById("seasonal-panel")      as HTMLDivElement;
+    const distLabel  = document.getElementById("seasonal-district-label") as HTMLSpanElement;
+    const insuffEl   = document.getElementById("seasonal-insufficient") as HTMLDivElement;
+    const canvas     = document.getElementById("seasonal-chart")       as HTMLCanvasElement;
+    const summaryEl  = document.getElementById("seasonal-summary")     as HTMLDivElement;
+    if (!panel || !canvas) return;
+
+    distLabel.textContent = district ? `— ${district}` : "";
+    panel.style.display   = "block";
+
+    if (!sufficient) {
+      insuffEl.style.display  = "block";
+      canvas.style.display    = "none";
+      summaryEl.style.display = "none";
+      if (seasonalChartInstance) { seasonalChartInstance.destroy(); seasonalChartInstance = null; }
+      return;
+    }
+
+    insuffEl.style.display = "none";
+    canvas.style.display   = "block";
+
+    await ensureChart();
+
+    if (seasonalChartInstance) {
+      seasonalChartInstance.destroy();
+      seasonalChartInstance = null;
+    }
+
+    const MONTH_LABELS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+    const threshold = annualAvg * 0.7;
+    const buyerMonthNames: string[] = [];
+    const barColors = monthAvgs.map((v, i) => {
+      if (v < threshold) {
+        buyerMonthNames.push(MONTH_LABELS[i]);
+        return "rgba(13,148,136,0.75)";   // teal — buyer window
+      }
+      return "rgba(100,116,139,0.45)";    // slate — normal
+    });
+
+    seasonalChartInstance = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: MONTH_LABELS,
+        datasets: [{
+          data: monthAvgs.map(v => Math.round(v * 10) / 10),
+          backgroundColor: barColors,
+          borderColor: barColors.map(c => c.replace("0.75","1").replace("0.45","0.8")),
+          borderWidth: 1,
+          borderRadius: 3,
+        }],
+      },
+      options: {
+        responsive: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => {
+                const v = ctx.parsed.y as number;
+                const mo = ctx.dataIndex;
+                const isBuyer = monthAvgs[mo] < threshold;
+                return `均${v}筆${isBuyer ? " 🟢買方季" : ""}`;
+              },
+            },
+          },
+          annotation: undefined,
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { font: { size: 9 }, maxTicksLimit: 5 },
+            grid: { color: "rgba(0,0,0,0.05)" },
+          },
+          x: {
+            ticks: { font: { size: 9 }, maxRotation: 0 },
+            grid: { display: false },
+          },
+        },
+      },
+    });
+
+    // Summary callout
+    if (buyerMonthNames.length > 0) {
+      summaryEl.textContent = `歷史買方季：${buyerMonthNames.join("、")}（成交量 < 年均 70%，競爭者較少）`;
+      summaryEl.style.display = "block";
+    } else {
+      summaryEl.style.display = "none";
+    }
   });
 
   // ── Building-age depreciation curve chart ───────────────────────────────────
