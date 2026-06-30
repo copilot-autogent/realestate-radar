@@ -360,7 +360,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <div id="histogram-svg-container"></div>
         <div id="histogram-target-row" class="histogram-target-row">
           <label for="histogram-target-price">目標單價</label>
-          <input type="number" id="histogram-target-price" class="histogram-target-input" placeholder="萬/坪" min="0" step="1" />
+          <input type="number" id="histogram-target-price" class="histogram-target-input" placeholder="萬/坪" min="0" step="0.1" />
           <span class="histogram-target-unit">萬/坪</span>
         </div>
         <p id="histogram-percentile-label" class="histogram-percentile-label"></p>
@@ -2300,15 +2300,18 @@ const showBuyersMarket = !isStale && dataYear !== null;
       if (targetWan !== undefined && Number.isFinite(targetWan) && targetWan > 0) {
         const sorted = [...prices].sort((a, b) => a - b);
         const below = sorted.filter(p => p < targetWan).length;
-        const pct = Math.round((below / sorted.length) * 100);
-        if (pct === 0) {
+        // Use raw count to avoid rounding masking true edge cases
+        if (below === 0) {
           percentileLabel.textContent = `您的目標價比所有成交價都低`;
-        } else if (pct === 100) {
+        } else if (below === sorted.length) {
           percentileLabel.textContent = `您的目標價比所有成交價都高`;
-        } else if (pct <= 50) {
-          percentileLabel.textContent = `比 ${pct}% 的成交價低`;
         } else {
-          percentileLabel.textContent = `比 ${100 - pct}% 的成交價高`;
+          const pct = Math.round((below / sorted.length) * 100);
+          if (pct <= 50) {
+            percentileLabel.textContent = `比 ${pct}% 的成交價低`;
+          } else {
+            percentileLabel.textContent = `比 ${100 - pct}% 的成交價高`;
+          }
         }
       } else {
         percentileLabel.textContent = "";
@@ -2319,11 +2322,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
   document.addEventListener("stats-histogram", (e: Event) => {
     const { pricesWan, district } = (e as CustomEvent).detail as { pricesWan?: number[]; district?: string };
     currentPricesWan = pricesWan ?? [];
-    currentDistrictLabel = district ?? "";
-    // Clear target price when district changes
-    histogramTargetPriceWan = undefined;
-    const targetInput = document.getElementById("histogram-target-price") as HTMLInputElement | null;
-    if (targetInput) targetInput.value = "";
+    const newDistrict = district ?? "";
+    // Clear target price only when switching to a different district
+    if (newDistrict !== currentDistrictLabel) {
+      histogramTargetPriceWan = undefined;
+      const targetInput = document.getElementById("histogram-target-price") as HTMLInputElement | null;
+      if (targetInput) targetInput.value = "";
+    }
+    currentDistrictLabel = newDistrict;
     renderPriceHistogram();
   });
 

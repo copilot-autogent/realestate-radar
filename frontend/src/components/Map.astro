@@ -3008,15 +3008,17 @@
     );
 
     // Dispatch price histogram for the selected district — last 12 months only
-    const cutoff12m = new Date();
-    cutoff12m.setMonth(cutoff12m.getMonth() - 12);
+    // Use date-only string comparison (YYYY-MM-DD) to avoid timezone skew
+    const now = new Date();
+    const cutoff12mDate = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
+    const cutoff12mStr = cutoff12mDate.toISOString().slice(0, 10);
     const last12mPricesWan = txFeatures
       .filter((f: any) => {
         if (f.properties.district !== district) return false;
         const p = f.properties.unitPrice as number | undefined;
         if (!p || p <= 0) return false;
         const d = f.properties.date as string | undefined;
-        return d && new Date(d) >= cutoff12m;
+        return typeof d === "string" && d >= cutoff12mStr;
       })
       .map((f: any) => (f.properties.unitPrice as number) / 10000);
     document.dispatchEvent(new CustomEvent("stats-histogram", {
