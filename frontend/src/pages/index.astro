@@ -354,8 +354,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </div>
 
       <div id="histogram-panel" class="histogram-panel" style="display:none">
-        <h3>單價分佈 (萬/坪)</h3>
+        <h3>單價分佈 (萬/坪)<span id="histogram-district-label" class="histogram-district-label"></span></h3>
+        <p class="histogram-note">近 12 個月成交</p>
+        <div id="histogram-insufficient" class="histogram-insufficient" style="display:none">資料不足（需 ≥10 筆成交）</div>
         <div id="histogram-svg-container"></div>
+        <div id="histogram-target-row" class="histogram-target-row">
+          <label for="histogram-target-price">目標單價</label>
+          <input type="number" id="histogram-target-price" class="histogram-target-input" placeholder="萬/坪" min="0" step="1" />
+          <span class="histogram-target-unit">萬/坪</span>
+        </div>
+        <p id="histogram-percentile-label" class="histogram-percentile-label"></p>
       </div>
 
       <div id="transaction-list-panel" class="transaction-list-panel" style="display:none">
@@ -1438,9 +1446,62 @@ const showBuyersMarket = !isStale && dataYear !== null;
     font-size: 0.72rem;
     font-weight: 700;
     color: #475569;
-    margin-bottom: 8px;
+    margin-bottom: 2px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+  .histogram-district-label {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #64748b;
+    margin-left: 4px;
+  }
+  .histogram-note {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    margin: 0 0 8px 0;
+  }
+  .histogram-insufficient {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    padding: 8px 0;
+    text-align: center;
+  }
+  .histogram-target-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .histogram-target-row label {
+    font-size: 0.72rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+  .histogram-target-input {
+    width: 72px;
+    padding: 3px 6px;
+    font-size: 0.78rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    outline: none;
+    min-width: 0;
+  }
+  .histogram-target-input:focus {
+    border-color: #3b82f6;
+  }
+  .histogram-target-unit {
+    font-size: 0.72rem;
+    color: #64748b;
+  }
+  .histogram-percentile-label {
+    font-size: 0.78rem;
+    color: #1d4ed8;
+    font-weight: 600;
+    margin: 6px 0 0 0;
+    min-height: 1.1em;
   }
 
   /* ---- 議價時機 YoY panel (standalone in stats card) ---- */
@@ -2135,10 +2196,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
   // ---- Price Histogram (vanilla SVG — no external dep) ----
   let currentPricesWan: number[] = [];
   let currentThresholdWan: number | undefined;
+  let currentDistrictLabel: string = "";
+  let histogramTargetPriceWan: number | undefined;
 
   function renderPriceHistogram(): void {
     const panel = document.getElementById("histogram-panel") as HTMLDivElement;
     const container = document.getElementById("histogram-svg-container") as HTMLDivElement;
+    const insufficientEl = document.getElementById("histogram-insufficient") as HTMLDivElement;
+    const percentileLabel = document.getElementById("histogram-percentile-label") as HTMLParagraphElement;
+    const districtLabelEl = document.getElementById("histogram-district-label") as HTMLSpanElement;
     if (!panel || !container) return;
 
     // Filter to finite positive values only; guard against NaN propagation
@@ -2148,6 +2214,21 @@ const showBuyersMarket = !isStale && dataYear !== null;
       return;
     }
     panel.style.display = "block";
+
+    // Update district label
+    if (districtLabelEl) {
+      districtLabelEl.textContent = currentDistrictLabel ? `— ${currentDistrictLabel}` : "";
+    }
+
+    // ≥10-tx data gate
+    const MIN_TX = 10;
+    if (prices.length < MIN_TX) {
+      if (insufficientEl) insufficientEl.style.display = "block";
+      container.innerHTML = "";
+      if (percentileLabel) percentileLabel.textContent = "";
+      return;
+    }
+    if (insufficientEl) insufficientEl.style.display = "none";
 
     const BIN = 5; // fixed 5万/坪 bin width
     // Clip to 2nd–98th percentile to prevent outliers from generating huge SVGs
@@ -2178,15 +2259,20 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const ROW_H = 16, GAP = 2, TOP = 4;
     const H = TOP + nBins * (ROW_H + GAP);
     const thr = currentThresholdWan;
+    const targetWan = histogramTargetPriceWan;
 
     const rows = bins.map(({ lo, hi, count }, i) => {
       const y = TOP + i * (ROW_H + GAP);
       const bw = Math.round((count / maxCount) * BAR_W);
-      const fill = thr === undefined
-        ? "#3b82f6"
-        : hi <= thr ? "#22c55e"
-        : lo < thr ? "#f59e0b"
-        : "#94a3b8";
+      // Colour priority: target price overrides budget threshold colouring
+      let fill: string;
+      if (targetWan !== undefined) {
+        fill = hi <= targetWan ? "#22c55e" : lo < targetWan ? "#f59e0b" : "#94a3b8";
+      } else if (thr !== undefined) {
+        fill = hi <= thr ? "#22c55e" : lo < thr ? "#f59e0b" : "#94a3b8";
+      } else {
+        fill = "#3b82f6";
+      }
       const countLabel = count > 0
         ? `<text x="${LPAD + Math.max(bw, 2) + 3}" y="${ROW_H - 4}" font-size="9" fill="#475569">${count}</text>`
         : "";
@@ -2200,12 +2286,44 @@ const showBuyersMarket = !isStale && dataYear !== null;
       thrEl = `<line x1="${LPAD}" y1="${ly}" x2="${LPAD + BAR_W}" y2="${ly}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${LPAD + BAR_W - 2}" y="${ly - 2}" font-size="8" fill="#ef4444" text-anchor="end">預算 ${thr.toFixed(0)}萬</text>`;
     }
 
-    container.innerHTML = `<svg width="100%" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible">${rows}${thrEl}</svg>`;
+    // Target price marker line (blue dashed)
+    let targetEl = "";
+    if (targetWan !== undefined && targetWan >= lo0 && targetWan <= hi0) {
+      const ly = TOP + ((targetWan - lo0) / BIN) * (ROW_H + GAP);
+      targetEl = `<line x1="${LPAD}" y1="${ly}" x2="${LPAD + BAR_W}" y2="${ly}" stroke="#1d4ed8" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${LPAD + BAR_W - 2}" y="${ly - 2}" font-size="8" fill="#1d4ed8" text-anchor="end">${targetWan.toFixed(0)}萬</text>`;
+    }
+
+    container.innerHTML = `<svg width="100%" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible">${rows}${thrEl}${targetEl}</svg>`;
+
+    // Percentile label for target price
+    if (percentileLabel) {
+      if (targetWan !== undefined && Number.isFinite(targetWan) && targetWan > 0) {
+        const sorted = [...prices].sort((a, b) => a - b);
+        const below = sorted.filter(p => p < targetWan).length;
+        const pct = Math.round((below / sorted.length) * 100);
+        if (pct === 0) {
+          percentileLabel.textContent = `您的目標價比所有成交價都低`;
+        } else if (pct === 100) {
+          percentileLabel.textContent = `您的目標價比所有成交價都高`;
+        } else if (pct <= 50) {
+          percentileLabel.textContent = `比 ${pct}% 的成交價低`;
+        } else {
+          percentileLabel.textContent = `比 ${100 - pct}% 的成交價高`;
+        }
+      } else {
+        percentileLabel.textContent = "";
+      }
+    }
   }
 
   document.addEventListener("stats-histogram", (e: Event) => {
-    const { pricesWan } = (e as CustomEvent).detail as { pricesWan?: number[] };
+    const { pricesWan, district } = (e as CustomEvent).detail as { pricesWan?: number[]; district?: string };
     currentPricesWan = pricesWan ?? [];
+    currentDistrictLabel = district ?? "";
+    // Clear target price when district changes
+    histogramTargetPriceWan = undefined;
+    const targetInput = document.getElementById("histogram-target-price") as HTMLInputElement | null;
+    if (targetInput) targetInput.value = "";
     renderPriceHistogram();
   });
 
@@ -2214,6 +2332,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
     currentThresholdWan = thresholdWan;
     renderPriceHistogram();
   });
+
+  // Target price input → update percentile in real time
+  document.getElementById("histogram-target-price")?.addEventListener("input", (e: Event) => {
+    const val = parseFloat((e.target as HTMLInputElement).value);
+    histogramTargetPriceWan = Number.isFinite(val) && val > 0 ? val : undefined;
+    renderPriceHistogram();
+  });
+
 
   // ---- 議價時機 YoY Signal (dispatched by Map.astro on district click or search) ----
   document.addEventListener("yoy-signal", (e: Event) => {

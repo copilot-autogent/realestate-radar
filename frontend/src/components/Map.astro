@@ -3007,9 +3007,20 @@
       new CustomEvent("district-trend", { detail: { district, quarters: allSortedKeys, medians: trendMedians } })
     );
 
-    // Dispatch price histogram for the selected district; empty array clears the panel
+    // Dispatch price histogram for the selected district — last 12 months only
+    const cutoff12m = new Date();
+    cutoff12m.setMonth(cutoff12m.getMonth() - 12);
+    const last12mPricesWan = txFeatures
+      .filter((f: any) => {
+        if (f.properties.district !== district) return false;
+        const p = f.properties.unitPrice as number | undefined;
+        if (!p || p <= 0) return false;
+        const d = f.properties.date as string | undefined;
+        return d && new Date(d) >= cutoff12m;
+      })
+      .map((f: any) => (f.properties.unitPrice as number) / 10000);
     document.dispatchEvent(new CustomEvent("stats-histogram", {
-      detail: { pricesWan: allPrices.map((p: number) => p / 10000), district },
+      detail: { pricesWan: last12mPricesWan, district },
     }));
 
     // Compute activeCity once; reused for both yoy-signal dispatch and popup rendering.
