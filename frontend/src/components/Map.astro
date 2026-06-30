@@ -2989,6 +2989,51 @@
           detail: { district: txDistrict, quarters, medians, buildingType: txType ?? '', source: 'dot' },
         })
       );
+
+      // Dispatch age-curve for the clicked district (all building types, not filtered by type)
+      {
+        const AGE_BANDS_DOT = [
+          { label: "0–5 年", min: 0,  max: 5   },
+          { label: "5–10 年", min: 5, max: 10  },
+          { label: "10–20 年", min: 10, max: 20 },
+          { label: "20–30 年", min: 20, max: 30 },
+          { label: "30+ 年",  min: 30, max: Infinity },
+        ];
+        const bandPrices: number[][] = AGE_BANDS_DOT.map(() => []);
+        for (const f of txFeatures) {
+          if (f.properties.district !== txDistrict) continue;
+          const p = f.properties.unitPrice as number | undefined;
+          if (!p || p <= 0) continue;
+          const d = f.properties.date as string | undefined;
+          if (!d) continue;
+          const dt2 = new Date(String(d).replace(/-/g, "/"));
+          if (isNaN(dt2.getTime())) continue;
+          const txYr2 = dt2.getFullYear();
+          const rawBY2 = f.properties.buildYear ? Number(f.properties.buildYear) : null;
+          if (!rawBY2 || rawBY2 <= 0) continue;
+          const buildYr2 = rawBY2 < 200 ? rawBY2 + 1911 : rawBY2;
+          const age2 = txYr2 - buildYr2;
+          if (age2 < 0 || age2 >= 200) continue;
+          for (let i = 0; i < AGE_BANDS_DOT.length; i++) {
+            if (age2 >= AGE_BANDS_DOT[i].min && age2 < AGE_BANDS_DOT[i].max) {
+              bandPrices[i].push(p);
+              break;
+            }
+          }
+        }
+        const ageBandLabels: string[] = [];
+        const ageBandMedians: number[] = [];
+        for (let i = 0; i < AGE_BANDS_DOT.length; i++) {
+          if (bandPrices[i].length >= 5) {
+            const sorted = [...bandPrices[i]].sort((a, b) => a - b);
+            ageBandLabels.push(AGE_BANDS_DOT[i].label);
+            ageBandMedians.push(sorted[Math.floor(sorted.length / 2)]);
+          }
+        }
+        document.dispatchEvent(new CustomEvent("district-age-curve", {
+          detail: { district: txDistrict, labels: ageBandLabels, medians: ageBandMedians },
+        }));
+      }
     }
   });
 
@@ -3226,6 +3271,56 @@
     document.dispatchEvent(
       new CustomEvent("district-trend", { detail: { district, quarters: allSortedKeys, medians: trendMedians } })
     );
+
+    // ── Building-age depreciation curve ──────────────────────────────────────
+    // Compute median unit price per age band for this district.
+    // Age = transaction year − western build year (ROC years converted: raw < 200 → raw + 1911).
+    // Age bands: 0–5, 5–10, 10–20, 20–30, 30+ years.
+    // Gate: ≥5 transactions per band (suppress band); ≥3 bands to render chart.
+    {
+      const AGE_BANDS = [
+        { label: "0–5 年", min: 0,  max: 5   },
+        { label: "5–10 年", min: 5, max: 10  },
+        { label: "10–20 年", min: 10, max: 20 },
+        { label: "20–30 年", min: 20, max: 30 },
+        { label: "30+ 年",  min: 30, max: Infinity },
+      ];
+      const bandPrices: number[][] = AGE_BANDS.map(() => []);
+      for (const f of txFeatures) {
+        if (f.properties.district !== district) continue;
+        const p = f.properties.unitPrice as number | undefined;
+        if (!p || p <= 0) continue;
+        const d = f.properties.date as string | undefined;
+        if (!d) continue;
+        const dt = new Date(String(d).replace(/-/g, "/"));
+        if (isNaN(dt.getTime())) continue;
+        const txYr = dt.getFullYear();
+        const rawBY = f.properties.buildYear ? Number(f.properties.buildYear) : null;
+        if (!rawBY || rawBY <= 0) continue;
+        const buildYr = rawBY < 200 ? rawBY + 1911 : rawBY;
+        const age = txYr - buildYr;
+        if (age < 0 || age >= 200) continue;
+        for (let i = 0; i < AGE_BANDS.length; i++) {
+          if (age >= AGE_BANDS[i].min && age < AGE_BANDS[i].max) {
+            bandPrices[i].push(p);
+            break;
+          }
+        }
+      }
+      const MIN_TX_BAND = 5;
+      const ageBandLabels: string[] = [];
+      const ageBandMedians: number[] = [];
+      for (let i = 0; i < AGE_BANDS.length; i++) {
+        if (bandPrices[i].length >= MIN_TX_BAND) {
+          const sorted = [...bandPrices[i]].sort((a, b) => a - b);
+          ageBandLabels.push(AGE_BANDS[i].label);
+          ageBandMedians.push(sorted[Math.floor(sorted.length / 2)]);
+        }
+      }
+      document.dispatchEvent(new CustomEvent("district-age-curve", {
+        detail: { district, labels: ageBandLabels, medians: ageBandMedians },
+      }));
+    }
 
     // Get the clicked district's city from the feature properties (most reliable source)
     const clickedCity = (e.features[0].properties.city as string | undefined)
