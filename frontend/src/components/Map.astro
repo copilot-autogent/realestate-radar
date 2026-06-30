@@ -302,6 +302,36 @@
   .volatility-medium   { color: #a16207; background: #fefce8; border: 1px solid #fde047; }
   .volatility-high     { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
   .volatility-insufficient { color: #94a3b8; font-size: 0.76rem; font-weight: 400; font-style: italic; }
+
+  /* ---- MRT proximity premium badge ---- */
+  .mrt-premium-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+    gap: 8px;
+  }
+  .mrt-premium-label {
+    font-size: 0.76rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+  .mrt-premium-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .mrt-no-coverage  { color: #64748b; background: #f1f5f9; border: 1px solid #cbd5e1; font-weight: 400; }
+  .mrt-insufficient { color: #94a3b8; font-size: 0.76rem; font-weight: 400; font-style: italic; }
+  .mrt-neutral      { color: #78716c; background: #fefce8; border: 1px solid #fde047; }
+  .mrt-low          { color: #92400e; background: #fffbeb; border: 1px solid #fde68a; }
+  .mrt-medium       { color: #c2410c; background: #fff7ed; border: 1px solid #fed7aa; }
+  .mrt-high         { color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; }
+
   .volatility-row {
     display: flex;
     justify-content: space-between;
@@ -1678,6 +1708,139 @@
     return "";
   }
 
+  // ---- MRT Proximity Price Premium ----
+
+  /**
+   * Computes the MRT proximity price premium for a district.
+   * Splits transactions into ≤500m and >500m buckets; returns % premium when both
+   * buckets have ≥5 transactions.
+   *
+   * Return values encoded as numbers for GeoJSON property:
+   *   -9999 = no MRT coverage (no station within 2 km of any transaction in district)
+   *   -9998 = insufficient data (fewer than 5 tx in one or both buckets, but MRT exists;
+   *           also returned when station data has not yet loaded)
+   *   real  = actual premium %; can be negative (near-MRT is cheaper — rare discount case)
+   */
+  function computeMrtPremium(district: string, city?: string): number {
+    const MIN_BUCKET = 5;
+    const NEAR_M = 500;
+    const COVERAGE_M = 2000;
+
+    // Stations not loaded yet — insufficient data, not "no coverage"
+    if (mrtStations.length === 0) return -9998;
+
+    const features = rawAllFeatures.filter(
+      (f) =>
+        f.properties?.district === district &&
+        (f.properties?.unitPrice as number) > 0 &&
+        (!city || f.properties?.city === city) &&
+        f.geometry?.coordinates?.length >= 2
+    );
+
+    if (features.length === 0) return -9998;
+
+    const nearPrices: number[] = [];
+    const farPrices: number[] = [];
+
+    for (const f of features) {
+      const [lng, lat] = f.geometry.coordinates as [number, number];
+      const dist = distToNearestMrt(lng, lat);
+      const price = Number(f.properties.unitPrice);
+      if (dist <= NEAR_M) nearPrices.push(price);
+      else farPrices.push(price);
+    }
+
+    // Check MRT coverage: any station within COVERAGE_M of any transaction
+    if (nearPrices.length < MIN_BUCKET) {
+      const hasCoverage = features.some((f) => {
+        const [lng, lat] = f.geometry.coordinates as [number, number];
+        return distToNearestMrt(lng, lat) <= COVERAGE_M;
+      });
+      if (!hasCoverage) return -9999; // no MRT in district
+      return -9998; // MRT exists but too few near-MRT transactions
+    }
+
+    if (farPrices.length < MIN_BUCKET) return -9998;
+
+    // Proper median: average two middle elements for even-length arrays
+    const median = (arr: number[]) => {
+      const s = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
+    };
+
+    const nearMed = median(nearPrices);
+    const farMed  = median(farPrices);
+    if (farMed === 0) return -9998;
+
+    return ((nearMed - farMed) / farMed) * 100;
+  }
+
+  /** Renders the MRT premium badge HTML for district click popups. */
+  function renderMrtPremiumBadgeHtml(district: string, city?: string): string {
+    if (!rawAllFeatures.length) return "";
+    // Show 資料不足 badge even when stations haven't loaded yet (mrtStations may be empty)
+    const premium = computeMrtPremium(district, city);
+    if (premium === -9999) {
+      return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-no-coverage">無近捷運交易</span></div>`;
+    }
+    if (premium === -9998) {
+      return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-insufficient">資料不足</span></div>`;
+    }
+    const pct = premium.toFixed(1);
+    // Negatives and small positives (<5%) are treated as no-effect, matching choropleth neutral bucket
+    if (premium < 5) {
+      return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge mrt-neutral">無捷運效應 (${pct}%)</span></div>`;
+    }
+    const sign  = "+";
+    const cls   = premium >= 20 ? "mrt-high" : premium >= 10 ? "mrt-medium" : "mrt-low";
+    return `<div class="mrt-premium-row"><span class="mrt-premium-label">捷運500m溢價</span><span class="mrt-premium-badge ${cls}">${sign}${pct}%</span></div>`;
+  }
+
+  /** MapLibre fill-color expression for the MRT premium choropleth.
+   *  Sentinels: -9999 = no MRT; -9998 = insufficient; null → coalesces to -9998.
+   *  Real values can be negative (MRT discount); treated as < 5% no-effect range.
+   */
+  function getMrtPremiumFillColor(): any {
+    return [
+      "case",
+      // == -9999 → no MRT coverage → light slate
+      ["==", ["coalesce", ["get", "mrtPremium"], -9998], -9999], "#cbd5e1",
+      // == -9998 or null → insufficient data → gray
+      ["==", ["coalesce", ["get", "mrtPremium"], -9998], -9998], "#d1d5db",
+      // Real values: negatives and 0–4.9% = neutral (no measurable effect)
+      ["<",  ["get", "mrtPremium"], 5],  "#fef9c3",
+      // 5–10% = low premium
+      ["<",  ["get", "mrtPremium"], 10], "#fde047",
+      // 10–20% = medium premium
+      ["<",  ["get", "mrtPremium"], 20], "#f97316",
+      // 20+% = high premium
+      "#b45309",
+    ];
+  }
+
+  function updateMrtPremiumLegend(active: boolean): void {
+    const legend = document.getElementById("choropleth-legend");
+    if (!legend) return;
+    if (active && !completionActive && !volatilityActive && !buyerScoreActive) {
+      legend.innerHTML = `
+        <div class="legend-title">🚇 捷運500m溢價</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="legend-swatch" style="background:#b45309"></span>≥ 20%</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f97316"></span>10–20%</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#fde047"></span>5–10%</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#fef9c3"></span>&lt; 5% 無效應</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#cbd5e1"></span>無近捷運交易</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
+        </div>`;
+    } else if (!active) {
+      if (completionActive) return;
+      if (volatilityActive) { updateVolatilityLegend(true); return; }
+      if (buyerScoreActive)  { updateBuyerScoreLegend(true); return; }
+      updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
+    }
+  }
+
   // ---- Affordability overlay state ----
   let affordabilityActive = false;
   let affordabilityThreshold = 0; // TWD per ping
@@ -1687,6 +1850,9 @@
 
   // ---- Volatility overlay state ----
   let volatilityActive = false;
+
+  // ---- MRT premium overlay state ----
+  let mrtPremiumActive = false;
 
   // ---- Completion overlay state ----
   let completionActive = false;
@@ -1922,6 +2088,10 @@
         updateVolatilityLegend(true);
         return;
       }
+      if (mrtPremiumActive) {
+        updateMrtPremiumLegend(true);
+        return;
+      }
       updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
     }
     // active && (completionActive || volatilityActive) → other fill is showing; don't override its legend
@@ -1954,6 +2124,10 @@
       if (completionActive) return;
       if (buyerScoreActive) {
         updateBuyerScoreLegend(true);
+        return;
+      }
+      if (mrtPremiumActive) {
+        updateMrtPremiumLegend(true);
         return;
       }
       updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
@@ -2159,6 +2333,18 @@
       }
     }
 
+    // Pre-compute MRT proximity premium for all districts
+    // Always pre-computed so badge appears in all click popups; keyed by "city:district"
+    const mrtPremiums: Record<string, number> = {};
+    if (rawAllFeatures.length > 0 && mrtStations.length > 0) {
+      for (const f of districtGeoJSON.features) {
+        const district = f.properties.district as string;
+        const city = f.properties.city as string | undefined;
+        const key = `${city ?? ""}:${district}`;
+        mrtPremiums[key] = computeMrtPremium(district, city);
+      }
+    }
+
     // Pre-compute buyers market signal flags for hover tooltip (always, not gated on overlay mode)
     const buyersMarketFlags: Record<string, { qualifies: number; stale: number }> = {};
     const buyersMarketQualifyingKeys = new Set<string>();
@@ -2205,17 +2391,20 @@
           props.buyerScore = buyerScores[district] ?? -1;
         }
         props.volatilityCV = volatilityCVs[`${city ?? ""}:${district}`] ?? -1;
+        props.mrtPremium   = mrtPremiums[`${city ?? ""}:${district}`] ?? -9998;
         return { ...f, properties: props };
       }),
     };
     src.setData(updated);
-    // Re-apply overlay fill in priority order: completion > volatility > buyer-score > affordability > default
+    // Re-apply overlay fill in priority order: completion > volatility > buyer-score > mrt-premium > affordability > default
     if (completionActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
     } else if (volatilityActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
     } else if (buyerScoreActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
+    } else if (mrtPremiumActive && map.getLayer("districts-fill")) {
+      map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
     }
 
     // Update pulsing ring markers for qualifying buyer's market districts
@@ -2478,6 +2667,10 @@
 
     // 4. Load MRT stations layer (hidden initially, shown when filter active)
     await loadMrtStations();
+    // Refresh choropleth now that MRT station data is available — the initial
+    // updateChoropleth() call (step 3) ran before stations were loaded, so
+    // mrtPremium properties were all -9998. Re-run to get real premium values.
+    updateChoropleth();
     const mrtGeojson = {
       type: "FeatureCollection",
       features: mrtStations.map((st) => ({
@@ -2885,6 +3078,10 @@
     // Combined signal callouts (最佳進場訊號 / caveat card)
     const combinedSignalHtml = renderVolatilityCombinedSignalHtml(district, featureCityForVolatility);
 
+    // MRT premium badge — always shown in click popup
+    const featureCityForMrt = (e.features[0].properties.city as string | undefined) ?? activeCity ?? undefined;
+    const mrtPremiumClickHtml = renderMrtPremiumBadgeHtml(district, featureCityForMrt);
+
     // Building age stats for click popup — use the district feature's own city for cache lookup
     // (more reliable than activeCity which may be missing if city dropdown is blank).
     // No cross-city fallback: if the exact city:district key misses, skip the age block rather
@@ -2927,6 +3124,7 @@
          ${yoyHtml}
          ${buyerScoreClickHtml}
          ${volatilityClickHtml}
+         ${mrtPremiumClickHtml}
          ${ageClickHtml}
          ${sparkSection}
          ${volumeSparkSection}
@@ -3210,7 +3408,16 @@
       if (!map.getLayer("districts-fill")) return;
       // Strip stale completionCount and restore prior fill
       updateChoropleth();
-      if (affordabilityActive && affordabilityThreshold > 0) {
+      if (volatilityActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
+        updateVolatilityLegend(true);
+      } else if (buyerScoreActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
+        updateBuyerScoreLegend(true);
+      } else if (mrtPremiumActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
+        updateMrtPremiumLegend(true);
+      } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
       } else {
         map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
@@ -3435,6 +3642,9 @@
       } else if (volatilityActive) {
         map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
         updateVolatilityLegend(true);
+      } else if (mrtPremiumActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
+        updateMrtPremiumLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -3473,6 +3683,9 @@
       } else if (buyerScoreActive) {
         map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
         updateBuyerScoreLegend(true);
+      } else if (mrtPremiumActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
+        updateMrtPremiumLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -3481,6 +3694,48 @@
         updateAffordabilityLegend(false);
       }
       updateVolatilityLegend(false);
+    }
+  });
+
+  // ---- MRT premium mode change (dispatched from index.astro toggle) ----
+  document.addEventListener("mrt-premium-mode-change", (e: Event) => {
+    const detail = (e as CustomEvent).detail as { enabled: boolean };
+    mrtPremiumActive = detail.enabled;
+
+    if (!map.getLayer("districts-fill")) return;
+
+    if (mrtPremiumActive) {
+      for (const id of ["districts-fill", "districts-line"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      }
+      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethToggle) choroplethToggle.checked = true;
+
+      updateChoropleth();
+      if (!completionActive && !volatilityActive && !buyerScoreActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
+        updateMrtPremiumLegend(true);
+      }
+      const legend = document.getElementById("choropleth-legend");
+      if (legend) legend.style.opacity = "1";
+    } else {
+      updateChoropleth();
+      if (completionActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
+      } else if (volatilityActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
+        updateVolatilityLegend(true);
+      } else if (buyerScoreActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
+        updateBuyerScoreLegend(true);
+      } else if (affordabilityActive && affordabilityThreshold > 0) {
+        map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
+        updateAffordabilityLegend(true, affordabilityThreshold / 10000);
+      } else {
+        map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+        updateAffordabilityLegend(false);
+      }
+      updateMrtPremiumLegend(false);
     }
   });
 
