@@ -68,20 +68,26 @@ async function rateLimitedFetch(url: string): Promise<Response> {
 
 /**
  * Normalize a Taiwan address for better geocoding results.
- * Nominatim resolves street-level queries but not specific house numbers
- * in Chinese format — strip the house number and everything after it
- * (floor, unit designators) to maximize match rate. Also handles the
- * floor-only case for addresses that have no house number.
+ * Nominatim resolves street-level queries but not specific house numbers.
+ *
+ * 實價登錄 data uses full-width Unicode digits (０-９) for house numbers
+ * and floor numbers, so the regex must match both ASCII (0-9) and
+ * full-width (０-９, U+FF10–U+FF19) digits.
+ * Stripping the house number maximizes Nominatim street-level match rate.
  */
 export function normalizeAddress(address: string): string {
+  const D = "[\\d０-９]"; // ASCII or full-width digit (U+FF10–U+FF19)
   return address
-    // Strip house number and everything after (floor, unit, etc.)
-    // e.g. "木柵路一段155號三樓之1" → "木柵路一段"
-    .replace(/\d+之?\d*號.*/u, "")
+    // Strip house number and everything after (floor, unit, ownership notes, etc.)
+    // e.g. "新生北路三段４３號五樓之２６" → "新生北路三段"
+    // e.g. "中山北路六段７５４巷１２號地下二層" → "中山北路六段７５４巷"
+    //      (巷/lane number preserved; 號/house number stripped)
+    .replace(new RegExp(`${D}+之?${D}*號.*`, "u"), "")
     // Fallback: strip trailing floor suffix when no 號 is present
     // e.g. "木柵路一段3樓" → "木柵路一段"
-    .replace(/\d+樓(之\d+)?$/u, "")
-    .replace(/[A-Z]棟/u, "")           // remove building wing
+    .replace(new RegExp(`${D}+樓(之${D}+)?$`, "u"), "")
+    // Remove building wing designator — case-insensitive handles a/A/ａ/Ａ
+    .replace(/[A-Za-zＡ-Ｚａ-ｚ]棟/u, "")
     .replace(/\s+/g, " ")
     .trim();
 }
