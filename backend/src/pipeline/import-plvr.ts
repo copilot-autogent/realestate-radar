@@ -128,11 +128,15 @@ async function importFile(filepath: string, cutoffDate: Date | null = null): Pro
     records = parse(dataLines, {
       columns: [
         "鄉鎮市區", "交易標的", "土地位置建物門牌", "土地移轉總面積平方公尺",
-        "都市土地使用分區", "交易年月日", "交易筆棟數", "移轉層次", "總樓層數",
+        // New bulk-ZIP format (2025+) inserts two extra columns here vs older seasonal format:
+        "都市土地使用分區", "非都市土地使用分區", "非都市土地使用編定",
+        "交易年月日", "交易筆棟數", "移轉層次", "總樓層數",
         "建物型態", "主要用途", "主要建材", "建築完成年月", "建物移轉總面積平方公尺",
         "建物現況格局房", "建物現況格局廳", "建物現況格局衛", "建物現況格局隔間",
         "有無管理組織", "總價元", "單價元平方公尺", "車位類別",
         "車位移轉總面積平方公尺", "車位總價元", "備註", "編號",
+        // Extra trailing columns (e.g. additional land/building sub-records) are ignored
+        // by relax_column_count below.
       ],
       skip_empty_lines: true,
       relax_column_count: true,
