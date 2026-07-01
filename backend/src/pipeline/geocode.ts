@@ -70,13 +70,17 @@ async function rateLimitedFetch(url: string): Promise<Response> {
  * Normalize a Taiwan address for better geocoding results.
  * Nominatim resolves street-level queries but not specific house numbers
  * in Chinese format — strip the house number and everything after it
- * (floor, unit designators) to maximize match rate.
+ * (floor, unit designators) to maximize match rate. Also handles the
+ * floor-only case for addresses that have no house number.
  */
 export function normalizeAddress(address: string): string {
   return address
     // Strip house number and everything after (floor, unit, etc.)
     // e.g. "木柵路一段155號三樓之1" → "木柵路一段"
     .replace(/\d+之?\d*號.*/u, "")
+    // Fallback: strip trailing floor suffix when no 號 is present
+    // e.g. "木柵路一段3樓" → "木柵路一段"
+    .replace(/\d+樓(之\d+)?$/u, "")
     .replace(/[A-Z]棟/u, "")           // remove building wing
     .replace(/\s+/g, " ")
     .trim();
