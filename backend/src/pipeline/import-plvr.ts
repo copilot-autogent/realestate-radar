@@ -54,8 +54,9 @@ function safeFloat(val: string | undefined): number | null {
 
 /** Extract city code from filename like "A_lvr_land_A_113S4.csv" */
 function extractCityCode(filename: string): string | null {
-  // Match both uppercase (A_lvr_land_A_115S2.csv) and lowercase (a_lvr_land_a.csv) formats
-  const match = filename.match(/^([A-Za-z])_lvr_land/i);
+  // Accept both new lowercase format ("a_lvr_land_a.csv") and old uppercase
+  // seasonal format ("A_lvr_land_A_115S2.csv"). CITY_CODES keys are uppercase.
+  const match = filename.match(/^([A-Za-z])_lvr_land/);
   return match ? match[1].toUpperCase() : null;
 }
 

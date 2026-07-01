@@ -65,9 +65,10 @@ const HEADERS = {
 };
 
 // Filename pattern for type-A (sales/買賣) CSVs in the bulk ZIP.
-// The portal uses all-lowercase names without a season suffix, e.g. "a_lvr_land_a.csv".
-// Case-insensitive so the regex works if the portal ever changes casing.
-const CSV_SALES_RE = /^[a-z]_lvr_land_a(\.csv)$/i;
+// The portal uses all-lowercase names without a season suffix: "a_lvr_land_a.csv".
+// The regex also accepts uppercase seasonal names (e.g. "A_lvr_land_A_115S2.csv")
+// for backward-compat if the portal ever reverts to the older format.
+const CSV_SALES_RE = /^[A-Za-z]_lvr_land_a(\.csv|_\d+S\d+\.csv)$/i;
 
 /**
  * Download the current bulk ZIP from 內政部 and extract all city CSV files.
