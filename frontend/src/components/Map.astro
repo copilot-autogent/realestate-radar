@@ -3208,7 +3208,17 @@
   function wlGetAll(): WatchlistEntry[] {
     try {
       const raw = JSON.parse(localStorage.getItem(WL_KEY) ?? "[]");
-      return Array.isArray(raw) ? raw : [];
+      if (!Array.isArray(raw)) return [];
+      // Filter out corrupted items that would crash downstream property accesses
+      return raw.filter(
+        (e): e is WatchlistEntry =>
+          e !== null &&
+          typeof e === "object" &&
+          typeof e.district === "string" && e.district.length > 0 &&
+          typeof e.city === "string" &&
+          typeof e.snapshotDate === "string" &&
+          typeof e.snapshotPrice === "number"
+      );
     } catch { return []; }
   }
 
@@ -3321,11 +3331,13 @@
 
     const { kept, cleared } = clearStaleEntries(all);
     if (cleared.length > 0) {
-      wlSaveAll(kept);
-      document.dispatchEvent(new CustomEvent("watchlist-stale-cleared", { detail: { cleared } }));
-      // Update popup button and badge for purged entries
-      syncOpenPopupWatchButton();
-      wlDispatchChanged(kept);
+      const saved = wlSaveAll(kept);
+      if (saved) {
+        document.dispatchEvent(new CustomEvent("watchlist-stale-cleared", { detail: { cleared } }));
+        // Update popup button and badge for purged entries
+        syncOpenPopupWatchButton();
+        wlDispatchChanged(kept);
+      }
     }
 
     // Compute current median prices for all kept entries and dispatch deltas
@@ -3717,7 +3729,9 @@
     const watchBtnClass = `popup-watch-btn${isWatched ? " watched" : ""}`;
     const watchBtnDisabled = wlAtCap ? "disabled" : "";
     // Current 12mo median from unfiltered data (used as snapshot when starring)
+    // Store empty string for null (no data) so the click handler can detect it
     const currentMedianWan = computeMedianPrice12mo(rawAllFeatures, district, watchCity || undefined);
+    const medianAttr = currentMedianWan !== null ? String(currentMedianWan) : "";
 
     // Buyer score badge — always shown in click popup (badge row only shown when mode active)
     const buyerScoreClickHtml = buyerScoreActive
@@ -3792,7 +3806,7 @@
            <span class="popup-value">${sixMonthCount} 筆</span>
          </div>
          <button class="${pinBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(pinCity)}" ${pinBtnDisabled}>${pinBtnLabel}</button>
-         <button class="${watchBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(watchCity)}" data-median="${currentMedianWan ?? 0}" ${watchBtnDisabled}>${watchBtnLabel}</button>`
+         <button class="${watchBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(watchCity)}" data-median="${escHtml(medianAttr)}" ${watchBtnDisabled}>${watchBtnLabel}</button>`
       )
       .addTo(map);
 
@@ -3815,8 +3829,8 @@
         ev.stopPropagation();
         const d = watchBtn.dataset.district ?? district;
         const c = watchBtn.dataset.city     ?? watchCity;
-        const medianRaw = parseFloat(watchBtn.dataset.median ?? "NaN");
-        const medianVal = isNaN(medianRaw) ? null : medianRaw;
+        const medianRaw = parseFloat(watchBtn.dataset.median ?? "");
+        const medianVal = watchBtn.dataset.median === "" || isNaN(medianRaw) ? null : medianRaw;
         wlToggle(c, d, medianVal);
         syncOpenPopupWatchButton();
         syncOpenPopupPinButton(); // cap may have changed

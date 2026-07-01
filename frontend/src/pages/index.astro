@@ -3912,6 +3912,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   import {
     formatDelta,
     computeDeltaPct,
+    shouldShowBanner,
     type WatchlistEntry,
   } from "../lib/watchlistUtils.js";
   import { computeMedianPrice12mo } from "../lib/districtTableUtils.js";
@@ -3921,7 +3922,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
   function idxGetAll(): WatchlistEntry[] {
     try {
       const raw = JSON.parse(localStorage.getItem(WL_KEY_IDX) ?? "[]");
-      return Array.isArray(raw) ? raw : [];
+      if (!Array.isArray(raw)) return [];
+      return raw.filter(
+        (e): e is WatchlistEntry =>
+          e !== null &&
+          typeof e === "object" &&
+          typeof e.district === "string" && e.district.length > 0 &&
+          typeof e.city === "string" &&
+          typeof e.snapshotDate === "string" &&
+          typeof e.snapshotPrice === "number"
+      );
     } catch { return []; }
   }
 
@@ -3948,6 +3958,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       // Keep panel visible if there's a stale notice to show, otherwise hide
       const notice = document.getElementById("watchlist-stale-notice") as HTMLElement | null;
       const hasNotice = notice && notice.style.display !== "none" && notice.textContent;
+      list.innerHTML = "";
       panel.style.display = hasNotice ? "block" : "none";
       return;
     }
