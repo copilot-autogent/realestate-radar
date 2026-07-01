@@ -24,13 +24,16 @@ export function computeDeltaPct(snapshotPrice: number, currentPrice: number): nu
 
 /**
  * Returns true when the snapshot is older than staleAgeDays from now.
- * Malformed dates are treated as stale.
+ * Uses UTC date-string comparison to avoid timezone off-by-one issues
+ * (snapshotDate is always stored as `new Date().toISOString().slice(0,10)`, UTC).
+ * Malformed dates (not matching YYYY-MM-DD) are treated as stale.
  */
 export function isStale(snapshotDate: string, staleAgeDays = WL_STALE_DAYS): boolean {
-  const snap = new Date(snapshotDate + "T00:00:00");
-  if (isNaN(snap.getTime())) return true;
-  const limitMs = staleAgeDays * 24 * 60 * 60 * 1000;
-  return Date.now() - snap.getTime() > limitMs;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) return true;
+  // Compute the cutoff date in UTC without local-time drift
+  const cutoff = new Date(Date.now() - staleAgeDays * 24 * 60 * 60 * 1000);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return snapshotDate < cutoffStr;
 }
 
 /**
@@ -68,6 +71,7 @@ export function clearStaleEntries(
  * Format a delta percentage for display in the "since your last visit" banner.
  * In real estate context: price increase (↑) is bad for buyers (red),
  * price decrease (↓) is good for buyers (green).
+ * The `+` sign is only shown when the arrow is actually ↑ (not on flat).
  *
  * @returns text - formatted string e.g. "+5.3%", "-2.1%", "0.0%"
  *          arrow - directional arrow character
@@ -79,11 +83,12 @@ export function formatDelta(deltaPct: number): {
   cls: string;
 } {
   const rounded = Math.round(deltaPct * 10) / 10;
-  const sign = rounded > 0 ? "+" : "";
   const arrow = rounded > 0.5 ? "↑" : rounded < -0.5 ? "↓" : "→";
   const cls =
     rounded > 0.5  ? "wl-delta-up"   :
     rounded < -0.5 ? "wl-delta-down" :
     "wl-delta-flat";
+  // Show + only when we actually display the up arrow; flat values show no sign
+  const sign = arrow === "↑" ? "+" : "";
   return { text: `${sign}${rounded.toFixed(1)}%`, arrow, cls };
 }

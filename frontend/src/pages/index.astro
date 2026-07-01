@@ -3920,7 +3920,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
   const WL_KEY_IDX = "realestate-radar-watchlist";
 
   function idxGetAll(): WatchlistEntry[] {
-    try { return JSON.parse(localStorage.getItem(WL_KEY_IDX) ?? "[]"); } catch { return []; }
+    try {
+      const raw = JSON.parse(localStorage.getItem(WL_KEY_IDX) ?? "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch { return []; }
   }
 
   function idxSaveAll(entries: WatchlistEntry[]): void {
@@ -3986,14 +3989,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <span class="wl-delta-banner ${cls}">
             ${arrow} 自上次訪問，${escHtmlWl(entry.district)}均價 ${text}
           </span>
-          <div class="wl-snapshot-note">快照：${entry.snapshotDate} 基準 ${entry.snapshotPrice.toFixed(1)} 萬/坪</div>
+          <div class="wl-snapshot-note">快照：${entry.snapshotDate} 基準 ${Number(entry.snapshotPrice).toFixed(1)} 萬/坪</div>
         `;
         item.appendChild(bannerEl);
-      } else if (entry.snapshotPrice > 0) {
+      } else if (typeof entry.snapshotPrice === "number" && entry.snapshotPrice > 0) {
         // No banner yet (same-day star or no current price) — show snapshot price only
         const noteEl = document.createElement("div");
         noteEl.className = "wl-snapshot-note";
-        noteEl.textContent = `關注於 ${entry.snapshotDate}，基準 ${entry.snapshotPrice.toFixed(1)} 萬/坪`;
+        noteEl.textContent = `關注於 ${entry.snapshotDate}，基準 ${Number(entry.snapshotPrice).toFixed(1)} 萬/坪`;
         item.appendChild(noteEl);
       }
 
@@ -4020,10 +4023,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
           wlDeltaMap.set(key, { currentPrice, deltaPct, show });
         }
       }
-      // Remove entries that were unwatched
-      for (const key of wlDeltaMap.keys()) {
-        const [city, district] = key.split("::");
-        if (!entries.some((e) => e.city === city && e.district === district)) {
+      // Remove entries that were unwatched (avoid split("::") on keys)
+      for (const key of [...wlDeltaMap.keys()]) {
+        if (!entries.some((e) => `${e.city}::${e.district}` === key)) {
           wlDeltaMap.delete(key);
         }
       }
