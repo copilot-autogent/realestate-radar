@@ -13,7 +13,7 @@
  *   ...
  */
 
-import { mkdirSync, createWriteStream, existsSync } from "node:fs";
+import { mkdirSync, createWriteStream, existsSync, unlinkSync, renameSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
@@ -52,6 +52,7 @@ async function fetchWithRetry(
 }
 
 export const DATA_DIR = path.resolve(import.meta.dirname, "../../../data/downloads");
+const DATA_DIR_REAL = path.resolve(DATA_DIR) + path.sep;
 
 // The bulk download URL discovered from the portal's preDownload() JS function.
 // Returns a ZIP of all cities for the current published batch.
@@ -62,6 +63,9 @@ const HEADERS = {
   "Accept": "application/zip,application/octet-stream,*/*",
   "Referer": "https://plvr.land.moi.gov.tw/DownloadOpenData",
 };
+
+// Strict filename pattern: single uppercase city letter, _lvr_land_A_, ROC year S season
+const CSV_SALES_RE = /^[A-Z]_lvr_land_A_\d+S\d+\.csv$/;
 
 /**
  * Download the current bulk ZIP from 內政部 and extract all city CSV files.
@@ -83,7 +87,7 @@ export async function downloadPlvrBulk(): Promise<string[]> {
   // Verify we got a ZIP (not an HTML error page)
   const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
   if (contentType.includes("text/html")) {
-    await res.body.cancel();
+    try { await res.body.cancel(); } catch { /* ignore cancel errors */ }
     throw new Error("Server returned HTML instead of ZIP — portal may be down or blocking the request");
   }
 
@@ -93,30 +97,44 @@ export async function downloadPlvrBulk(): Promise<string[]> {
   const zipStream = Readable.fromWeb(res.body as any).pipe(unzipper.Parse({ forceStream: true }));
 
   for await (const entry of zipStream) {
-    const filename: string = entry.path;
-    // Only extract type-A (sales/買賣) CSV files; skip B (presale) and C (rental)
-    if (!filename.endsWith(".csv") || !filename.includes("_land_A")) {
-      entry.autodrain();
+    const filename: string = path.basename(entry.path); // basename strips any path prefix from the entry
+    // Only extract type-A (sales/買賣) CSVs; skip presale (B) and rental (C)
+    if (!CSV_SALES_RE.test(filename)) {
+      await entry.autodrain();
       continue;
     }
 
+    // Zip-slip guard: ensure the resolved output path stays within DATA_DIR
     const outPath = path.join(DATA_DIR, filename);
+    if (!path.resolve(outPath).startsWith(DATA_DIR_REAL)) {
+      console.warn(`[warn] Zip entry "${entry.path}" would escape DATA_DIR — skipping`);
+      await entry.autodrain();
+      continue;
+    }
+
     if (existsSync(outPath)) {
       console.log(`[skip] ${filename} already exists`);
-      entry.autodrain();
+      await entry.autodrain();
       extracted.push(outPath);
       continue;
     }
 
+    // Write to a temp path first; rename on success to prevent partial files
+    // from being silently skipped on the next run.
+    const tmpPath = `${outPath}.tmp`;
     console.log(`[extract] ${filename}`);
-    const writable = createWriteStream(outPath);
+    const writable = createWriteStream(tmpPath);
     try {
       await pipeline(entry, writable);
+      renameSync(tmpPath, outPath);
       extracted.push(outPath);
       console.log(`[ok] ${filename}`);
     } catch (err) {
+      try { unlinkSync(tmpPath); } catch (unlinkErr) {
+        if ((unlinkErr as NodeJS.ErrnoException).code !== "ENOENT") throw unlinkErr;
+      }
       console.error(`[error] ${filename}:`, (err as Error).message);
-      // Non-fatal: continue with other files
+      // Non-fatal: continue with other files in the ZIP
     }
   }
 
