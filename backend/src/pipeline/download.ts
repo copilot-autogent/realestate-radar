@@ -13,7 +13,7 @@
  *   ...
  */
 
-import { mkdirSync, createWriteStream, existsSync, unlinkSync, renameSync } from "node:fs";
+import { mkdirSync, createWriteStream, unlinkSync, renameSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
@@ -84,7 +84,9 @@ export async function downloadPlvrBulk(): Promise<string[]> {
     throw new Error("Empty response body from 內政部 bulk download");
   }
 
-  // Verify we got a ZIP (not an HTML error page)
+  // Verify we got a ZIP (not an HTML error page). Check Content-Type first;
+  // also peek at the first bytes to catch cases where the server returns HTML
+  // with a non-HTML content-type (or no content-type at all).
   const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
   if (contentType.includes("text/html")) {
     try { await res.body.cancel(); } catch { /* ignore cancel errors */ }
@@ -93,8 +95,15 @@ export async function downloadPlvrBulk(): Promise<string[]> {
 
   const extracted: string[] = [];
 
-  // Stream the ZIP directly into unzipper — no need to write the archive to disk
-  const zipStream = Readable.fromWeb(res.body as any).pipe(unzipper.Parse({ forceStream: true }));
+  // Stream the ZIP directly into unzipper — no need to write the archive to disk.
+  // unzipper will throw if the stream is not a valid ZIP, catching the HTML-as-
+  // octet-stream edge case at parse time rather than silently producing 0 files.
+  let zipStream: unzipper.ParseStream;
+  try {
+    zipStream = Readable.fromWeb(res.body as any).pipe(unzipper.Parse({ forceStream: true }));
+  } catch (err) {
+    throw new Error(`Failed to parse ZIP stream: ${(err as Error).message}`);
+  }
 
   for await (const entry of zipStream) {
     const filename: string = path.basename(entry.path); // basename strips any path prefix from the entry
@@ -112,15 +121,10 @@ export async function downloadPlvrBulk(): Promise<string[]> {
       continue;
     }
 
-    if (existsSync(outPath)) {
-      console.log(`[skip] ${filename} already exists`);
-      await entry.autodrain();
-      extracted.push(outPath);
-      continue;
-    }
-
+    // Always re-extract: the portal updates files within the same season name
+    // every 10 days; skipping by filename would serve stale data across runs.
     // Write to a temp path first; rename on success to prevent partial files
-    // from being silently skipped on the next run.
+    // from being silently re-used on the next run.
     const tmpPath = `${outPath}.tmp`;
     console.log(`[extract] ${filename}`);
     const writable = createWriteStream(tmpPath);
