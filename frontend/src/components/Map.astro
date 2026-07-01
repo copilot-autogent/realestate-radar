@@ -780,6 +780,69 @@
     cursor: not-allowed;
   }
 
+  /* Watch button inside district popup */
+  .popup-watch-btn {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 5px 0;
+    background: #fefce8;
+    border: 1px solid #fde047;
+    border-radius: 6px;
+    color: #a16207;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s;
+  }
+  .popup-watch-btn:hover { background: #fef9c3; }
+  .popup-watch-btn.watched {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #dc2626;
+  }
+  .popup-watch-btn:disabled {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #94a3b8;
+    cursor: not-allowed;
+  }
+
+  /* Watchlist toast notification */
+  .wl-toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #f1f5f9;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    z-index: 9999;
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
+
+  /* Legend badge for watchlist count */
+  #wl-legend-badge {
+    display: none;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+  }
+  .wl-badge-link {
+    color: #a16207;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .wl-badge-link:hover { text-decoration: underline; }
+
   /* Buyer score "?" help button inline in popup */
   .buyer-score-help-btn {
     display: inline-flex;
@@ -900,6 +963,15 @@
 
 <script>
   import maplibregl from "maplibre-gl";
+  import { computeMedianPrice12mo } from "../lib/districtTableUtils.js";
+  import {
+    clearStaleEntries,
+    computeDeltaPct,
+    shouldShowBanner,
+    formatDelta,
+    WL_MAX,
+    type WatchlistEntry,
+  } from "../lib/watchlistUtils.js";
 
   const API_BASE = import.meta.env.DEV ? "/api" : "";
   const BASE_URL = import.meta.env.BASE_URL;
@@ -2720,6 +2792,8 @@
         rawAllFeatures = geojson.features.slice();
         // Share raw data with DistrictTable (fires once on first load)
         document.dispatchEvent(new CustomEvent("rawdata-loaded", { detail: { features: rawAllFeatures } }));
+        // Run watchlist stale-check and delta computation once data is ready
+        wlCheckStaleOnce(rawAllFeatures);
       }
 
       // Client-side filtering
@@ -3004,6 +3078,13 @@
         <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
       </div>`;
     document.getElementById("map")!.appendChild(legend);
+
+    // Inject watchlist legend badge (shown when ≥1 district is watched)
+    const wlBadge = document.createElement("div");
+    wlBadge.id = "wl-legend-badge";
+    legend.appendChild(wlBadge);
+    // Initialise badge from stored state immediately
+    wlUpdateLegendBadge(wlGetAll().length);
     // Signal that all Mapbox layers are registered so overlay restore can proceed
     document.dispatchEvent(new CustomEvent("map-layers-ready"));
   });
@@ -3116,6 +3197,160 @@
   // ---- HTML-escape helper (prevents XSS when interpolating GeoJSON properties into setHTML) ----
   function escHtml(s: string): string {
     return s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
+  }
+
+  // ============================================================
+  // ---- District Watchlist (issue #110) -----------------------
+  // ============================================================
+
+  const WL_KEY = "realestate-radar-watchlist";
+
+  function wlGetAll(): WatchlistEntry[] {
+    try {
+      const raw = JSON.parse(localStorage.getItem(WL_KEY) ?? "[]");
+      if (!Array.isArray(raw)) return [];
+      // Filter out corrupted items that would crash downstream property accesses
+      return raw.filter(
+        (e): e is WatchlistEntry =>
+          e !== null &&
+          typeof e === "object" &&
+          typeof e.district === "string" && e.district.length > 0 &&
+          typeof e.city === "string" &&
+          typeof e.snapshotDate === "string" &&
+          typeof e.snapshotPrice === "number"
+      );
+    } catch { return []; }
+  }
+
+  function wlSaveAll(entries: WatchlistEntry[]): boolean {
+    try { localStorage.setItem(WL_KEY, JSON.stringify(entries)); return true; } catch { return false; }
+  }
+
+  function wlIsWatched(city: string, district: string): boolean {
+    return wlGetAll().some((e) => e.city === city && e.district === district);
+  }
+
+  /**
+   * Toggle watch state for a district. Returns the new watched state.
+   * Shows a toast when the max cap is exceeded or when localStorage write fails.
+   * Returns false without starring when currentMedianWan is null (no price data).
+   * @param currentMedianWan - current 12-month median price in 萬/坪 (required to snapshot)
+   */
+  function wlToggle(city: string, district: string, currentMedianWan: number | null): boolean {
+    const entries = wlGetAll();
+    const idx = entries.findIndex((e) => e.city === city && e.district === district);
+    if (idx !== -1) {
+      // Unwatch
+      entries.splice(idx, 1);
+      const saved = wlSaveAll(entries);
+      if (!saved) {
+        wlShowToast("無法更新關注列表（儲存空間不足或隱私模式）");
+        return true; // still "watched" since save failed
+      }
+      wlDispatchChanged(entries);
+      return false;
+    }
+    if (entries.length >= WL_MAX) {
+      wlShowToast(`最多只能關注 ${WL_MAX} 個行政區`);
+      return false;
+    }
+    if (currentMedianWan === null) {
+      wlShowToast("此行政區目前無足夠的成交資料，無法記錄基準價格");
+      return false;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    entries.push({
+      district,
+      city,
+      snapshotPrice: currentMedianWan,
+      snapshotDate: today,
+    });
+    const saved = wlSaveAll(entries);
+    if (!saved) {
+      wlShowToast("無法儲存關注列表（儲存空間不足或隱私模式）");
+      return false;
+    }
+    wlDispatchChanged(entries);
+    return true;
+  }
+
+  /** Fire watchlist-changed event so index.astro's sidebar panel can re-render. */
+  function wlDispatchChanged(entries: WatchlistEntry[]): void {
+    document.dispatchEvent(new CustomEvent("watchlist-changed", { detail: { entries } }));
+    wlUpdateLegendBadge(entries.length);
+  }
+
+  /** Update the legend badge count showing how many districts are watched. */
+  function wlUpdateLegendBadge(count: number): void {
+    const badge = document.getElementById("wl-legend-badge");
+    if (!badge) return;
+    if (count === 0) {
+      badge.style.display = "none";
+    } else {
+      badge.style.display = "block";
+      badge.innerHTML = `<a href="#watchlist-panel" class="wl-badge-link" title="查看關注行政區">⭐ 已關注 ${count} 個行政區</a>`;
+    }
+  }
+
+  /** Show a brief toast notification. */
+  function wlShowToast(msg: string): void {
+    const existing = document.getElementById("wl-toast");
+    if (existing) existing.remove();
+    const toast = document.createElement("div");
+    toast.id = "wl-toast";
+    toast.className = "wl-toast";
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+  }
+
+  /**
+   * Refresh the watch button state in the currently open district popup.
+   */
+  function syncOpenPopupWatchButton(): void {
+    if (!districtClickPopup) return;
+    const btn = districtClickPopup.getElement()?.querySelector<HTMLButtonElement>(".popup-watch-btn");
+    if (!btn) return;
+    const d = btn.dataset.district ?? "";
+    const c = btn.dataset.city     ?? "";
+    const isWatched = wlIsWatched(c, d);
+    const atCap = !isWatched && wlGetAll().length >= WL_MAX;
+    btn.textContent = isWatched ? "✕ 取消關注" : atCap ? `⭐ 已達上限 (最多${WL_MAX}個)` : "⭐ 關注此行政區";
+    btn.classList.toggle("watched", isWatched);
+    btn.disabled = atCap;
+  }
+
+  // ---- Stale-check on page load (runs once after map data loads) ----
+  let _wlStaleChecked = false;
+  function wlCheckStaleOnce(features: any[]): void {
+    if (_wlStaleChecked) return;
+    _wlStaleChecked = true;
+
+    const all = wlGetAll();
+    if (all.length === 0) return;
+
+    const { kept, cleared } = clearStaleEntries(all);
+    if (cleared.length > 0) {
+      const saved = wlSaveAll(kept);
+      if (saved) {
+        document.dispatchEvent(new CustomEvent("watchlist-stale-cleared", { detail: { cleared } }));
+        // Update popup button and badge for purged entries
+        syncOpenPopupWatchButton();
+        wlDispatchChanged(kept);
+      }
+    }
+
+    // Compute current median prices for all kept entries and dispatch deltas
+    const today = new Date().toISOString().slice(0, 10);
+    const deltas = kept.map((entry) => {
+      const currentPrice = computeMedianPrice12mo(features, entry.district, entry.city ?? undefined) ?? 0;
+      const deltaPct = computeDeltaPct(entry.snapshotPrice, currentPrice);
+      const show = entry.snapshotPrice > 0 && shouldShowBanner(entry.snapshotDate, today);
+      return { entry, currentPrice, deltaPct, show };
+    });
+
+    document.dispatchEvent(new CustomEvent("watchlist-deltas-ready", { detail: { deltas } }));
+    wlUpdateLegendBadge(kept.length);
   }
 
   // ---- Transaction detail modal ----
@@ -3486,6 +3721,18 @@
     const pinBtnClass = `popup-pin-btn${isPinned ? " pinned" : ""}`;
     const pinBtnDisabled = atCap ? "disabled" : "";
 
+    // Watch button state — use feature city as the most reliable city source
+    const watchCity = (e.features[0].properties.city as string | undefined) || activeCity || "";
+    const isWatched = wlIsWatched(watchCity, district);
+    const wlAtCap   = !isWatched && wlGetAll().length >= WL_MAX;
+    const watchBtnLabel = isWatched ? "✕ 取消關注" : wlAtCap ? `⭐ 已達上限 (最多${WL_MAX}個)` : "⭐ 關注此行政區";
+    const watchBtnClass = `popup-watch-btn${isWatched ? " watched" : ""}`;
+    const watchBtnDisabled = wlAtCap ? "disabled" : "";
+    // Current 12mo median from unfiltered data (used as snapshot when starring)
+    // Store empty string for null (no data) so the click handler can detect it
+    const currentMedianWan = computeMedianPrice12mo(rawAllFeatures, district, watchCity || undefined);
+    const medianAttr = currentMedianWan !== null ? String(currentMedianWan) : "";
+
     // Buyer score badge — always shown in click popup (badge row only shown when mode active)
     const buyerScoreClickHtml = buyerScoreActive
       ? renderBuyerScoreBadgeHtml(district, activeCity)
@@ -3558,7 +3805,8 @@
            <span class="popup-label">近半年成交</span>
            <span class="popup-value">${sixMonthCount} 筆</span>
          </div>
-         <button class="${pinBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(pinCity)}" ${pinBtnDisabled}>${pinBtnLabel}</button>`
+         <button class="${pinBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(pinCity)}" ${pinBtnDisabled}>${pinBtnLabel}</button>
+         <button class="${watchBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(watchCity)}" data-median="${escHtml(medianAttr)}" ${watchBtnDisabled}>${watchBtnLabel}</button>`
       )
       .addTo(map);
 
@@ -3571,6 +3819,21 @@
         const c = pinBtn.dataset.city     ?? pinCity;
         togglePin(d, c);
         syncOpenPopupPinButton();
+      });
+    }
+
+    // Wire watch button inside popup
+    const watchBtn = districtClickPopup.getElement()?.querySelector<HTMLButtonElement>(".popup-watch-btn");
+    if (watchBtn) {
+      watchBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const d = watchBtn.dataset.district ?? district;
+        const c = watchBtn.dataset.city     ?? watchCity;
+        const medianRaw = parseFloat(watchBtn.dataset.median ?? "");
+        const medianVal = watchBtn.dataset.median === "" || isNaN(medianRaw) ? null : medianRaw;
+        wlToggle(c, d, medianVal);
+        syncOpenPopupWatchButton();
+        syncOpenPopupPinButton(); // cap may have changed
       });
     }
 
@@ -4305,5 +4568,11 @@
         }
       }
     }
+  });
+
+  // ── watchlist-changed-external: sidebar unwatch → sync popup watch button + legend badge ──
+  document.addEventListener("watchlist-changed-external", () => {
+    syncOpenPopupWatchButton();
+    wlUpdateLegendBadge(wlGetAll().length);
   });
 </script>
