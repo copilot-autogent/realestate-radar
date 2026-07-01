@@ -51,13 +51,11 @@ async function main(): Promise<void> {
      WHERE lat IS NULL
        AND address IS NOT NULL
        AND address != ''
-       -- Skip land-parcel IDs (e.g. "博嘉段四小段202地號").
-       -- Taiwan street addresses always contain 路/街/道/巷/弄.
-       -- Land parcel IDs contain 段/地號 but never these street markers.
-       AND (
-         address LIKE '%路%' OR address LIKE '%街%' OR address LIKE '%道%'
-         OR address LIKE '%巷%' OR address LIKE '%弄%'
-       )
+       -- Exclude pure land-only transactions (交易標的=土地).
+       -- Their address fields contain land parcel IDs (e.g. "博嘉段四小段202地號")
+       -- which Nominatim cannot resolve. Building/mixed transactions (房地, 建物, etc.)
+       -- carry real street addresses and are geocodable.
+       AND transaction_type <> '土地'
      ORDER BY id
      LIMIT $1`,
     [limit]
