@@ -286,6 +286,10 @@
     const empty = document.getElementById("dt-empty")!;
     const count = document.getElementById("dt-count")!;
 
+    // Destroy all existing spark instances before rebuild to prevent leaks
+    sparkInstances.forEach((inst) => { try { inst.destroy(); } catch { /* ignore */ } });
+    sparkInstances.clear();
+
     const sorted = sortRows(allRows, sortKey, sortDir);
 
     if (sorted.length === 0) {
@@ -375,8 +379,9 @@
     // Row click → switch to map view centered on district
     tbody.querySelectorAll<HTMLTableRowElement>(".dt-tr").forEach((tr) => {
       const handler = () => {
-        const district = (tr as HTMLTableRowElement).dataset.district!;
-        const city     = (tr as HTMLTableRowElement).dataset.city!;
+        const district = (tr as HTMLTableRowElement).dataset.district ?? "";
+        const city     = (tr as HTMLTableRowElement).dataset.city ?? "";
+        if (!district) return;
         document.dispatchEvent(
           new CustomEvent("district-table-row-click", { detail: { district, city } })
         );
@@ -440,14 +445,6 @@
   // Listen for raw data shared from Map.astro (avoids double-fetch when map loaded first)
   document.addEventListener("rawdata-loaded", (e: Event) => {
     const { features } = (e as CustomEvent).detail;
-    if (features && Array.isArray(features)) {
-      loadAndRender(features);
-    }
-  });
-
-  // Also listen for filter changes to re-filter the table
-  document.addEventListener("filter-change", (e: Event) => {
-    const { features } = (e as CustomEvent).detail ?? {};
     if (features && Array.isArray(features)) {
       loadAndRender(features);
     }

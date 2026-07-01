@@ -19,6 +19,7 @@ export type SortDir = "asc" | "desc";
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function median(arr: number[]): number {
+  if (arr.length === 0) return 0;
   const s = [...arr].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 === 0 ? (s[mid - 1]! + s[mid]!) / 2 : s[mid]!;
@@ -86,8 +87,11 @@ export function computeBuyerTimingScore(
   if (prior12.length >= 3 && recent12.length >= 3) {
     const priorPrices  = prior12.map((f) => f.properties.unitPrice as number);
     const recentPrices = recent12.map((f) => f.properties.unitPrice as number);
-    const pct = ((median(recentPrices) - median(priorPrices)) / median(priorPrices)) * 100;
-    s1 = pctToScore(pct);
+    const priorMedian = median(priorPrices);
+    if (priorMedian > 0) {
+      const pct = ((median(recentPrices) - priorMedian) / priorMedian) * 100;
+      s1 = pctToScore(pct);
+    }
   }
 
   // Signal 2: YoY volume change (30%)
@@ -285,6 +289,7 @@ export function countTx12mo(
   const distFeatures = features.filter(
     (f) =>
       f.properties?.district === district &&
+      (f.properties?.unitPrice as number) > 0 &&
       (!city || f.properties?.city === city)
   );
 

@@ -446,8 +446,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
       <DistrictTable />
     </div>
   </main>
-  <button id="view-mode-toggle" class="view-mode-toggle" aria-pressed="false" title="切換地圖/表格視圖">
-    🗺 地圖
+  <button id="view-mode-toggle" class="view-mode-toggle" aria-pressed="false" title="切換至排行表">
+    📊 排行表
   </button>
   <button id="filter-toggle-btn" class="filter-toggle-btn" aria-label="開啟篩選">☰ 篩選</button>
   <footer class="site-footer">
@@ -3078,6 +3078,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
       viewToggleBtn.setAttribute("aria-pressed", "false");
       viewToggleBtn.title = "切換至排行表";
     }
+    // Resize map canvas after reveal — MapLibre doesn't auto-resize after display:none
+    requestAnimationFrame(() => {
+      document.dispatchEvent(new CustomEvent("map-view-restored"));
+    });
   }
 
   function switchToTableView(): void {
