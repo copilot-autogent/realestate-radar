@@ -8,9 +8,17 @@
 
 import { mkdirSync, createWriteStream, existsSync, unlinkSync, renameSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import path from "node:path";
 import { CITY_CODES } from "../types.js";
+
+/** Sentinel error thrown when the server returns HTML instead of CSV data. */
+class HtmlResponseError extends Error {
+  constructor(city: string) {
+    super(`HTML response for ${city} — season data not yet published`);
+    this.name = "HtmlResponseError";
+  }
+}
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000;
@@ -125,15 +133,17 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
       const tmpPath = `${outPath}.tmp`;
       const writable = createWriteStream(tmpPath);
       try {
-        // Stream first chunk to sniff for HTML in case Content-Type is absent/wrong
-        let firstChunk: Buffer | null = null;
-        const sniffingStream = new (await import("node:stream")).Transform({
-          transform(chunk: Buffer, _enc, cb) {
-            if (!firstChunk) {
-              firstChunk = chunk;
-              const preview = chunk.slice(0, 64).toString("utf8").trimStart();
-              if (preview.startsWith("<") || preview.toLowerCase().startsWith("<!doctype")) {
-                cb(new Error("HTML_RESPONSE"));
+        // Stream first chunk to sniff for HTML in case Content-Type is absent/wrong.
+        // Use Buffer.from(chunk) so that .toString("utf8") decodes correctly —
+        // Node stream Transform passes Uint8Array, not Buffer, since Node 18.
+        let firstChunkSeen = false;
+        const sniffingStream = new Transform({
+          transform(chunk: Uint8Array, _enc, cb) {
+            if (!firstChunkSeen) {
+              firstChunkSeen = true;
+              const preview = Buffer.from(chunk).slice(0, 64).toString("utf8").trimStart();
+              if (preview.startsWith("<")) {
+                cb(new HtmlResponseError(cityCode));
                 return;
               }
             }
@@ -143,9 +153,10 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
         await pipeline(Readable.fromWeb(res.body as any), sniffingStream, writable);
         renameSync(tmpPath, outPath);
       } catch (writeErr) {
-        // Clean up partial file
+        // Clean up partial file (may not exist if the error fired before any bytes
+        // were written; suppress ENOENT).
         try { unlinkSync(tmpPath); } catch { /* ignore */ }
-        if ((writeErr as Error).message === "HTML_RESPONSE") {
+        if (writeErr instanceof HtmlResponseError) {
           console.warn(`[warn] ${cityCode}: response body is HTML (season data not yet published) — skipping`);
           continue;
         }
@@ -183,10 +194,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let files: string[] = [];
   for (const { year, season } of candidates) {
     console.log(`Downloading 實價登錄 data: ${year}S${season}`);
-    files = await downloadPlvr({ year, season });
-    if (files.length > 0) {
-      console.log(`\nDownloaded ${files.length} files to ${DATA_DIR}`);
-      break;
+    try {
+      const result = await downloadPlvr({ year, season });
+      if (result.length > 0) {
+        files = result;
+        console.log(`\nDownloaded ${files.length} files to ${DATA_DIR}`);
+        break;
+      }
+    } catch (err) {
+      // Treat per-quarter network/HTTP errors as non-fatal and try next quarter
+      console.warn(`[fallback] ${year}S${season} error: ${(err as Error).message}`);
     }
     console.log(`[fallback] ${year}S${season} returned no usable data — trying previous quarter`);
   }
