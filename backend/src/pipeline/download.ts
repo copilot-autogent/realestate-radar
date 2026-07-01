@@ -133,15 +133,16 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
       const tmpPath = `${outPath}.tmp`;
       const writable = createWriteStream(tmpPath);
       try {
-        // Stream first chunk to sniff for HTML in case Content-Type is absent/wrong.
-        // Use Buffer.from(chunk) so that .toString("utf8") decodes correctly —
-        // Node stream Transform passes Uint8Array, not Buffer, since Node 18.
+        // Sniff the first non-empty chunk for HTML in case Content-Type is absent/wrong.
+        // Buffer.from(chunk) is required: Node ≥ 18 stream Transforms pass Uint8Array,
+        // not Buffer, so plain .toString("utf8") would produce "0,60,104,…" digit strings.
+        // subarray is preferred over the deprecated Buffer.prototype.slice.
         let firstChunkSeen = false;
         const sniffingStream = new Transform({
           transform(chunk: Uint8Array, _enc, cb) {
-            if (!firstChunkSeen) {
+            if (!firstChunkSeen && chunk.length > 0) {
               firstChunkSeen = true;
-              const preview = Buffer.from(chunk).slice(0, 64).toString("utf8").trimStart();
+              const preview = Buffer.from(chunk).subarray(0, 64).toString("utf8").trimStart();
               if (preview.startsWith("<")) {
                 cb(new HtmlResponseError(cityCode));
                 return;
@@ -153,9 +154,11 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
         await pipeline(Readable.fromWeb(res.body as any), sniffingStream, writable);
         renameSync(tmpPath, outPath);
       } catch (writeErr) {
-        // Clean up partial file (may not exist if the error fired before any bytes
-        // were written; suppress ENOENT).
-        try { unlinkSync(tmpPath); } catch { /* ignore */ }
+        // Clean up partial file. Only suppress ENOENT (file never created, e.g. the
+        // error fired before any bytes were written); re-throw other filesystem errors.
+        try { unlinkSync(tmpPath); } catch (unlinkErr) {
+          if ((unlinkErr as NodeJS.ErrnoException).code !== "ENOENT") throw unlinkErr;
+        }
         if (writeErr instanceof HtmlResponseError) {
           console.warn(`[warn] ${cityCode}: response body is HTML (season data not yet published) — skipping`);
           continue;
