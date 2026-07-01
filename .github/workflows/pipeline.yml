@@ -135,10 +135,7 @@ jobs:
               const d = JSON.parse(require('fs').readFileSync('frontend/public/data/sample-transactions.json', 'utf8'));
               console.log(d.features.length);
             ")
-            git commit -m "chore(data): refresh live 實價登錄 data [${RECORD_COUNT} records]
-
-Automated pipeline run via .github/workflows/pipeline.yml
-Source: 內政部 plvr.land.moi.gov.tw open data"
+            git commit -m "$(printf 'chore(data): refresh live 實價登錄 data [%s records]\n\nAutomated pipeline run via .github/workflows/pipeline.yml\nSource: 內政部 plvr.land.moi.gov.tw open data' "${RECORD_COUNT}")"
             # Pull-rebase before push to handle concurrent commits (e.g. another deploy)
             git pull --rebase origin main
             git push origin main
