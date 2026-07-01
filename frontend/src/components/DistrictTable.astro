@@ -219,6 +219,7 @@
   let allRows: DistrictRow[] = [];
   let sortKey: SortKey = "timingScore";
   let sortDir: SortDir = "desc";
+  let dataLoaded = false; // prevents re-fetch on toggle when data is legitimately empty
 
   // ── Chart.js (same CDN pattern as index.astro) ──
 
@@ -257,7 +258,7 @@
         labels: data.map(() => ""),
         datasets: [{
           data: data,
-          borderColor: isFlat ? "#94a3b8" : nonNull[nonNull.length - 1]! > nonNull[0]! ? "#dc2626" : "#16a34a",
+          borderColor: isFlat || nonNull.length < 2 ? "#94a3b8" : nonNull[nonNull.length - 1]! > nonNull[0]! ? "#dc2626" : "#16a34a",
           borderWidth: 1.5,
           fill: false,
           pointRadius: 0,
@@ -387,7 +388,7 @@
         );
       };
       tr.addEventListener("click", handler);
-      tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") handler(); });
+      tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handler(); } });
     });
   }
 
@@ -433,9 +434,11 @@
         feats = geojson.features ?? [];
       }
       allRows = computeDistrictRows(feats ?? [], 10);
+      dataLoaded = true;
     } catch (e) {
       console.warn("[DistrictTable] Failed to load data:", e);
       allRows = [];
+      dataLoaded = true; // Don't retry on every toggle — failure is permanent until reload
     }
 
     loading.style.display = "none";
@@ -452,7 +455,7 @@
 
   // Init: load when the table view is first activated (lazy)
   document.addEventListener("table-view-activated", () => {
-    if (allRows.length === 0) loadAndRender();
+    if (!dataLoaded) loadAndRender();
   });
 
   function escHtml(str: string): string {

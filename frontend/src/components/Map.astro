@@ -4261,7 +4261,10 @@
     }
     if (districtSelect && district) {
       // Wait one frame for dropdown repopulation after city change
-      requestAnimationFrame(() => { districtSelect.value = district; });
+      requestAnimationFrame(() => {
+        districtSelect.value = district;
+        districtSelect.dispatchEvent(new Event("change"));
+      });
     }
 
     // Fly to city center immediately as a fast fallback

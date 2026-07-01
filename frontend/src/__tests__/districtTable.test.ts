@@ -210,9 +210,9 @@ describe("computeBuyerTimingScore", () => {
       d.setMonth(d.getMonth() - i % 11);
       return makeFeature("士林區", "台北市", 800_000 + i * 5000, d.toISOString().slice(0, 10));
     });
-    const rising = computeBuyerTimingScore([...recentFeats, ...priorFeats], "士林區", "台北市");
-    expect(rising).not.toBeNull();
-    expect(rising!).toBeGreaterThan(50); // declining prices → higher buyer score
+    const score = computeBuyerTimingScore([...recentFeats, ...priorFeats], "士林區", "台北市");
+    expect(score).not.toBeNull();
+    expect(score!).toBeGreaterThan(50); // declining prices → higher buyer score
   });
 });
 
