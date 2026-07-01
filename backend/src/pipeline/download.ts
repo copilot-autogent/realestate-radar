@@ -64,8 +64,10 @@ const HEADERS = {
   "Referer": "https://plvr.land.moi.gov.tw/DownloadOpenData",
 };
 
-// Strict filename pattern: single uppercase city letter, _lvr_land_A_, ROC year S season
-const CSV_SALES_RE = /^[A-Z]_lvr_land_A_\d+S\d+\.csv$/;
+// Filename pattern for type-A (sales/買賣) CSVs in the bulk ZIP.
+// The portal now uses lowercase names without season suffix: "a_lvr_land_a.csv".
+// The seasonal-suffix alternative handles legacy per-city files: "A_lvr_land_A_115S2.csv".
+const CSV_SALES_RE = /^[A-Za-z]_lvr_land_[Aa](\.csv|_\d+S\d+\.csv)$/;
 
 /**
  * Download the current bulk ZIP from 內政部 and extract all city CSV files.

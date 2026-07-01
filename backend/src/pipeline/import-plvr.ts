@@ -52,10 +52,15 @@ function safeFloat(val: string | undefined): number | null {
   return isNaN(n) ? null : n;
 }
 
-/** Extract city code from filename like "A_lvr_land_A_113S4.csv" */
+/** Extract city code from a sales CSV filename.
+ * Accepts both the current lowercase format ("a_lvr_land_a.csv") and the
+ * older uppercase seasonal format ("A_lvr_land_A_115S2.csv").
+ * Returns uppercase letter for CITY_CODES lookup, or null if not matched.
+ */
 function extractCityCode(filename: string): string | null {
-  const match = filename.match(/^([A-Z])_lvr_land/);
-  return match ? match[1] : null;
+  // Type-A (sales) files only: _lvr_land_a or _lvr_land_A
+  const match = filename.match(/^([A-Za-z])_lvr_land_[Aa]/);
+  return match ? match[1].toUpperCase() : null;
 }
 
 /**
