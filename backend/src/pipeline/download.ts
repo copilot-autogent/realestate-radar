@@ -8,9 +8,17 @@
 
 import { mkdirSync, createWriteStream, existsSync, unlinkSync, renameSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import path from "node:path";
 import { CITY_CODES } from "../types.js";
+
+/** Sentinel error thrown when the server returns HTML instead of CSV data. */
+class HtmlResponseError extends Error {
+  constructor(city: string) {
+    super(`HTML response for ${city} — season data not yet published`);
+    this.name = "HtmlResponseError";
+  }
+}
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000;
@@ -112,15 +120,51 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
         continue;
       }
 
+      // Reject HTML responses: 內政部 returns 200 OK with an HTML error page
+      // when data for the requested season is not yet published. Saving HTML as
+      // CSV causes silent import failures downstream.
+      const contentType = res.headers.get("content-type") ?? "";
+      if (contentType.toLowerCase().includes("text/html")) {
+        // Cancel/drain the body to release the underlying HTTP connection before skipping.
+        try { await res.body.cancel(); } catch { /* ignore cancel errors */ }
+        console.warn(`[warn] ${cityCode}: server returned HTML (season data not available yet) — skipping`);
+        continue;
+      }
+
       // Write to a temp path first; rename on success to avoid partial files
       const tmpPath = `${outPath}.tmp`;
       const writable = createWriteStream(tmpPath);
       try {
-        await pipeline(Readable.fromWeb(res.body as any), writable);
+        // Sniff the first non-empty chunk for HTML in case Content-Type is absent/wrong.
+        // Buffer.from(chunk) is required: Node ≥ 18 stream Transforms pass Uint8Array,
+        // not Buffer, so plain .toString("utf8") would produce "0,60,104,…" digit strings.
+        // subarray is preferred over the deprecated Buffer.prototype.slice.
+        let firstChunkSeen = false;
+        const sniffingStream = new Transform({
+          transform(chunk: Uint8Array, _enc, cb) {
+            if (!firstChunkSeen && chunk.length > 0) {
+              firstChunkSeen = true;
+              const preview = Buffer.from(chunk).subarray(0, 64).toString("utf8").trimStart();
+              if (preview.startsWith("<")) {
+                cb(new HtmlResponseError(cityCode));
+                return;
+              }
+            }
+            cb(null, chunk);
+          },
+        });
+        await pipeline(Readable.fromWeb(res.body as any), sniffingStream, writable);
         renameSync(tmpPath, outPath);
       } catch (writeErr) {
-        // Clean up partial file
-        try { unlinkSync(tmpPath); } catch { /* ignore */ }
+        // Clean up partial file. Only suppress ENOENT (file never created, e.g. the
+        // error fired before any bytes were written); re-throw other filesystem errors.
+        try { unlinkSync(tmpPath); } catch (unlinkErr) {
+          if ((unlinkErr as NodeJS.ErrnoException).code !== "ENOENT") throw unlinkErr;
+        }
+        if (writeErr instanceof HtmlResponseError) {
+          console.warn(`[warn] ${cityCode}: response body is HTML (season data not yet published) — skipping`);
+          continue;
+        }
         throw writeErr;
       }
       console.log(`[ok] ${filename}`);
@@ -138,12 +182,38 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const now = new Date();
   const rocYear = now.getFullYear() - 1911;
-  const season = Math.ceil((now.getMonth() + 1) / 3);
-  // Download previous season (current season data may not be published yet)
-  const targetSeason = season === 1 ? 4 : season - 1;
-  const targetYear = season === 1 ? rocYear - 1 : rocYear;
+  const currentSeason = Math.ceil((now.getMonth() + 1) / 3);
 
-  console.log(`Downloading 實價登錄 data: ${targetYear}S${targetSeason}`);
-  const files = await downloadPlvr({ year: targetYear, season: targetSeason });
-  console.log(`\nDownloaded ${files.length} files to ${DATA_DIR}`);
+  // Build a list of up to 4 seasons to try, starting with the previous season
+  // (current-season data is usually not yet published) and going back up to 3
+  // quarters. The loop stops as soon as any season yields at least one CSV file.
+  const candidates: Array<{ year: number; season: number }> = [];
+  let s = currentSeason;
+  let y = rocYear;
+  for (let i = 0; i < 4; i++) {
+    s -= 1;
+    if (s === 0) { s = 4; y -= 1; }
+    candidates.push({ year: y, season: s });
+  }
+
+  let files: string[] = [];
+  for (const { year, season } of candidates) {
+    console.log(`Downloading 實價登錄 data: ${year}S${season}`);
+    try {
+      const result = await downloadPlvr({ year, season });
+      if (result.length > 0) {
+        files = result;
+        console.log(`\nDownloaded ${files.length} files to ${DATA_DIR}`);
+        break;
+      }
+    } catch (err) {
+      // Treat per-quarter network/HTTP errors as non-fatal and try next quarter
+      console.warn(`[fallback] ${year}S${season} error: ${(err as Error).message}`);
+    }
+    console.log(`[fallback] ${year}S${season} returned no usable data — trying previous quarter`);
+  }
+
+  if (files.length === 0) {
+    console.warn("[warn] No CSV files downloaded after trying 4 quarters — pipeline will import 0 records");
+  }
 }
