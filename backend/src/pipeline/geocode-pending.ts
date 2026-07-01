@@ -51,6 +51,14 @@ async function main(): Promise<void> {
      WHERE lat IS NULL
        AND address IS NOT NULL
        AND address != ''
+       -- Skip pure land-parcel IDs (e.g. "博嘉段四小段202地號").
+       -- Taiwan street addresses contain 路/街/道/巷/弄; parcel IDs contain 段/地號.
+       AND (
+         address LIKE '%路%' OR address LIKE '%街%' OR address LIKE '%道%'
+         OR address LIKE '%巷%' OR address LIKE '%弄%' OR address LIKE '%號%'
+       )
+       -- Only geocode transactions that have a unit price (excludes most 土地-only deals).
+       AND unit_price IS NOT NULL AND unit_price > 0
      ORDER BY id
      LIMIT $1`,
     [limit]
