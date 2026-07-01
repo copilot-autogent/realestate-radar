@@ -124,7 +124,9 @@ export async function downloadPlvr(options: DownloadOptions): Promise<string[]> 
       // when data for the requested season is not yet published. Saving HTML as
       // CSV causes silent import failures downstream.
       const contentType = res.headers.get("content-type") ?? "";
-      if (contentType.includes("text/html")) {
+      if (contentType.toLowerCase().includes("text/html")) {
+        // Cancel/drain the body to release the underlying HTTP connection before skipping.
+        try { await res.body.cancel(); } catch { /* ignore cancel errors */ }
         console.warn(`[warn] ${cityCode}: server returned HTML (season data not available yet) — skipping`);
         continue;
       }
