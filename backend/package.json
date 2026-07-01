@@ -25,12 +25,14 @@
     "express": "^5.1.0",
     "iconv-lite": "^0.6.3",
     "pg": "^8.13.0",
+    "unzipper": "^0.10.14",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
+    "@types/unzipper": "^0.10.11",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

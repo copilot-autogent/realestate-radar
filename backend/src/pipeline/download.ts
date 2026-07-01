@@ -2,23 +2,22 @@
  * Download 實價登錄 open data CSVs from 內政部
  * Source: https://plvr.land.moi.gov.tw/DownloadOpenData
  *
- * The API serves ZIP files containing CSVs for each city/season.
- * URL pattern: GET with city code + data type + season params.
+ * The portal bundles all cities in a single ZIP file. The correct download URL
+ * (discovered from the portal's preDownload() JavaScript) is:
+ *   GET /Download?type=zip&fileName=lvr_land{format}.zip
+ *
+ * This always fetches the most recently published batch (updated on the 1st,
+ * 11th, and 21st of each month). The ZIP contains one CSV per city, e.g.:
+ *   A_lvr_land_A_115S2.csv   (台北市, sales data)
+ *   B_lvr_land_A_115S2.csv   (台中市, sales data)
+ *   ...
  */
 
-import { mkdirSync, createWriteStream, existsSync, unlinkSync, renameSync } from "node:fs";
+import { mkdirSync, createWriteStream, unlinkSync, renameSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
-import { Readable, Transform } from "node:stream";
+import { Readable } from "node:stream";
 import path from "node:path";
-import { CITY_CODES } from "../types.js";
-
-/** Sentinel error thrown when the server returns HTML instead of CSV data. */
-class HtmlResponseError extends Error {
-  constructor(city: string) {
-    super(`HTML response for ${city} — season data not yet published`);
-    this.name = "HtmlResponseError";
-  }
-}
+import unzipper from "unzipper";
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000;
@@ -32,11 +31,8 @@ async function fetchWithRetry(
   try {
     const res = await fetch(url, {
       headers,
-      // Fresh signal per attempt — reusing a signal across retries can
-      // cause retries to abort immediately if the original timer elapsed.
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(120_000),
     });
-    // Only retry transient server errors (5xx); 4xx are permanent
     if (res.status >= 500 && attempt < MAX_RETRIES) {
       const delay = RETRY_BASE_MS * Math.pow(2, attempt);
       console.warn(`[retry] HTTP ${res.status} — waiting ${delay}ms before retry ${attempt + 1}/${MAX_RETRIES}`);
@@ -55,165 +51,112 @@ async function fetchWithRetry(
   }
 }
 
-const DATA_DIR = path.resolve(import.meta.dirname, "../../../data/downloads");
+export const DATA_DIR = path.resolve(import.meta.dirname, "../../../data/downloads");
+const DATA_DIR_REAL = path.resolve(DATA_DIR) + path.sep;
 
-// 內政部 open data download URL
-// Type 0 = 不動產買賣 (real estate sales)
-// Type 1 = 預售屋買賣
-// Type 2 = 不動產租賃
-const BASE_URL = "https://plvr.land.moi.gov.tw/DownloadSeason";
+// The bulk download URL discovered from the portal's preDownload() JS function.
+// Returns a ZIP of all cities for the current published batch.
+const BULK_DOWNLOAD_URL = "https://plvr.land.moi.gov.tw/Download?type=zip&fileName=lvr_landcsv.zip";
 
-interface DownloadOptions {
-  /** ROC year, e.g. 113 for 2024 */
-  year: number;
-  /** Season 1-4 */
-  season: number;
-  /** City codes to download (default: all) */
-  cities?: string[];
-  /** Data type: 0=sales, 1=presale, 2=rental */
-  type?: number;
-}
+const HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; RealEstateRadar/1.0; +https://github.com/copilot-autogent/realestate-radar)",
+  "Accept": "application/zip,application/octet-stream,*/*",
+  "Referer": "https://plvr.land.moi.gov.tw/DownloadOpenData",
+};
 
-export async function downloadPlvr(options: DownloadOptions): Promise<string[]> {
-  const { year, season, cities, type = 0 } = options;
-  const cityCodes = cities ?? Object.keys(CITY_CODES);
+// Strict filename pattern: single uppercase city letter, _lvr_land_A_, ROC year S season
+const CSV_SALES_RE = /^[A-Z]_lvr_land_A_\d+S\d+\.csv$/;
 
+/**
+ * Download the current bulk ZIP from 內政部 and extract all city CSV files.
+ * Returns the list of extracted CSV file paths.
+ */
+export async function downloadPlvrBulk(): Promise<string[]> {
   mkdirSync(DATA_DIR, { recursive: true });
 
-  const downloaded: string[] = [];
+  console.log("[download] Fetching bulk ZIP from 內政部...");
+  const res = await fetchWithRetry(BULK_DOWNLOAD_URL, HEADERS);
 
-  for (const cityCode of cityCodes) {
-    const filename = `${cityCode}_lvr_land_${type === 0 ? "A" : type === 1 ? "B" : "C"}_${year}S${season}.csv`;
-    const outPath = path.join(DATA_DIR, filename);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} from 內政部 bulk download`);
+  }
+  if (!res.body) {
+    throw new Error("Empty response body from 內政部 bulk download");
+  }
 
-    if (existsSync(outPath)) {
-      console.log(`[skip] ${filename} already exists`);
-      downloaded.push(outPath);
+  // Verify we got a ZIP (not an HTML error page). Check Content-Type first;
+  // also peek at the first bytes to catch cases where the server returns HTML
+  // with a non-HTML content-type (or no content-type at all).
+  const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+  if (contentType.includes("text/html")) {
+    try { await res.body.cancel(); } catch { /* ignore cancel errors */ }
+    throw new Error("Server returned HTML instead of ZIP — portal may be down or blocking the request");
+  }
+
+  const extracted: string[] = [];
+
+  // Stream the ZIP directly into unzipper — no need to write the archive to disk.
+  // unzipper will throw if the stream is not a valid ZIP, catching the HTML-as-
+  // octet-stream edge case at parse time rather than silently producing 0 files.
+  let zipStream: unzipper.ParseStream;
+  try {
+    zipStream = Readable.fromWeb(res.body as any).pipe(unzipper.Parse({ forceStream: true }));
+  } catch (err) {
+    throw new Error(`Failed to parse ZIP stream: ${(err as Error).message}`);
+  }
+
+  for await (const entry of zipStream) {
+    const filename: string = path.basename(entry.path); // basename strips any path prefix from the entry
+    // Only extract type-A (sales/買賣) CSVs; skip presale (B) and rental (C)
+    if (!CSV_SALES_RE.test(filename)) {
+      await entry.autodrain();
       continue;
     }
 
-    // The API expects query params for season/city selection
-    const params = new URLSearchParams({
-      fileName: `${cityCode}_lvr_land_${type === 0 ? "A" : type === 1 ? "B" : "C"}`,
-      season: `${year}S${season}`,
-      type: "csv",
-    });
+    // Zip-slip guard: ensure the resolved output path stays within DATA_DIR
+    const outPath = path.join(DATA_DIR, filename);
+    if (!path.resolve(outPath).startsWith(DATA_DIR_REAL)) {
+      console.warn(`[warn] Zip entry "${entry.path}" would escape DATA_DIR — skipping`);
+      await entry.autodrain();
+      continue;
+    }
 
-    const url = `${BASE_URL}?${params.toString()}`;
-    console.log(`[download] ${cityCode} (${CITY_CODES[cityCode]}) ${year}S${season}...`);
-
-    const HEADERS = {
-      "User-Agent": "RealEstateRadar/0.1 (github.com/copilot-autogent/realestate-radar)",
-      Accept: "text/csv,application/octet-stream,*/*",
-    };
-
+    // Always re-extract: the portal updates files within the same season name
+    // every 10 days; skipping by filename would serve stale data across runs.
+    // Write to a temp path first; rename on success to prevent partial files
+    // from being silently re-used on the next run.
+    const tmpPath = `${outPath}.tmp`;
+    console.log(`[extract] ${filename}`);
+    const writable = createWriteStream(tmpPath);
     try {
-      const res = await fetchWithRetry(url, HEADERS);
-
-      if (!res.ok) {
-        console.warn(`[warn] ${cityCode}: HTTP ${res.status} after retries — skipping`);
-        continue;
-      }
-
-      if (!res.body) {
-        console.warn(`[warn] ${cityCode}: empty response body — skipping`);
-        continue;
-      }
-
-      // Reject HTML responses: 內政部 returns 200 OK with an HTML error page
-      // when data for the requested season is not yet published. Saving HTML as
-      // CSV causes silent import failures downstream.
-      const contentType = res.headers.get("content-type") ?? "";
-      if (contentType.toLowerCase().includes("text/html")) {
-        // Cancel/drain the body to release the underlying HTTP connection before skipping.
-        try { await res.body.cancel(); } catch { /* ignore cancel errors */ }
-        console.warn(`[warn] ${cityCode}: server returned HTML (season data not available yet) — skipping`);
-        continue;
-      }
-
-      // Write to a temp path first; rename on success to avoid partial files
-      const tmpPath = `${outPath}.tmp`;
-      const writable = createWriteStream(tmpPath);
-      try {
-        // Sniff the first non-empty chunk for HTML in case Content-Type is absent/wrong.
-        // Buffer.from(chunk) is required: Node ≥ 18 stream Transforms pass Uint8Array,
-        // not Buffer, so plain .toString("utf8") would produce "0,60,104,…" digit strings.
-        // subarray is preferred over the deprecated Buffer.prototype.slice.
-        let firstChunkSeen = false;
-        const sniffingStream = new Transform({
-          transform(chunk: Uint8Array, _enc, cb) {
-            if (!firstChunkSeen && chunk.length > 0) {
-              firstChunkSeen = true;
-              const preview = Buffer.from(chunk).subarray(0, 64).toString("utf8").trimStart();
-              if (preview.startsWith("<")) {
-                cb(new HtmlResponseError(cityCode));
-                return;
-              }
-            }
-            cb(null, chunk);
-          },
-        });
-        await pipeline(Readable.fromWeb(res.body as any), sniffingStream, writable);
-        renameSync(tmpPath, outPath);
-      } catch (writeErr) {
-        // Clean up partial file. Only suppress ENOENT (file never created, e.g. the
-        // error fired before any bytes were written); re-throw other filesystem errors.
-        try { unlinkSync(tmpPath); } catch (unlinkErr) {
-          if ((unlinkErr as NodeJS.ErrnoException).code !== "ENOENT") throw unlinkErr;
-        }
-        if (writeErr instanceof HtmlResponseError) {
-          console.warn(`[warn] ${cityCode}: response body is HTML (season data not yet published) — skipping`);
-          continue;
-        }
-        throw writeErr;
-      }
+      await pipeline(entry, writable);
+      renameSync(tmpPath, outPath);
+      extracted.push(outPath);
       console.log(`[ok] ${filename}`);
-      downloaded.push(outPath);
     } catch (err) {
-      console.error(`[error] ${cityCode}:`, (err as Error).message);
-      // Non-fatal: pipeline continues with other cities
+      try { unlinkSync(tmpPath); } catch (unlinkErr) {
+        if ((unlinkErr as NodeJS.ErrnoException).code !== "ENOENT") throw unlinkErr;
+      }
+      console.error(`[error] ${filename}:`, (err as Error).message);
+      // Non-fatal: continue with other files in the ZIP
     }
   }
 
-  return downloaded;
+  return extracted;
 }
 
 // CLI entry point
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const now = new Date();
-  const rocYear = now.getFullYear() - 1911;
-  const currentSeason = Math.ceil((now.getMonth() + 1) / 3);
-
-  // Build a list of up to 4 seasons to try, starting with the previous season
-  // (current-season data is usually not yet published) and going back up to 3
-  // quarters. The loop stops as soon as any season yields at least one CSV file.
-  const candidates: Array<{ year: number; season: number }> = [];
-  let s = currentSeason;
-  let y = rocYear;
-  for (let i = 0; i < 4; i++) {
-    s -= 1;
-    if (s === 0) { s = 4; y -= 1; }
-    candidates.push({ year: y, season: s });
-  }
-
-  let files: string[] = [];
-  for (const { year, season } of candidates) {
-    console.log(`Downloading 實價登錄 data: ${year}S${season}`);
-    try {
-      const result = await downloadPlvr({ year, season });
-      if (result.length > 0) {
-        files = result;
-        console.log(`\nDownloaded ${files.length} files to ${DATA_DIR}`);
-        break;
-      }
-    } catch (err) {
-      // Treat per-quarter network/HTTP errors as non-fatal and try next quarter
-      console.warn(`[fallback] ${year}S${season} error: ${(err as Error).message}`);
+  console.log("Downloading bulk 實價登錄 ZIP from 內政部...");
+  try {
+    const files = await downloadPlvrBulk();
+    console.log(`\nExtracted ${files.length} CSV files to ${DATA_DIR}`);
+    if (files.length === 0) {
+      console.warn("[warn] No CSV files extracted — portal may be unavailable or format changed");
+      process.exit(1);
     }
-    console.log(`[fallback] ${year}S${season} returned no usable data — trying previous quarter`);
-  }
-
-  if (files.length === 0) {
-    console.warn("[warn] No CSV files downloaded after trying 4 quarters — pipeline will import 0 records");
+  } catch (err) {
+    console.error("[error] Download failed:", (err as Error).message);
+    process.exit(1);
   }
 }
