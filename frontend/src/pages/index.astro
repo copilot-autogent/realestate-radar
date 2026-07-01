@@ -224,6 +224,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <label for="mrt-layer-toggle">🚇 顯示捷運站圖示</label>
       </div>
 
+      <!-- 首購族地區配對精靈 re-match button -->
+      <button id="wizard-reopen-btn" class="wizard-reopen-btn">🧭 首購族配對精靈</button>
+
       <button id="search-btn" class="search-btn">搜尋</button>
       <button id="reset-btn" class="reset-btn">清除篩選</button>
       <button id="save-search-btn" class="save-search-btn">⭐ 儲存此搜尋</button>
@@ -453,6 +456,143 @@ const showBuyersMarket = !isStale && dataYear !== null;
   <footer class="site-footer">
     <p>本工具無仲介費用衝突，提供市場真實成交資訊。資料來源：<a href="https://lvr.land.moi.gov.tw/" target="_blank" rel="noopener noreferrer">內政部實價登錄</a>。</p>
   </footer>
+
+  <!-- ── 首購族地區配對精靈 Wizard Modal ── -->
+  <div id="wizard-overlay" class="wizard-overlay" role="dialog" aria-modal="true" aria-labelledby="wizard-title" hidden>
+    <div class="wizard-panel">
+      <button id="wizard-close-btn" class="wizard-close-btn" aria-label="關閉精靈">✕</button>
+
+      <!-- Step indicators -->
+      <div class="wizard-steps" aria-label="步驟進度">
+        <span class="wizard-step-dot active" data-step="1" aria-label="步驟一：預算">1</span>
+        <span class="wizard-step-line"></span>
+        <span class="wizard-step-dot" data-step="2" aria-label="步驟二：通勤">2</span>
+        <span class="wizard-step-line"></span>
+        <span class="wizard-step-dot" data-step="3" aria-label="步驟三：優先考量">3</span>
+      </div>
+
+      <!-- Step 1: Budget -->
+      <div id="wizard-step-1" class="wizard-step" aria-label="步驟一：預算">
+        <h2 id="wizard-title" class="wizard-step-title">🏠 首購族地區配對精靈</h2>
+        <p class="wizard-step-subtitle">步驟 1 / 3 — 預算</p>
+        <p class="wizard-step-desc">您的總購屋預算是？</p>
+        <div class="wizard-radio-group" role="radiogroup" aria-label="總購屋預算">
+          <label class="wizard-radio-label">
+            <input type="radio" name="budget" value="under-800" checked />
+            <span class="wizard-radio-text">💰 800萬以下</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="budget" value="800-1500" />
+            <span class="wizard-radio-text">💰 800萬 ~ 1,500萬</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="budget" value="1500-2500" />
+            <span class="wizard-radio-text">💰 1,500萬 ~ 2,500萬</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="budget" value="over-2500" />
+            <span class="wizard-radio-text">💰 2,500萬以上</span>
+          </label>
+        </div>
+        <p class="wizard-step-desc" style="margin-top:16px">頭期款準備程度？</p>
+        <div class="wizard-radio-group" role="radiogroup" aria-label="頭期款準備程度">
+          <label class="wizard-radio-label">
+            <input type="radio" name="downPayment" value="under-5" />
+            <span class="wizard-radio-text">存款不足 5%</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="downPayment" value="5-10" checked />
+            <span class="wizard-radio-text">5% ~ 10%</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="downPayment" value="10-20" />
+            <span class="wizard-radio-text">10% ~ 20%</span>
+          </label>
+        </div>
+        <div class="wizard-nav">
+          <span></span>
+          <button class="wizard-next-btn" data-next="2">下一步 →</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Commute -->
+      <div id="wizard-step-2" class="wizard-step" hidden aria-label="步驟二：通勤">
+        <h2 class="wizard-step-title">🚇 通勤設定</h2>
+        <p class="wizard-step-subtitle">步驟 2 / 3 — 通勤</p>
+        <p class="wizard-step-desc">主要通勤目的地？</p>
+        <select id="wizard-hub-select" class="wizard-select" aria-label="主要通勤目的地">
+          <option value="taipei-main">台北車站</option>
+          <option value="xinyi">信義區</option>
+          <option value="banqiao">板橋</option>
+          <option value="hsinchu">新竹市</option>
+          <option value="taichung-main">台中火車站</option>
+          <option value="kaohsiung-mrt">高雄捷運</option>
+        </select>
+        <p class="wizard-step-desc" style="margin-top:16px">可接受通勤時間？</p>
+        <div class="wizard-radio-group" role="radiogroup" aria-label="可接受通勤時間">
+          <label class="wizard-radio-label">
+            <input type="radio" name="commuteMins" value="30" checked />
+            <span class="wizard-radio-text">⏱ 30 分鐘以內</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="commuteMins" value="45" />
+            <span class="wizard-radio-text">⏱ 45 分鐘以內</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="commuteMins" value="60" />
+            <span class="wizard-radio-text">⏱ 60 分鐘以內</span>
+          </label>
+        </div>
+        <div class="wizard-nav">
+          <button class="wizard-back-btn" data-back="1">← 上一步</button>
+          <button class="wizard-next-btn" data-next="3">下一步 →</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Priority -->
+      <div id="wizard-step-3" class="wizard-step" hidden aria-label="步驟三：優先考量">
+        <h2 class="wizard-step-title">🎯 優先考量</h2>
+        <p class="wizard-step-subtitle">步驟 3 / 3 — 優先考量</p>
+        <p class="wizard-step-desc">您最在意哪個條件？（選一項）</p>
+        <div class="wizard-radio-group" role="radiogroup" aria-label="優先考量">
+          <label class="wizard-radio-label">
+            <input type="radio" name="priority" value="total-lowest" checked />
+            <span class="wizard-radio-text">💲 總價最低</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="priority" value="ping-best" />
+            <span class="wizard-radio-text">📐 坪效最佳（最低單價）</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="priority" value="newest" />
+            <span class="wizard-radio-text">🏗 屋齡最新（成交最活躍）</span>
+          </label>
+          <label class="wizard-radio-label">
+            <input type="radio" name="priority" value="timing-score" />
+            <span class="wizard-radio-text">🎯 買方時機分最高</span>
+          </label>
+        </div>
+        <div class="wizard-nav">
+          <button class="wizard-back-btn" data-back="2">← 上一步</button>
+          <button id="wizard-run-btn" class="wizard-run-btn">🔍 開始配對</button>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div id="wizard-results" class="wizard-step" hidden aria-label="配對結果">
+        <h2 class="wizard-step-title">🏘 配對結果</h2>
+        <p id="wizard-results-subtitle" class="wizard-step-subtitle"></p>
+        <div id="wizard-relax-hint" class="wizard-relax-hint" hidden>
+          😔 符合條件的行政區不足 3 個，建議放寬預算或通勤時間。
+        </div>
+        <div id="wizard-match-cards" class="wizard-match-cards"></div>
+        <div class="wizard-nav" style="margin-top:20px">
+          <button id="wizard-restart-btn" class="wizard-back-btn">🔄 重新配對</button>
+          <button id="wizard-done-btn" class="wizard-next-btn">完成 ✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </Layout>
 
 <script>
@@ -2259,6 +2399,240 @@ const showBuyersMarket = !isStale && dataYear !== null;
       padding: 13px 18px;
     }
   }
+
+  /* ── Wizard ── */
+  .wizard-reopen-btn {
+    display: block;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 10px 14px;
+    background: #1a6b45;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+  }
+  .wizard-reopen-btn:hover { background: #155936; }
+
+  .wizard-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .wizard-overlay[hidden] { display: none !important; }
+
+  .wizard-panel {
+    background: #fff;
+    border-radius: 12px;
+    padding: 28px 24px 20px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 8px 40px rgba(0,0,0,.25);
+  }
+
+  .wizard-close-btn {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #666;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .wizard-close-btn:hover { background: #f0f0f0; }
+
+  .wizard-steps {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 0;
+  }
+  .wizard-step-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #ddd;
+    color: #666;
+    font-size: 0.85rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .wizard-step-dot.active { background: #1a6b45; color: #fff; }
+  .wizard-step-dot.done   { background: #4caf82; color: #fff; }
+  .wizard-step-line {
+    flex: 1;
+    height: 2px;
+    background: #ddd;
+    margin: 0 4px;
+  }
+
+  .wizard-step-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0 0 4px;
+    color: #1a1a1a;
+  }
+  .wizard-step-subtitle {
+    font-size: 0.8rem;
+    color: #888;
+    margin: 0 0 16px;
+  }
+  .wizard-step-desc {
+    font-size: 0.9rem;
+    color: #333;
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+
+  .wizard-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .wizard-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .wizard-radio-label:has(input:checked) {
+    border-color: #1a6b45;
+    background: #f0faf5;
+  }
+  .wizard-radio-label input[type="radio"] {
+    accent-color: #1a6b45;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  .wizard-radio-text { font-size: 0.9rem; color: #222; }
+
+  .wizard-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: #fff;
+    cursor: pointer;
+  }
+  .wizard-select:focus { border-color: #1a6b45; outline: none; }
+
+  .wizard-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    gap: 10px;
+  }
+  .wizard-next-btn, .wizard-run-btn {
+    padding: 10px 22px;
+    background: #1a6b45;
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .wizard-next-btn:hover, .wizard-run-btn:hover { background: #155936; }
+  .wizard-back-btn {
+    padding: 10px 18px;
+    background: #f0f0f0;
+    color: #333;
+    border: none;
+    border-radius: 7px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .wizard-back-btn:hover { background: #e0e0e0; }
+
+  /* Results */
+  .wizard-relax-hint {
+    background: #fff8e6;
+    border: 1px solid #f5c842;
+    border-radius: 7px;
+    padding: 10px 14px;
+    font-size: 0.88rem;
+    color: #7a5c00;
+    margin-bottom: 14px;
+  }
+  .wizard-relax-hint[hidden] { display: none; }
+
+  .wizard-match-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .wizard-card {
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    position: relative;
+  }
+  .wizard-card-rank {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 1.2rem;
+  }
+  .wizard-card-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 0 0 6px;
+  }
+  .wizard-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .wizard-card-badge {
+    font-size: 0.78rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: #f0faf5;
+    color: #1a6b45;
+    border: 1px solid #b3dfc9;
+  }
+  .wizard-card-goto {
+    padding: 7px 16px;
+    background: #1a6b45;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .wizard-card-goto:hover { background: #155936; }
+
+  @media (max-width: 480px) {
+    .wizard-panel { padding: 20px 14px 16px; }
+  }
 </style>
 
 <script>
@@ -3113,4 +3487,290 @@ const showBuyersMarket = !isStale && dataYear !== null;
       );
     });
   });
+</script>
+
+<script>
+  // ── 首購族地區配對精靈 (issue #114) ──────────────────────────────────────────
+  import {
+    runWizard,
+    polygonCentroid,
+    COMMUTE_HUBS,
+    type WizardParams,
+    type WizardMatch,
+    type DistrictInput,
+  } from "../lib/wizardUtils.js";
+  import {
+    computeDistrictRows,
+  } from "../lib/districtTableUtils.js";
+
+  const WIZARD_DISMISSED_KEY = "rr-wizard-dismissed";
+  const WIZARD_RESULTS_KEY   = "rr-wizard-results";
+  const BASE_URL = import.meta.env.BASE_URL;
+
+  const overlay      = document.getElementById("wizard-overlay")     as HTMLElement;
+  const closeBtn     = document.getElementById("wizard-close-btn")   as HTMLButtonElement;
+  const reopenBtn    = document.getElementById("wizard-reopen-btn")  as HTMLButtonElement;
+  const runBtn       = document.getElementById("wizard-run-btn")     as HTMLButtonElement;
+  const restartBtn   = document.getElementById("wizard-restart-btn") as HTMLButtonElement;
+  const doneBtn      = document.getElementById("wizard-done-btn")    as HTMLButtonElement;
+  const relaxHint    = document.getElementById("wizard-relax-hint")  as HTMLElement;
+  const matchCards   = document.getElementById("wizard-match-cards") as HTMLElement;
+  const resultsSub   = document.getElementById("wizard-results-subtitle") as HTMLElement;
+
+  // ── navigation Step ─────────────────────────────────────────────────────────
+
+  function showStep(n: number): void {
+    for (let i = 1; i <= 3; i++) {
+      const el = document.getElementById(`wizard-step-${i}`) as HTMLElement | null;
+      if (el) el.hidden = i !== n;
+    }
+    const results = document.getElementById("wizard-results") as HTMLElement | null;
+    if (results) results.hidden = true;
+
+    // Update step dots
+    document.querySelectorAll(".wizard-step-dot").forEach((dot) => {
+      const step = Number((dot as HTMLElement).dataset.step);
+      dot.classList.toggle("active", step === n);
+      dot.classList.toggle("done",   step < n);
+    });
+  }
+
+  function showResults(): void {
+    for (let i = 1; i <= 3; i++) {
+      const el = document.getElementById(`wizard-step-${i}`) as HTMLElement | null;
+      if (el) el.hidden = true;
+    }
+    const results = document.getElementById("wizard-results") as HTMLElement | null;
+    if (results) results.hidden = false;
+    document.querySelectorAll(".wizard-step-dot").forEach((dot) => {
+      dot.classList.add("done");
+      dot.classList.remove("active");
+    });
+  }
+
+  function openWizard(): void {
+    overlay.hidden = false;
+    overlay.focus();
+    document.body.style.overflow = "hidden";
+    showStep(1);
+  }
+
+  function closeWizard(): void {
+    overlay.hidden = true;
+    document.body.style.overflow = "";
+    localStorage.setItem(WIZARD_DISMISSED_KEY, "1");
+  }
+
+  // ── Data loading ───────────────────
+
+  let districtInputCache: DistrictInput[] | null = null;
+
+  async function loadDistrictInputs(): Promise<DistrictInput[]> {
+    if (districtInputCache) return districtInputCache;
+
+    // Load transaction data → district stats
+    const txRes = await fetch(`${BASE_URL}data/sample-transactions.json`);
+    const txData = await txRes.json() as { features: any[] };
+    const rows = computeDistrictRows(txData.features, 5); // lower threshold for wizard
+
+    // Load all GeoJSON files → compute centroids
+    const geojsonFiles = [
+      "taipei-districts.geojson",
+      "xinbei-districts.geojson",
+      "taoyuan-districts.geojson",
+      "taichung-districts.geojson",
+      "tainan-districts.geojson",
+      "kaohsiung-districts.geojson",
+    ];
+
+    const centroidMap = new Map<string, { lat: number; lng: number }>();
+    await Promise.all(
+      geojsonFiles.map(async (file) => {
+        try {
+          const res = await fetch(`${BASE_URL}data/${file}`);
+          const gj = await res.json() as { features: { properties: { district: string; city: string }; geometry: any }[] };
+          for (const feat of gj.features) {
+            const { district, city } = feat.properties;
+            const c = polygonCentroid(feat.geometry);
+            if (c) centroidMap.set(`${city}::${district}`, c);
+          }
+        } catch { /* skip on error */ }
+      })
+    );
+
+    // Merge rows + centroids → DistrictInput[]
+    const inputs: DistrictInput[] = [];
+    for (const row of rows) {
+      const key = `${row.city}::${row.district}`;
+      const centroid = centroidMap.get(key);
+      if (!centroid) continue; // skip districts without geom data
+      inputs.push({
+        district: row.district,
+        city: row.city,
+        medianPriceWan: row.medianPriceWan,
+        yoyPct: row.yoyPct,
+        txCount12mo: row.txCount12mo,
+        buyerTimingScore: row.buyerTimingScore,
+        lat: centroid.lat,
+        lng: centroid.lng,
+      });
+    }
+
+    districtInputCache = inputs;
+    return inputs;
+  }
+
+  // ── Read wizard form values ──────────────────────────────────────────────────
+
+  function readParams(): WizardParams {
+    const budget = (document.querySelector('input[name="budget"]:checked') as HTMLInputElement | null)?.value as WizardParams["budget"] ?? "800-1500";
+    const downPayment = (document.querySelector('input[name="downPayment"]:checked') as HTMLInputElement | null)?.value as WizardParams["downPayment"] ?? "5-10";
+    const hub = (document.getElementById("wizard-hub-select") as HTMLSelectElement | null)?.value ?? "taipei-main";
+    const commuteMinsStr = (document.querySelector('input[name="commuteMins"]:checked') as HTMLInputElement | null)?.value ?? "30";
+    const commuteMins = Number(commuteMinsStr) as WizardParams["commuteMins"];
+    const priority = (document.querySelector('input[name="priority"]:checked') as HTMLInputElement | null)?.value as WizardParams["priority"] ?? "timing-score";
+    return { budget, downPayment, commuteHub: hub, commuteMins, priority };
+  }
+
+  // ── Render result cards ──────────────────────────────────────────────────────
+
+  const RANKS = ["🥇", "🥈", "🥉"];
+
+  function scoreBadge(score: number | null): string {
+    if (score === null) return "";
+    const emoji = score >= 70 ? "🟢" : score >= 40 ? "🟡" : "🔴";
+    return `<span class="wizard-card-badge">${emoji} 時機分 ${score}</span>`;
+  }
+
+  function renderCards(matches: WizardMatch[]): void {
+    matchCards.innerHTML = matches.map((m, i) => `
+      <div class="wizard-card">
+        <span class="wizard-card-rank">${RANKS[i] ?? ""}</span>
+        <p class="wizard-card-name">${m.city} ${m.district}</p>
+        <div class="wizard-card-meta">
+          ${m.medianPriceWan !== null
+            ? `<span class="wizard-card-badge">💰 均價 ${m.medianPriceWan.toFixed(1)} 萬/坪</span>`
+            : ""}
+          ${scoreBadge(m.buyerTimingScore)}
+          <span class="wizard-card-badge">🚉 距 ${m.hubLabel} ${m.distanceKm} km</span>
+        </div>
+        <button class="wizard-card-goto"
+          data-district="${m.district}"
+          data-city="${m.city}"
+          aria-label="查看 ${m.city} ${m.district} 地圖">
+          🗺 查看地圖
+        </button>
+      </div>
+    `).join("");
+
+    // Wire "查看地圖" buttons
+    matchCards.querySelectorAll<HTMLButtonElement>(".wizard-card-goto").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const district = btn.dataset.district!;
+        const city     = btn.dataset.city!;
+        closeWizard();
+        // Switch to map view then fly to district
+        const mapContainer   = document.getElementById("map-view-container");
+        const tableContainer = document.getElementById("table-view-container");
+        if (tableContainer?.style.display !== "none") {
+          if (mapContainer)   mapContainer.style.display = "";
+          if (tableContainer) tableContainer.style.display = "none";
+          const vBtn = document.getElementById("view-mode-toggle") as HTMLButtonElement | null;
+          if (vBtn) { vBtn.textContent = "📊 排行表"; vBtn.setAttribute("aria-pressed", "false"); }
+          document.dispatchEvent(new CustomEvent("map-view-restored"));
+        }
+        requestAnimationFrame(() => {
+          document.dispatchEvent(
+            new CustomEvent("district-focus", { detail: { district, city } })
+          );
+        });
+      });
+    });
+  }
+
+  // ── Run matching ─────────────────────────────────────────────────────────────
+
+  async function runMatching(): Promise<void> {
+    runBtn.disabled = true;
+    runBtn.textContent = "配對中…";
+    try {
+      const params  = readParams();
+      const inputs  = await loadDistrictInputs();
+      const { matches, needsRelax } = runWizard(params, inputs);
+
+      // Persist results
+      const hub = COMMUTE_HUBS.find((h) => h.id === params.commuteHub);
+      localStorage.setItem(WIZARD_RESULTS_KEY, JSON.stringify({ matches, params, hub: hub?.label ?? params.commuteHub }));
+
+      relaxHint.hidden = !needsRelax;
+      if (matches.length === 0) {
+        resultsSub.textContent = "目前條件下無符合行政區";
+        matchCards.innerHTML   = "";
+      } else {
+        resultsSub.textContent = `找到 ${matches.length} 個最適合行政區`;
+        renderCards(matches);
+      }
+      showResults();
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = "🔍 開始配對";
+    }
+  }
+
+  // ── Event wiring ─────────
+
+  closeBtn.addEventListener("click", closeWizard);
+  reopenBtn.addEventListener("click", openWizard);
+  runBtn.addEventListener("click", runMatching);
+  doneBtn.addEventListener("click", closeWizard);
+  restartBtn.addEventListener("click", () => { showStep(1); });
+
+  // Next/Back buttons (delegated)
+  overlay.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains("wizard-next-btn")) {
+      const next = Number(target.dataset.next);
+      if (!isNaN(next)) showStep(next);
+    } else if (target.classList.contains("wizard-back-btn")) {
+      const back = Number(target.dataset.back);
+      if (!isNaN(back)) showStep(back);
+    }
+  });
+
+  // Keyboard: Escape closes wizard
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !overlay.hidden) closeWizard();
+  });
+
+  // Click outside panel closes wizard
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeWizard();
+  });
+
+  // ── Restore saved results ────────────────────────────────────────────────────
+
+  function tryRestoreSavedResults(): boolean {
+    const saved = localStorage.getItem(WIZARD_RESULTS_KEY);
+    if (!saved) return false;
+    try {
+      const { matches, hub } = JSON.parse(saved) as { matches: WizardMatch[]; hub: string };
+      if (!Array.isArray(matches) || matches.length === 0) return false;
+      resultsSub.textContent = `上次配對結果（${hub}方向）`;
+      relaxHint.hidden = true;
+      renderCards(matches);
+      showResults();
+      return true;
+    } catch { return false; }
+  }
+
+  // ── On first visit, show wizard; otherwise offer saved results ───────────────
+
+  const dismissed = localStorage.getItem(WIZARD_DISMISSED_KEY);
+  if (!dismissed) {
+    // First visit — show wizard after short delay (let map initialise)
+    setTimeout(() => openWizard(), 800);
+  } else {
+    // Returning visitor — silently pre-restore results (wizard stays closed)
+    tryRestoreSavedResults();
+  }
 </script>
