@@ -3548,11 +3548,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
     });
   }
 
-  function openWizard(): void {
+  function openWizard(showSavedResults = false): void {
     overlay.hidden = false;
     overlay.focus();
     document.body.style.overflow = "hidden";
-    showStep(1);
+    if (showSavedResults && tryRestoreSavedResults()) {
+      // Show saved results panel directly
+    } else {
+      showStep(1);
+    }
   }
 
   function closeWizard(): void {
@@ -3652,7 +3656,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
             ? `<span class="wizard-card-badge">💰 均價 ${m.medianPriceWan.toFixed(1)} 萬/坪</span>`
             : ""}
           ${scoreBadge(m.buyerTimingScore)}
-          <span class="wizard-card-badge">🚉 距 ${m.hubLabel} ${m.distanceKm} km</span>
+          <span class="wizard-card-badge">🚉 距 ${m.hubLabel} ${m.distanceKm !== null ? m.distanceKm + " km" : "—"}</span>
         </div>
         <button class="wizard-card-goto"
           data-district="${m.district}"
@@ -3720,7 +3724,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   // ── Event wiring ─────────
 
   closeBtn.addEventListener("click", closeWizard);
-  reopenBtn.addEventListener("click", openWizard);
+  reopenBtn.addEventListener("click", () => openWizard(true)); // show saved results if available
   runBtn.addEventListener("click", runMatching);
   doneBtn.addEventListener("click", closeWizard);
   restartBtn.addEventListener("click", () => { showStep(1); });
@@ -3767,10 +3771,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   const dismissed = localStorage.getItem(WIZARD_DISMISSED_KEY);
   if (!dismissed) {
-    // First visit — show wizard after short delay (let map initialise)
-    setTimeout(() => openWizard(), 800);
-  } else {
-    // Returning visitor — silently pre-restore results (wizard stays closed)
-    tryRestoreSavedResults();
+    // First visit — show wizard after map has a chance to initialise
+    setTimeout(() => {
+      // Re-check: user may have already dismissed before the timer fires
+      if (!localStorage.getItem(WIZARD_DISMISSED_KEY)) openWizard();
+    }, 800);
   }
+  // Returning visitors: saved results load on demand when they click 重新配對
 </script>

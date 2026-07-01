@@ -126,8 +126,16 @@ describe("filterByBudget", () => {
   it("under-800 includes only cheapest district", () => {
     const result = filterByBudget(districts, "under-800");
     expect(result.map((d) => d.district)).toContain("A");
+    expect(result.map((d) => d.district)).not.toContain("B"); // 35 is above under-800 ceiling
     expect(result.map((d) => d.district)).not.toContain("C");
     expect(result.map((d) => d.district)).not.toContain("E");
+  });
+
+  it("800-1500 tier excludes under-800 and over-1500 districts", () => {
+    const result = filterByBudget(districts, "800-1500");
+    expect(result.map((d) => d.district)).toContain("B");    // 35 within [26.7, 50)
+    expect(result.map((d) => d.district)).not.toContain("A"); // 15 < 26.7 → excluded
+    expect(result.map((d) => d.district)).not.toContain("C"); // 70 >= 50 → excluded
   });
 
   it("over-2500 includes only most expensive district", () => {
@@ -220,13 +228,13 @@ describe("sortByPriority", () => {
 // ── runWizard ─────────────────────────────────────────────────────────────────
 
 describe("runWizard", () => {
-  // Build a set of districts: 3 near Taipei with affordable prices, 1 pricey near Taipei, 1 far away
+  // Build a set of districts: 3 near Taipei in 800-1500 range [26.7, 50), 1 pricey, 1 far
   const districts: DistrictInput[] = [
     makeDistrict("中山區", "台北市", 40, 70, 25.063, 121.53),
-    makeDistrict("大同區", "台北市", 25, 80, 25.063, 121.51),
-    makeDistrict("萬華區", "台北市", 22, 75, 25.036, 121.5),
+    makeDistrict("大同區", "台北市", 35, 80, 25.063, 121.51),
+    makeDistrict("萬華區", "台北市", 30, 75, 25.036, 121.5),
     makeDistrict("信義區", "台北市", 95, 30, 25.033, 121.565),
-    makeDistrict("高雄某區", "高雄市", 18, 90, 22.627, 120.301),
+    makeDistrict("高雄某區", "高雄市", 38, 90, 22.627, 120.301),
   ];
 
   const params: WizardParams = {
@@ -255,7 +263,8 @@ describe("runWizard", () => {
   it("matches include distanceKm and hubLabel", () => {
     const { matches } = runWizard(params, districts);
     for (const m of matches) {
-      expect(m.distanceKm).toBeGreaterThanOrEqual(0);
+      expect(m.distanceKm).not.toBeNull();
+      expect(m.distanceKm!).toBeGreaterThanOrEqual(0);
       expect(m.hubLabel).toBe("台北車站");
     }
   });

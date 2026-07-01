@@ -49,7 +49,7 @@ export interface WizardMatch {
   city: string;
   medianPriceWan: number | null;
   buyerTimingScore: number | null;
-  distanceKm: number;
+  distanceKm: number | null; // null when hub coordinates are unavailable
   commuteHub: string;
   hubLabel: string;
 }
@@ -78,8 +78,8 @@ export const COMMUTE_HUBS: CommuteHub[] = [
  */
 export const BUDGET_PRICE_RANGES: Record<BudgetTier, { min: number; max: number | null }> = {
   "under-800":  { min: 0,    max: 26.7 },
-  "800-1500":   { min: 0,    max: 50.0 },  // inclusive lower end retained so 800–1500 range includes <800
-  "1500-2500":  { min: 26.7, max: 83.4 },
+  "800-1500":   { min: 26.7, max: 50.0 },
+  "1500-2500":  { min: 50.0, max: 83.4 },
   "over-2500":  { min: 83.4, max: null  },
 };
 
@@ -266,7 +266,7 @@ export function runWizard(params: WizardParams, districts: DistrictInput[]): Wiz
     buyerTimingScore: d.buyerTimingScore,
     distanceKm: hub
       ? Math.round(haversineKm(d.lat, d.lng, hub.lat, hub.lng) * 10) / 10
-      : 0,
+      : null,
     commuteHub: params.commuteHub,
     hubLabel: hub?.label ?? params.commuteHub,
   }));
