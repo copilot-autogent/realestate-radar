@@ -1,6 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import Map from "../components/Map.astro";
+import DistrictTable from "../components/DistrictTable.astro";
 import { DATA_AS_OF } from "../generated/metadata.ts";
 
 /** Sentinel value written by generate-metadata when no real data is available (dev/lint mode). */
@@ -437,11 +438,17 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </div>
     </aside>
 
-    <div class="map-container">
+    <div class="map-container" id="map-view-container">
       <div id="ss-alert-banner" class="ss-alert-banner" style="display:none"></div>
       <Map />
     </div>
+    <div class="table-view-container" id="table-view-container" style="display:none">
+      <DistrictTable />
+    </div>
   </main>
+  <button id="view-mode-toggle" class="view-mode-toggle" aria-pressed="false" title="切換至排行表">
+    📊 排行表
+  </button>
   <button id="filter-toggle-btn" class="filter-toggle-btn" aria-label="開啟篩選">☰ 篩選</button>
   <footer class="site-footer">
     <p>本工具無仲介費用衝突，提供市場真實成交資訊。資料來源：<a href="https://lvr.land.moi.gov.tw/" target="_blank" rel="noopener noreferrer">內政部實價登錄</a>。</p>
@@ -2212,6 +2219,46 @@ const showBuyersMarket = !isStale && dataYear !== null;
   .site-footer a:hover {
     text-decoration: underline;
   }
+
+  /* ── View mode toggle (map ↔ table) ── */
+  .view-mode-toggle {
+    position: fixed;
+    bottom: 28px;
+    right: 16px;
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #1e293b;
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 18px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(30,41,59,0.35);
+    transition: background 0.15s;
+  }
+  .view-mode-toggle:hover { background: #0f172a; }
+  .view-mode-toggle[aria-pressed="true"] { background: #2563eb; }
+  .view-mode-toggle[aria-pressed="true"]:hover { background: #1d4ed8; }
+
+  /* ── Table view container ── */
+  .table-view-container {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  @media (max-width: 768px) {
+    .view-mode-toggle {
+      bottom: 80px; /* above filter btn */
+      right: 16px;
+      left: auto;
+      padding: 13px 18px;
+    }
+  }
 </style>
 
 <script>
@@ -3011,4 +3058,59 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   presaleSpreadToggle?.addEventListener("change", updatePresaleSpreadOverlay);
 
+</script>
+
+<script>
+  // ── View mode toggle: map ↔ table ──
+
+  const viewToggleBtn = document.getElementById("view-mode-toggle") as HTMLButtonElement | null;
+  const mapViewContainer   = document.getElementById("map-view-container")   as HTMLElement | null;
+  const tableViewContainer = document.getElementById("table-view-container") as HTMLElement | null;
+
+  let isTableView = false;
+
+  function switchToMapView(): void {
+    isTableView = false;
+    if (mapViewContainer)   mapViewContainer.style.display   = "";
+    if (tableViewContainer) tableViewContainer.style.display = "none";
+    if (viewToggleBtn) {
+      viewToggleBtn.textContent = "📊 排行表";
+      viewToggleBtn.setAttribute("aria-pressed", "false");
+      viewToggleBtn.title = "切換至排行表";
+    }
+    // Resize map canvas after reveal — MapLibre doesn't auto-resize after display:none
+    requestAnimationFrame(() => {
+      document.dispatchEvent(new CustomEvent("map-view-restored"));
+    });
+  }
+
+  function switchToTableView(): void {
+    isTableView = true;
+    if (mapViewContainer)   mapViewContainer.style.display   = "none";
+    if (tableViewContainer) tableViewContainer.style.display = "";
+    if (viewToggleBtn) {
+      viewToggleBtn.textContent = "🗺 地圖";
+      viewToggleBtn.setAttribute("aria-pressed", "true");
+      viewToggleBtn.title = "切換至地圖";
+    }
+    // Notify DistrictTable to load data if not yet loaded
+    document.dispatchEvent(new CustomEvent("table-view-activated"));
+  }
+
+  viewToggleBtn?.addEventListener("click", () => {
+    if (isTableView) switchToMapView();
+    else switchToTableView();
+  });
+
+  // ── Row click from DistrictTable: switch to map and focus district ──
+  document.addEventListener("district-table-row-click", (e: Event) => {
+    const { district, city } = (e as CustomEvent<{ district: string; city: string }>).detail;
+    switchToMapView();
+    // Give Map a tick to re-attach, then fire district-focus
+    requestAnimationFrame(() => {
+      document.dispatchEvent(
+        new CustomEvent("district-focus", { detail: { district, city } })
+      );
+    });
+  });
 </script>

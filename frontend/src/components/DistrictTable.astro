@@ -1,0 +1,466 @@
+---
+/**
+ * DistrictTable — 地區行情排行表 (issue #113)
+ * Sortable district comparison table with inline sparklines.
+ * Data is sourced from the same static JSON used by Map.astro.
+ */
+---
+
+<div id="district-table-root" class="district-table-root" role="region" aria-label="地區行情排行表">
+  <div class="dt-toolbar">
+    <span class="dt-title">🏘 地區行情排行表</span>
+    <span id="dt-count" class="dt-count"></span>
+  </div>
+  <div id="dt-loading" class="dt-loading" aria-live="polite">載入中…</div>
+  <div id="dt-empty" class="dt-empty" hidden>目前篩選條件下無足夠成交量的行政區（需 ≥ 10 筆）</div>
+  <div class="dt-scroll-wrap">
+    <table id="dt-table" class="dt-table" hidden aria-label="地區行情排行表">
+      <thead>
+        <tr>
+          <th id="th-district" class="dt-th dt-th-sortable" data-key="district" tabindex="0" scope="col">
+            行政區 <span class="sort-icon" aria-hidden="true">⇅</span>
+          </th>
+          <th id="th-price" class="dt-th dt-th-sortable" data-key="medianPrice" tabindex="0" scope="col">
+            均價<span class="dt-th-unit">（萬/坪）</span> <span class="sort-icon" aria-hidden="true">⇅</span>
+          </th>
+          <th id="th-yoy" class="dt-th dt-th-sortable" data-key="yoyPct" tabindex="0" scope="col">
+            YoY% <span class="sort-icon" aria-hidden="true">⇅</span>
+          </th>
+          <th id="th-txcount" class="dt-th dt-th-sortable" data-key="txCount" tabindex="0" scope="col">
+            成交量<span class="dt-th-unit">（12月）</span> <span class="sort-icon" aria-hidden="true">⇅</span>
+          </th>
+          <th id="th-score" class="dt-th dt-th-sortable dt-th-active" data-key="timingScore" tabindex="0" scope="col">
+            買方時機分 <span class="sort-icon" aria-hidden="true">↓</span>
+          </th>
+          <th id="th-spark" class="dt-th dt-th-spark" scope="col">
+            趨勢<span class="dt-th-unit">（6月）</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody id="dt-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .district-table-root {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg, #fff);
+    overflow: hidden;
+  }
+
+  .dt-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px 8px;
+    border-bottom: 1px solid var(--border, #e2e8f0);
+    flex-shrink: 0;
+  }
+
+  .dt-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text, #1e293b);
+  }
+
+  .dt-count {
+    font-size: 0.8rem;
+    color: var(--text-muted, #64748b);
+  }
+
+  .dt-loading,
+  .dt-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text-muted, #64748b);
+    font-size: 0.9rem;
+  }
+
+  .dt-scroll-wrap {
+    flex: 1;
+    overflow: auto;
+  }
+
+  .dt-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    table-layout: fixed;
+  }
+
+  .dt-th {
+    position: sticky;
+    top: 0;
+    background: var(--surface, #f8fafc);
+    border-bottom: 2px solid var(--border, #e2e8f0);
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-muted, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+    z-index: 1;
+    user-select: none;
+  }
+
+  .dt-th-unit {
+    font-weight: 400;
+    font-size: 0.72rem;
+    color: #94a3b8;
+  }
+
+  .dt-th-sortable {
+    cursor: pointer;
+  }
+  .dt-th-sortable:hover { background: var(--border, #e2e8f0); }
+
+  .dt-th-active {
+    color: var(--primary, #2563eb);
+    background: #eff6ff;
+  }
+  .dt-th-active .sort-icon { color: var(--primary, #2563eb); }
+
+  .sort-icon { font-size: 0.7rem; opacity: 0.7; margin-left: 2px; }
+
+  /* Column widths */
+  .dt-th:nth-child(1) { width: 22%; min-width: 100px; }
+  .dt-th:nth-child(2) { width: 14%; min-width: 80px; }
+  .dt-th:nth-child(3) { width: 12%; min-width: 72px; }
+  .dt-th:nth-child(4) { width: 14%; min-width: 80px; }
+  .dt-th:nth-child(5) { width: 18%; min-width: 100px; }
+  .dt-th:nth-child(6) { width: 20%; min-width: 90px; }
+
+  .dt-tr {
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .dt-tr:hover { background: #f0f9ff; }
+  .dt-tr:nth-child(even) { background: #fafafa; }
+  .dt-tr:nth-child(even):hover { background: #f0f9ff; }
+
+  .dt-td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dt-td-district { font-weight: 600; }
+  .dt-city-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: #94a3b8;
+    margin-right: 4px;
+  }
+
+  .dt-price { font-weight: 700; color: var(--primary, #2563eb); }
+
+  .dt-yoy-up   { color: #dc2626; font-weight: 600; }
+  .dt-yoy-down { color: #16a34a; font-weight: 600; }
+  .dt-yoy-flat { color: #64748b; }
+  .dt-na       { color: #cbd5e1; font-style: italic; }
+
+  .dt-score-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .dt-score-green  { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+  .dt-score-yellow { background: #fefce8; color: #a16207; border: 1px solid #fde047; }
+  .dt-score-red    { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
+  .dt-spark-cell { padding: 4px 10px; }
+  .dt-spark-canvas { display: block; }
+
+  /* Mobile: collapse to 3 columns, hide sparkline */
+  @media (max-width: 600px) {
+    .dt-th:nth-child(3),
+    .dt-th:nth-child(4),
+    .dt-th:nth-child(6),
+    .dt-td:nth-child(3),
+    .dt-td:nth-child(4),
+    .dt-td:nth-child(6) {
+      display: none;
+    }
+    .dt-th:nth-child(1) { width: 40%; }
+    .dt-th:nth-child(2) { width: 30%; }
+    .dt-th:nth-child(5) { width: 30%; }
+    .dt-th, .dt-td { font-size: 0.82rem; padding: 7px 8px; }
+  }
+</style>
+
+<script>
+  import {
+    computeDistrictRows,
+    sortRows,
+    buyerScoreBucket,
+    type DistrictRow,
+    type SortKey,
+    type SortDir,
+  } from "../lib/districtTableUtils.js";
+
+  const BASE_URL = import.meta.env.BASE_URL;
+  const STATIC_DATA_URL = `${BASE_URL}data/sample-transactions.json`;
+
+  let allRows: DistrictRow[] = [];
+  let sortKey: SortKey = "timingScore";
+  let sortDir: SortDir = "desc";
+  let dataLoaded = false; // prevents re-fetch on toggle when data is legitimately empty
+
+  // ── Chart.js (same CDN pattern as index.astro) ──
+
+  let Chart: any = null;
+  async function ensureChart(): Promise<void> {
+    if (Chart) return;
+    // @ts-ignore — CDN ESM import, no type declarations needed
+    const mod = await import("https://cdn.jsdelivr.net/npm/chart.js@4.4.0/auto/+esm");
+    Chart = mod.default;
+  }
+
+  // ── Sparkline rendering ──
+
+  const sparkInstances = new Map<string, any>();
+
+  async function renderSparkline(
+    canvas: HTMLCanvasElement,
+    data: (number | null)[],
+    rowKey: string
+  ): Promise<void> {
+    await ensureChart();
+    if (sparkInstances.has(rowKey)) {
+      sparkInstances.get(rowKey)!.destroy();
+    }
+    const nonNull = data.filter((v): v is number => v !== null);
+    if (nonNull.length === 0) {
+      canvas.style.opacity = "0.2";
+      return;
+    }
+    const minVal = Math.min(...nonNull);
+    const maxVal = Math.max(...nonNull);
+    const isFlat = maxVal === minVal;
+    const instance = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: data.map(() => ""),
+        datasets: [{
+          data: data,
+          borderColor: isFlat || nonNull.length < 2 ? "#94a3b8" : nonNull[nonNull.length - 1]! > nonNull[0]! ? "#dc2626" : "#16a34a",
+          borderWidth: 1.5,
+          fill: false,
+          pointRadius: 0,
+          spanGaps: true,
+          tension: 0.3,
+        }],
+      },
+      options: {
+        responsive: false,
+        animation: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: { display: false },
+          y: { display: false },
+        },
+      },
+    });
+    sparkInstances.set(rowKey, instance);
+  }
+
+  // ── Table rendering ──
+
+  function renderTable(): void {
+    const tbody = document.getElementById("dt-tbody")!;
+    const table = document.getElementById("dt-table") as HTMLTableElement | null;
+    const empty = document.getElementById("dt-empty")!;
+    const count = document.getElementById("dt-count")!;
+
+    // Destroy all existing spark instances before rebuild to prevent leaks
+    sparkInstances.forEach((inst) => { try { inst.destroy(); } catch { /* ignore */ } });
+    sparkInstances.clear();
+
+    const sorted = sortRows(allRows, sortKey, sortDir);
+
+    if (sorted.length === 0) {
+      table?.setAttribute("hidden", "");
+      empty.removeAttribute("hidden");
+      count.textContent = "";
+      return;
+    }
+
+    empty.setAttribute("hidden", "");
+    table?.removeAttribute("hidden");
+    count.textContent = `${sorted.length} 個行政區`;
+
+    tbody.innerHTML = "";
+
+    for (const row of sorted) {
+      const rowKey = `${row.city}::${row.district}`;
+      const tr = document.createElement("tr");
+      tr.className = "dt-tr";
+      tr.setAttribute("tabindex", "0");
+      tr.setAttribute("role", "button");
+      tr.setAttribute("aria-label", `前往地圖查看 ${row.city} ${row.district}`);
+      tr.dataset.district = row.district;
+      tr.dataset.city = row.city;
+
+      // District
+      const tdDistrict = document.createElement("td");
+      tdDistrict.className = "dt-td dt-td-district";
+      tdDistrict.innerHTML = `<span class="dt-city-badge">${escHtml(row.city)}</span>${escHtml(row.district)}`;
+      tr.appendChild(tdDistrict);
+
+      // Median price
+      const tdPrice = document.createElement("td");
+      tdPrice.className = "dt-td";
+      tdPrice.innerHTML = row.medianPriceWan !== null
+        ? `<span class="dt-price">${row.medianPriceWan.toFixed(1)}</span>`
+        : `<span class="dt-na">—</span>`;
+      tr.appendChild(tdPrice);
+
+      // YoY%
+      const tdYoy = document.createElement("td");
+      tdYoy.className = "dt-td";
+      if (row.yoyPct !== null) {
+        const sign = row.yoyPct >= 0 ? "+" : "";
+        const cls = row.yoyPct > 1 ? "dt-yoy-up" : row.yoyPct < -1 ? "dt-yoy-down" : "dt-yoy-flat";
+        const arrow = row.yoyPct > 1 ? "▲" : row.yoyPct < -1 ? "▼" : "→";
+        tdYoy.innerHTML = `<span class="${cls}">${arrow} ${sign}${row.yoyPct.toFixed(1)}%</span>`;
+      } else {
+        tdYoy.innerHTML = `<span class="dt-na">—</span>`;
+      }
+      tr.appendChild(tdYoy);
+
+      // Volume
+      const tdVol = document.createElement("td");
+      tdVol.className = "dt-td";
+      tdVol.textContent = `${row.txCount12mo}`;
+      tr.appendChild(tdVol);
+
+      // Buyer timing score
+      const tdScore = document.createElement("td");
+      tdScore.className = "dt-td";
+      if (row.buyerTimingScore !== null) {
+        const { label, cls, emoji } = buyerScoreBucket(row.buyerTimingScore);
+        tdScore.innerHTML = `<span class="dt-score-badge dt-${cls}">${emoji} ${label} ${row.buyerTimingScore}/100</span>`;
+      } else {
+        tdScore.innerHTML = `<span class="dt-na">資料不足</span>`;
+      }
+      tr.appendChild(tdScore);
+
+      // Sparkline canvas
+      const tdSpark = document.createElement("td");
+      tdSpark.className = "dt-td dt-spark-cell";
+      const canvas = document.createElement("canvas");
+      canvas.className = "dt-spark-canvas";
+      canvas.width = 80;
+      canvas.height = 28;
+      canvas.setAttribute("aria-label", `${row.district} 近6個月價格趨勢`);
+      tdSpark.appendChild(canvas);
+      tr.appendChild(tdSpark);
+
+      tbody.appendChild(tr);
+
+      // Render sparkline async (doesn't block table paint)
+      renderSparkline(canvas, row.sparkline6mo, rowKey);
+    }
+
+    // Row click → switch to map view centered on district
+    tbody.querySelectorAll<HTMLTableRowElement>(".dt-tr").forEach((tr) => {
+      const handler = () => {
+        const district = (tr as HTMLTableRowElement).dataset.district ?? "";
+        const city     = (tr as HTMLTableRowElement).dataset.city ?? "";
+        if (!district) return;
+        document.dispatchEvent(
+          new CustomEvent("district-table-row-click", { detail: { district, city } })
+        );
+      };
+      tr.addEventListener("click", handler);
+      tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handler(); } });
+    });
+  }
+
+  // ── Sort header click handling ──
+
+  function updateSortHeaders(): void {
+    document.querySelectorAll<HTMLTableCellElement>(".dt-th-sortable").forEach((th) => {
+      const key = th.dataset.key as SortKey;
+      const icon = th.querySelector(".sort-icon");
+      th.classList.toggle("dt-th-active", key === sortKey);
+      if (icon) {
+        if (key !== sortKey) icon.textContent = "⇅";
+        else icon.textContent = sortDir === "asc" ? "↑" : "↓";
+      }
+    });
+  }
+
+  document.querySelectorAll<HTMLTableCellElement>(".dt-th-sortable").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.key as SortKey;
+      if (key === sortKey) {
+        sortDir = sortDir === "asc" ? "desc" : "asc";
+      } else {
+        sortKey = key;
+        sortDir = key === "timingScore" ? "desc" : key === "medianPrice" ? "asc" : "desc";
+      }
+      updateSortHeaders();
+      renderTable();
+    });
+  });
+
+  // ── Data loading ──
+
+  async function loadAndRender(features?: any[]): Promise<void> {
+    const loading = document.getElementById("dt-loading")!;
+
+    try {
+      let feats: any[] | undefined = features;
+      if (!feats) {
+        const res = await fetch(STATIC_DATA_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const geojson = await res.json();
+        feats = geojson.features ?? [];
+      }
+      allRows = computeDistrictRows(feats ?? [], 10);
+      dataLoaded = true;
+    } catch (e) {
+      console.warn("[DistrictTable] Failed to load data:", e);
+      allRows = [];
+      dataLoaded = true; // Don't retry on every toggle — failure is permanent until reload
+    }
+
+    loading.style.display = "none";
+    renderTable();
+  }
+
+  // Listen for raw data shared from Map.astro (avoids double-fetch when map loaded first)
+  document.addEventListener("rawdata-loaded", (e: Event) => {
+    const { features } = (e as CustomEvent).detail;
+    if (features && Array.isArray(features)) {
+      loadAndRender(features);
+    }
+  });
+
+  // Init: load when the table view is first activated (lazy)
+  document.addEventListener("table-view-activated", () => {
+    if (!dataLoaded) loadAndRender();
+  });
+
+  function escHtml(str: string): string {
+    return str.replace(/[&<>"']/g, (c) => (
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"
+    ));
+  }
+</script>

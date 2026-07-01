@@ -2718,6 +2718,8 @@
       // Cache full unfiltered features once for YoY computation (defensive slice — copy refs, not the array object)
       if (rawAllFeatures.length === 0 && geojson.features) {
         rawAllFeatures = geojson.features.slice();
+        // Share raw data with DistrictTable (fires once on first load)
+        document.dispatchEvent(new CustomEvent("rawdata-loaded", { detail: { features: rawAllFeatures } }));
       }
 
       // Client-side filtering
@@ -4237,4 +4239,71 @@
 
   // Initial load
   map.on("load", () => { /* handled by the async load handler above */ });
+
+  // ── map-view-restored: resize map canvas after returning from table view ──
+  document.addEventListener("map-view-restored", () => {
+    try { map.resize(); } catch { /* ignore if map not yet initialized */ }
+  });
+
+  // ── district-focus: jump to district from table row click (issue #113) ──
+  document.addEventListener("district-focus", async (e: Event) => {
+    const { district, city } = (e as CustomEvent<{ district: string; city: string }>).detail;
+    if (!district) return;
+
+    const targetCity = city || "台北市";
+
+    // Update filter dropdowns to match (with RAF to avoid race after city change)
+    const citySelect     = document.getElementById("city-select")     as HTMLSelectElement | null;
+    const districtSelect = document.getElementById("district-select") as HTMLSelectElement | null;
+    if (citySelect && city) {
+      citySelect.value = city;
+      citySelect.dispatchEvent(new Event("change"));
+    }
+    if (districtSelect && district) {
+      // Wait one frame for dropdown repopulation after city change
+      requestAnimationFrame(() => {
+        districtSelect.value = district;
+        districtSelect.dispatchEvent(new Event("change"));
+      });
+    }
+
+    // Fly to city center immediately as a fast fallback
+    if (city && CITY_CENTERS[city]) {
+      map.flyTo({ center: CITY_CENTERS[city].center, zoom: CITY_CENTERS[city].zoom, duration: 800 });
+    }
+
+    // Load district boundaries if not yet loaded, then attempt district-level centroid fly
+    await loadDistrictBoundaries(targetCity);
+
+    if (districtGeoJSON?.features) {
+      const feat = districtGeoJSON.features.find(
+        (f: any) => f.properties?.district === district || f.properties?.TOWNNAME === district
+      );
+      if (feat?.geometry) {
+        // Compute rough centroid by averaging coordinate pairs
+        const coords: [number, number][] = [];
+        function collectCoords(geom: any): void {
+          if (geom.type === "Point") {
+            coords.push([geom.coordinates[0], geom.coordinates[1]]);
+            return;
+          }
+          if (geom.type === "Polygon") {
+            (geom.coordinates[0] ?? []).forEach((c: number[]) => coords.push([c[0]!, c[1]!]));
+            return;
+          }
+          if (geom.type === "MultiPolygon") {
+            // flat(3) to reach individual coordinate pairs: [polygons][rings][points]
+            geom.coordinates.flat(2).forEach((c: number[]) => coords.push([c[0]!, c[1]!]));
+            return;
+          }
+        }
+        collectCoords(feat.geometry);
+        if (coords.length > 0) {
+          const lng = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+          const lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+          map.flyTo({ center: [lng, lat], zoom: 13, duration: 900 });
+        }
+      }
+    }
+  });
 </script>
