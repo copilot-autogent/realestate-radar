@@ -86,8 +86,8 @@ export function normalizeAddress(address: string): string {
     // Fallback: strip trailing floor suffix when no 號 is present
     // e.g. "木柵路一段3樓" → "木柵路一段"
     .replace(new RegExp(`${D}+樓(之${D}+)?$`, "u"), "")
-    // Remove building wing designator — handle both ASCII (A棟) and full-width (Ａ棟)
-    .replace(/[A-ZＡ-Ｚ]棟/u, "")
+    // Remove building wing designator — case-insensitive handles a/A/ａ/Ａ
+    .replace(/[A-Za-zＡ-Ｚａ-ｚ]棟/u, "")
     .replace(/\s+/g, " ")
     .trim();
 }
