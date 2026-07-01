@@ -51,6 +51,11 @@ async function main(): Promise<void> {
      WHERE lat IS NULL
        AND address IS NOT NULL
        AND address != ''
+       -- Exclude pure land-only transactions (交易標的=土地).
+       -- Their address fields contain land parcel IDs (e.g. "博嘉段四小段202地號")
+       -- which Nominatim cannot resolve. Building/mixed transactions (房地, 建物, etc.)
+       -- carry real street addresses and are geocodable.
+       AND transaction_type IS DISTINCT FROM '土地'
      ORDER BY id
      LIMIT $1`,
     [limit]
