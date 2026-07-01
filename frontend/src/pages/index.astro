@@ -237,6 +237,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <div id="my-searches-list" class="my-searches-list"></div>
       </div>
 
+      <!-- District watchlist panel (issue #110) -->
+      <div id="watchlist-panel" class="watchlist-panel" style="display:none">
+        <div class="watchlist-header">
+          ⭐ 關注行政區 (<span id="wl-count">0</span>/<span>3</span>)
+        </div>
+        <div id="watchlist-stale-notice" class="watchlist-stale-notice" style="display:none"></div>
+        <div id="watchlist-list" class="watchlist-list"></div>
+        <p class="watchlist-hint">點擊地圖行政區，按「⭐ 關注此行政區」可追蹤均價變動（最多 3 個）。</p>
+      </div>
+
       <!-- Budget Calculator -->
       <div id="budget-calculator" class="budget-calculator">
         <h3>💰 預算計算器</h3>
@@ -1892,7 +1902,93 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
   .ss-del-btn:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
 
-  /* ---- Budget Calculator ---- */
+  /* ---- District Watchlist panel (issue #110) ---- */
+  .watchlist-panel {
+    margin-top: 14px;
+    border: 1px solid #fde047;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .watchlist-header {
+    padding: 8px 12px;
+    background: #fefce8;
+    border-bottom: 1px solid #fde047;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #854d0e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .watchlist-stale-notice {
+    padding: 7px 12px;
+    background: #f0fdf4;
+    border-bottom: 1px solid #bbf7d0;
+    font-size: 0.75rem;
+    color: #15803d;
+  }
+  .watchlist-hint {
+    padding: 8px 12px;
+    font-size: 0.76rem;
+    color: #94a3b8;
+    font-style: italic;
+    margin: 0;
+  }
+  .watchlist-list { padding: 4px 0; }
+  .wl-item {
+    padding: 9px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .wl-item:last-child { border-bottom: none; }
+  .wl-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .wl-district-name {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+  .wl-city-badge {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: #94a3b8;
+    margin-right: 3px;
+  }
+  .wl-unwatch-btn {
+    padding: 2px 6px;
+    background: none;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.12s;
+  }
+  .wl-unwatch-btn:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+  /* Delta banner */
+  .wl-delta-banner {
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .wl-delta-up   { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+  .wl-delta-down { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+  .wl-delta-flat { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+  .wl-snapshot-note {
+    font-size: 0.72rem;
+    color: #94a3b8;
+  }
   .budget-calculator {
     margin-top: 12px;
     background: #fefce8;
@@ -3809,4 +3905,163 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }, 800);
   }
   // Returning visitors: saved results load on demand when they click 重新配對
+</script>
+
+<script>
+  // ── District Watchlist sidebar panel (issue #110) ────────────────────────────
+  import {
+    formatDelta,
+    computeDeltaPct,
+    shouldShowBanner,
+    type WatchlistEntry,
+  } from "../lib/watchlistUtils.js";
+  import { computeMedianPrice12mo } from "../lib/districtTableUtils.js";
+
+  const WL_KEY_IDX = "realestate-radar-watchlist";
+
+  function idxGetAll(): WatchlistEntry[] {
+    try { return JSON.parse(localStorage.getItem(WL_KEY_IDX) ?? "[]"); } catch { return []; }
+  }
+
+  function idxSaveAll(entries: WatchlistEntry[]): void {
+    try { localStorage.setItem(WL_KEY_IDX, JSON.stringify(entries)); } catch { /* storage unavailable */ }
+  }
+
+  // Current delta data (set once rawdata-loaded fires)
+  let wlDeltaMap = new Map<string, { currentPrice: number; deltaPct: number; show: boolean }>();
+
+  /**
+   * Render the watchlist sidebar panel from current localStorage state and delta data.
+   */
+  function wlRenderPanel(): void {
+    const panel    = document.getElementById("watchlist-panel") as HTMLElement | null;
+    const list     = document.getElementById("watchlist-list")  as HTMLElement | null;
+    const countEl  = document.getElementById("wl-count")        as HTMLSpanElement | null;
+    if (!panel || !list) return;
+
+    const entries = idxGetAll();
+    if (countEl) countEl.textContent = String(entries.length);
+
+    if (entries.length === 0) {
+      panel.style.display = "none";
+      return;
+    }
+
+    panel.style.display = "block";
+    list.innerHTML = "";
+
+    for (const entry of entries) {
+      const key = `${entry.city}::${entry.district}`;
+      const delta = wlDeltaMap.get(key);
+      const today = new Date().toISOString().slice(0, 10);
+
+      const item = document.createElement("div");
+      item.className = "wl-item";
+
+      // Top row: district name + unwatch button
+      const topRow = document.createElement("div");
+      topRow.className = "wl-item-top";
+      topRow.innerHTML = `
+        <div class="wl-district-name">
+          <span class="wl-city-badge">${escHtmlWl(entry.city)}</span>${escHtmlWl(entry.district)}
+        </div>
+        <button class="wl-unwatch-btn" data-district="${escHtmlWl(entry.district)}" data-city="${escHtmlWl(entry.city)}">取消關注</button>
+      `;
+      topRow.querySelector(".wl-unwatch-btn")?.addEventListener("click", () => {
+        const all = idxGetAll();
+        idxSaveAll(all.filter((e) => !(e.city === entry.city && e.district === entry.district)));
+        // Notify Map.astro's watchlist to stay in sync
+        document.dispatchEvent(new CustomEvent("watchlist-changed-external", {
+          detail: { city: entry.city, district: entry.district },
+        }));
+        wlRenderPanel();
+      });
+      item.appendChild(topRow);
+
+      // Delta banner (shown only on subsequent visits and when we have price data)
+      if (delta && delta.currentPrice > 0 && delta.show && shouldShowBanner(entry.snapshotDate, today)) {
+        const { text, arrow, cls } = formatDelta(delta.deltaPct);
+        const bannerEl = document.createElement("div");
+        bannerEl.innerHTML = `
+          <span class="wl-delta-banner ${cls}">
+            ${arrow} 自上次訪問，${escHtmlWl(entry.district)}均價 ${text}
+          </span>
+          <div class="wl-snapshot-note">快照：${entry.snapshotDate} 基準 ${entry.snapshotPrice.toFixed(1)} 萬/坪</div>
+        `;
+        item.appendChild(bannerEl);
+      } else if (entry.snapshotPrice > 0) {
+        // No banner yet (same-day star or no current price) — show snapshot price only
+        const noteEl = document.createElement("div");
+        noteEl.className = "wl-snapshot-note";
+        noteEl.textContent = `關注於 ${entry.snapshotDate}，基準 ${entry.snapshotPrice.toFixed(1)} 萬/坪`;
+        item.appendChild(noteEl);
+      }
+
+      list.appendChild(item);
+    }
+  }
+
+  function escHtmlWl(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
+  }
+
+  // Listen for Map.astro firing watchlist-changed (star/unstar in popup)
+  document.addEventListener("watchlist-changed", (e: Event) => {
+    const { entries } = (e as CustomEvent<{ entries: WatchlistEntry[] }>).detail;
+    // Re-build deltaMap for newly added entries when we have raw data
+    if (rawFeaturesCache.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      for (const entry of entries) {
+        const key = `${entry.city}::${entry.district}`;
+        if (!wlDeltaMap.has(key)) {
+          const currentPrice = computeMedianPrice12mo(rawFeaturesCache, entry.district, entry.city || undefined) ?? 0;
+          const deltaPct = computeDeltaPct(entry.snapshotPrice, currentPrice);
+          const show = entry.snapshotPrice > 0 && shouldShowBanner(entry.snapshotDate, today);
+          wlDeltaMap.set(key, { currentPrice, deltaPct, show });
+        }
+      }
+      // Remove entries that were unwatched
+      for (const key of wlDeltaMap.keys()) {
+        const [city, district] = key.split("::");
+        if (!entries.some((e) => e.city === city && e.district === district)) {
+          wlDeltaMap.delete(key);
+        }
+      }
+    }
+    wlRenderPanel();
+  });
+
+  // Listen for Map.astro's delta computation result (rawdata-loaded → stale-check → deltas-ready)
+  document.addEventListener("watchlist-deltas-ready", (e: Event) => {
+    const { deltas } = (e as CustomEvent<{
+      deltas: Array<{ entry: WatchlistEntry; currentPrice: number; deltaPct: number; show: boolean }>;
+    }>).detail;
+
+    wlDeltaMap.clear();
+    for (const d of deltas) {
+      const key = `${d.entry.city}::${d.entry.district}`;
+      wlDeltaMap.set(key, { currentPrice: d.currentPrice, deltaPct: d.deltaPct, show: d.show });
+    }
+    wlRenderPanel();
+  });
+
+  // Listen for stale entries being cleared
+  document.addEventListener("watchlist-stale-cleared", (e: Event) => {
+    const { cleared } = (e as CustomEvent<{ cleared: WatchlistEntry[] }>).detail;
+    const notice = document.getElementById("watchlist-stale-notice") as HTMLElement | null;
+    if (!notice || cleared.length === 0) return;
+    const names = cleared.map((c) => `${c.city} ${c.district}`).join("、");
+    notice.textContent = `ℹ️ 已自動移除超過 90 天的關注：${names}`;
+    notice.style.display = "block";
+  });
+
+  // Cache for raw features (to compute deltas for newly starred districts)
+  let rawFeaturesCache: any[] = [];
+  document.addEventListener("rawdata-loaded", (e: Event) => {
+    const { features } = (e as CustomEvent<{ features: any[] }>).detail;
+    rawFeaturesCache = features;
+  });
+
+  // Initial render from localStorage on page load
+  wlRenderPanel();
 </script>
