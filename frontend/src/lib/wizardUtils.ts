@@ -239,6 +239,8 @@ export function sortByPriority(
         if (bv === null) return -1;
         return bv - av; // descending (highest score first)
       }
+      default:
+        return 0;
     }
   });
 }

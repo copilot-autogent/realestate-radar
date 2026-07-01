@@ -458,7 +458,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   </footer>
 
   <!-- ── 首購族地區配對精靈 Wizard Modal ── -->
-  <div id="wizard-overlay" class="wizard-overlay" role="dialog" aria-modal="true" aria-labelledby="wizard-title" hidden>
+  <div id="wizard-overlay" class="wizard-overlay" role="dialog" aria-modal="true" aria-labelledby="wizard-title" tabindex="-1" hidden>
     <div class="wizard-panel">
       <button id="wizard-close-btn" class="wizard-close-btn" aria-label="關閉精靈">✕</button>
 
@@ -524,7 +524,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <option value="taipei-main">台北車站</option>
           <option value="xinyi">信義區</option>
           <option value="banqiao">板橋</option>
-          <option value="hsinchu">新竹市</option>
           <option value="taichung-main">台中火車站</option>
           <option value="kaohsiung-mrt">高雄捷運</option>
         </select>
@@ -3574,6 +3573,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     // Load transaction data → district stats
     const txRes = await fetch(`${BASE_URL}data/sample-transactions.json`);
+    if (!txRes.ok) throw new Error(`資料載入失敗 (${txRes.status})`);
     const txData = await txRes.json() as { features: any[] };
     const rows = computeDistrictRows(txData.features, 5); // lower threshold for wizard
 
@@ -3592,13 +3592,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
       geojsonFiles.map(async (file) => {
         try {
           const res = await fetch(`${BASE_URL}data/${file}`);
+          if (!res.ok) return; // skip missing files gracefully
           const gj = await res.json() as { features: { properties: { district: string; city: string }; geometry: any }[] };
           for (const feat of gj.features) {
             const { district, city } = feat.properties;
             const c = polygonCentroid(feat.geometry);
             if (c) centroidMap.set(`${city}::${district}`, c);
           }
-        } catch { /* skip on error */ }
+        } catch { /* skip malformed files */ }
       })
     );
 
@@ -3631,7 +3632,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const downPayment = (document.querySelector('input[name="downPayment"]:checked') as HTMLInputElement | null)?.value as WizardParams["downPayment"] ?? "5-10";
     const hub = (document.getElementById("wizard-hub-select") as HTMLSelectElement | null)?.value ?? "taipei-main";
     const commuteMinsStr = (document.querySelector('input[name="commuteMins"]:checked') as HTMLInputElement | null)?.value ?? "30";
-    const commuteMins = Number(commuteMinsStr) as WizardParams["commuteMins"];
+    const commuteMinsNum = Number(commuteMinsStr);
+    // Guard: only accept valid CommuteMins values; default to 30 for invalid inputs
+    const commuteMins: WizardParams["commuteMins"] = (commuteMinsNum === 30 || commuteMinsNum === 45 || commuteMinsNum === 60)
+      ? commuteMinsNum
+      : 30;
     const priority = (document.querySelector('input[name="priority"]:checked') as HTMLInputElement | null)?.value as WizardParams["priority"] ?? "timing-score";
     return { budget, downPayment, commuteHub: hub, commuteMins, priority };
   }
@@ -3639,6 +3644,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
   // ── Render result cards ──────────────────────────────────────────────────────
 
   const RANKS = ["🥇", "🥈", "🥉"];
+
+  function esc(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
 
   function scoreBadge(score: number | null): string {
     if (score === null) return "";
@@ -3650,18 +3659,18 @@ const showBuyersMarket = !isStale && dataYear !== null;
     matchCards.innerHTML = matches.map((m, i) => `
       <div class="wizard-card">
         <span class="wizard-card-rank">${RANKS[i] ?? ""}</span>
-        <p class="wizard-card-name">${m.city} ${m.district}</p>
+        <p class="wizard-card-name">${esc(m.city)} ${esc(m.district)}</p>
         <div class="wizard-card-meta">
           ${m.medianPriceWan !== null
             ? `<span class="wizard-card-badge">💰 均價 ${m.medianPriceWan.toFixed(1)} 萬/坪</span>`
             : ""}
           ${scoreBadge(m.buyerTimingScore)}
-          <span class="wizard-card-badge">🚉 距 ${m.hubLabel} ${m.distanceKm !== null ? m.distanceKm + " km" : "—"}</span>
+          <span class="wizard-card-badge">🚉 距 ${esc(m.hubLabel)} ${m.distanceKm !== null ? m.distanceKm + " km" : "—"}</span>
         </div>
         <button class="wizard-card-goto"
-          data-district="${m.district}"
-          data-city="${m.city}"
-          aria-label="查看 ${m.city} ${m.district} 地圖">
+          data-district="${esc(m.district)}"
+          data-city="${esc(m.city)}"
+          aria-label="查看 ${esc(m.city)} ${esc(m.district)} 地圖">
           🗺 查看地圖
         </button>
       </div>
@@ -3702,9 +3711,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const inputs  = await loadDistrictInputs();
       const { matches, needsRelax } = runWizard(params, inputs);
 
-      // Persist results
+      // Persist results (including needsRelax for restored display)
       const hub = COMMUTE_HUBS.find((h) => h.id === params.commuteHub);
-      localStorage.setItem(WIZARD_RESULTS_KEY, JSON.stringify({ matches, params, hub: hub?.label ?? params.commuteHub }));
+      localStorage.setItem(WIZARD_RESULTS_KEY, JSON.stringify({ matches, needsRelax, hub: hub?.label ?? params.commuteHub }));
 
       relaxHint.hidden = !needsRelax;
       if (matches.length === 0) {
@@ -3714,6 +3723,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         resultsSub.textContent = `找到 ${matches.length} 個最適合行政區`;
         renderCards(matches);
       }
+      showResults();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "配對時發生錯誤";
+      resultsSub.textContent = `❌ ${msg}`;
+      matchCards.innerHTML = "";
+      relaxHint.hidden = true;
       showResults();
     } finally {
       runBtn.disabled = false;
@@ -3757,11 +3772,21 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const saved = localStorage.getItem(WIZARD_RESULTS_KEY);
     if (!saved) return false;
     try {
-      const { matches, hub } = JSON.parse(saved) as { matches: WizardMatch[]; hub: string };
-      if (!Array.isArray(matches) || matches.length === 0) return false;
-      resultsSub.textContent = `上次配對結果（${hub}方向）`;
-      relaxHint.hidden = true;
-      renderCards(matches);
+      const parsed = JSON.parse(saved) as { matches?: unknown; needsRelax?: unknown; hub?: unknown };
+      const matches = parsed.matches;
+      const hub = typeof parsed.hub === "string" ? parsed.hub : "";
+      const needsRelax = Boolean(parsed.needsRelax);
+      // Validate shape: must be a non-empty array of objects with district/city strings
+      if (
+        !Array.isArray(matches) ||
+        matches.length === 0 ||
+        !matches.every((m) => typeof m === "object" && m !== null && typeof (m as any).district === "string" && typeof (m as any).city === "string")
+      ) {
+        return false;
+      }
+      resultsSub.textContent = hub ? `上次配對結果（${esc(hub)}方向）` : "上次配對結果";
+      relaxHint.hidden = !needsRelax;
+      renderCards(matches as WizardMatch[]);
       showResults();
       return true;
     } catch { return false; }

@@ -234,7 +234,7 @@ describe("runWizard", () => {
     makeDistrict("大同區", "台北市", 35, 80, 25.063, 121.51),
     makeDistrict("萬華區", "台北市", 30, 75, 25.036, 121.5),
     makeDistrict("信義區", "台北市", 95, 30, 25.033, 121.565),
-    makeDistrict("高雄某區", "高雄市", 38, 90, 22.627, 120.301),
+    makeDistrict("高雄某區", "高雄市", 38, 90, 22.627, 120.301),  // near kaohsiung, 38 万/坪 in 800-1500 range
   ];
 
   const params: WizardParams = {
@@ -285,8 +285,8 @@ describe("runWizard", () => {
 
   it("edge case: 0 matching districts → empty matches + needsRelax true", () => {
     // Budget "over-2500" requires >= 83.4 萬/坪; commute from kaohsiung-mrt 30min limits to ~15km.
-    // 信義區 (95 萬/坪) is near Taipei, not Kaohsiung → filtered by commute.
-    // 高雄某區 (18 萬/坪) is near Kaohsiung but too cheap → filtered by budget.
+    // All Taipei districts are far from Kaohsiung → filtered by commute.
+    // 高雄某區 (38 萬/坪) is near Kaohsiung but below 83.4 → filtered by budget.
     // Result: 0 matches.
     const restrictive: WizardParams = {
       budget: "over-2500",
