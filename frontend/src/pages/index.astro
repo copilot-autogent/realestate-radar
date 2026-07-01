@@ -3661,7 +3661,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <span class="wizard-card-rank">${RANKS[i] ?? ""}</span>
         <p class="wizard-card-name">${esc(m.city)} ${esc(m.district)}</p>
         <div class="wizard-card-meta">
-          ${m.medianPriceWan !== null
+          ${typeof m.medianPriceWan === "number"
             ? `<span class="wizard-card-badge">💰 均價 ${m.medianPriceWan.toFixed(1)} 萬/坪</span>`
             : ""}
           ${scoreBadge(m.buyerTimingScore)}
@@ -3776,17 +3776,23 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const matches = parsed.matches;
       const hub = typeof parsed.hub === "string" ? parsed.hub : "";
       const needsRelax = Boolean(parsed.needsRelax);
-      // Validate shape: must be a non-empty array of objects with district/city strings
-      if (
-        !Array.isArray(matches) ||
-        matches.length === 0 ||
-        !matches.every((m) => typeof m === "object" && m !== null && typeof (m as any).district === "string" && typeof (m as any).city === "string")
-      ) {
-        return false;
-      }
-      resultsSub.textContent = hub ? `上次配對結果（${esc(hub)}方向）` : "上次配對結果";
+      // Validate shape: must be an array (empty is allowed — shows 放寬條件 state)
+      if (!Array.isArray(matches)) return false;
+      // Each entry must have district/city strings and safe numeric fields
+      const safeMatches = (matches as any[]).filter(
+        (m) =>
+          typeof m === "object" && m !== null &&
+          typeof m.district === "string" && m.district.length > 0 &&
+          typeof m.city === "string" && m.city.length > 0 &&
+          typeof m.hubLabel === "string"
+      );
+      resultsSub.textContent = hub ? `上次配對結果（${hub}方向）` : "上次配對結果";
       relaxHint.hidden = !needsRelax;
-      renderCards(matches as WizardMatch[]);
+      if (safeMatches.length > 0) {
+        renderCards(safeMatches as WizardMatch[]);
+      } else {
+        matchCards.innerHTML = "";
+      }
       showResults();
       return true;
     } catch { return false; }
