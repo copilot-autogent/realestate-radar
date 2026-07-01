@@ -3212,8 +3212,8 @@
     } catch { return []; }
   }
 
-  function wlSaveAll(entries: WatchlistEntry[]): void {
-    try { localStorage.setItem(WL_KEY, JSON.stringify(entries)); } catch { /* storage unavailable */ }
+  function wlSaveAll(entries: WatchlistEntry[]): boolean {
+    try { localStorage.setItem(WL_KEY, JSON.stringify(entries)); return true; } catch { return false; }
   }
 
   function wlIsWatched(city: string, district: string): boolean {
@@ -3222,8 +3222,9 @@
 
   /**
    * Toggle watch state for a district. Returns the new watched state.
-   * Shows a toast when the max cap is exceeded.
-   * @param currentMedianWan - current 12-month median price in 萬/坪 (for snapshot storage)
+   * Shows a toast when the max cap is exceeded or when localStorage write fails.
+   * Returns false without starring when currentMedianWan is null (no price data).
+   * @param currentMedianWan - current 12-month median price in 萬/坪 (required to snapshot)
    */
   function wlToggle(city: string, district: string, currentMedianWan: number | null): boolean {
     const entries = wlGetAll();
@@ -3231,7 +3232,11 @@
     if (idx !== -1) {
       // Unwatch
       entries.splice(idx, 1);
-      wlSaveAll(entries);
+      const saved = wlSaveAll(entries);
+      if (!saved) {
+        wlShowToast("無法更新關注列表（儲存空間不足或隱私模式）");
+        return true; // still "watched" since save failed
+      }
       wlDispatchChanged(entries);
       return false;
     }
@@ -3239,14 +3244,22 @@
       wlShowToast(`最多只能關注 ${WL_MAX} 個行政區`);
       return false;
     }
+    if (currentMedianWan === null) {
+      wlShowToast("此行政區目前無足夠的成交資料，無法記錄基準價格");
+      return false;
+    }
     const today = new Date().toISOString().slice(0, 10);
     entries.push({
       district,
       city,
-      snapshotPrice: currentMedianWan ?? 0,
+      snapshotPrice: currentMedianWan,
       snapshotDate: today,
     });
-    wlSaveAll(entries);
+    const saved = wlSaveAll(entries);
+    if (!saved) {
+      wlShowToast("無法儲存關注列表（儲存空間不足或隱私模式）");
+      return false;
+    }
     wlDispatchChanged(entries);
     return true;
   }
@@ -3310,6 +3323,9 @@
     if (cleared.length > 0) {
       wlSaveAll(kept);
       document.dispatchEvent(new CustomEvent("watchlist-stale-cleared", { detail: { cleared } }));
+      // Update popup button and badge for purged entries
+      syncOpenPopupWatchButton();
+      wlDispatchChanged(kept);
     }
 
     // Compute current median prices for all kept entries and dispatch deltas

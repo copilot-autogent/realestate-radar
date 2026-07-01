@@ -47,14 +47,12 @@ describe("isStale", () => {
   });
 
   it("returns false for a date 89 days ago", () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 89);
+    const d = new Date(Date.now() - 89 * 24 * 60 * 60 * 1000);
     expect(isStale(d.toISOString().slice(0, 10))).toBe(false);
   });
 
   it("returns true for a date 91 days ago", () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 91);
+    const d = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
     expect(isStale(d.toISOString().slice(0, 10))).toBe(true);
   });
 
@@ -79,8 +77,7 @@ describe("isStale", () => {
   });
 
   it("respects custom staleAgeDays parameter", () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 6);
+    const d = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
     const dateStr = d.toISOString().slice(0, 10);
     expect(isStale(dateStr, 5)).toBe(true);   // 6 days > 5 day limit → stale
     expect(isStale(dateStr, 7)).toBe(false);  // 6 days ≤ 7 day limit → fresh
@@ -88,8 +85,7 @@ describe("isStale", () => {
 
   it("uses WL_STALE_DAYS (90) as the default threshold", () => {
     // Verify the exported constant matches the default behaviour
-    const d = new Date();
-    d.setDate(d.getDate() - (WL_STALE_DAYS + 1));
+    const d = new Date(Date.now() - (WL_STALE_DAYS + 1) * 24 * 60 * 60 * 1000);
     expect(isStale(d.toISOString().slice(0, 10))).toBe(true);
   });
 });

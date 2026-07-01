@@ -3912,7 +3912,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
   import {
     formatDelta,
     computeDeltaPct,
-    shouldShowBanner,
     type WatchlistEntry,
   } from "../lib/watchlistUtils.js";
   import { computeMedianPrice12mo } from "../lib/districtTableUtils.js";
@@ -3946,7 +3945,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (countEl) countEl.textContent = String(entries.length);
 
     if (entries.length === 0) {
-      panel.style.display = "none";
+      // Keep panel visible if there's a stale notice to show, otherwise hide
+      const notice = document.getElementById("watchlist-stale-notice") as HTMLElement | null;
+      const hasNotice = notice && notice.style.display !== "none" && notice.textContent;
+      panel.style.display = hasNotice ? "block" : "none";
       return;
     }
 
@@ -3956,7 +3958,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
     for (const entry of entries) {
       const key = `${entry.city}::${entry.district}`;
       const delta = wlDeltaMap.get(key);
-      const today = new Date().toISOString().slice(0, 10);
+
+      // Sanitize potentially malformed localStorage values
+      const districtStr = String(entry.district ?? "");
+      const cityStr     = String(entry.city     ?? "");
+      if (!districtStr) continue; // skip corrupt entries
 
       const item = document.createElement("div");
       item.className = "wl-item";
@@ -3966,37 +3972,39 @@ const showBuyersMarket = !isStale && dataYear !== null;
       topRow.className = "wl-item-top";
       topRow.innerHTML = `
         <div class="wl-district-name">
-          <span class="wl-city-badge">${escHtmlWl(entry.city)}</span>${escHtmlWl(entry.district)}
+          <span class="wl-city-badge">${escHtmlWl(cityStr)}</span>${escHtmlWl(districtStr)}
         </div>
-        <button class="wl-unwatch-btn" data-district="${escHtmlWl(entry.district)}" data-city="${escHtmlWl(entry.city)}">取消關注</button>
+        <button class="wl-unwatch-btn" data-district="${escHtmlWl(districtStr)}" data-city="${escHtmlWl(cityStr)}">取消關注</button>
       `;
       topRow.querySelector(".wl-unwatch-btn")?.addEventListener("click", () => {
         const all = idxGetAll();
-        idxSaveAll(all.filter((e) => !(e.city === entry.city && e.district === entry.district)));
+        idxSaveAll(all.filter((e) => !(String(e.city ?? "") === cityStr && String(e.district ?? "") === districtStr)));
         // Notify Map.astro's watchlist to stay in sync
         document.dispatchEvent(new CustomEvent("watchlist-changed-external", {
-          detail: { city: entry.city, district: entry.district },
+          detail: { city: cityStr, district: districtStr },
         }));
         wlRenderPanel();
       });
       item.appendChild(topRow);
 
-      // Delta banner (shown only on subsequent visits and when we have price data)
-      if (delta && delta.currentPrice > 0 && delta.show && shouldShowBanner(entry.snapshotDate, today)) {
+      const snapshotPrice = typeof entry.snapshotPrice === "number" ? entry.snapshotPrice : NaN;
+
+      // Delta banner — use pre-computed delta.show from Map.astro (avoids double shouldShowBanner call)
+      if (delta && delta.currentPrice > 0 && delta.show) {
         const { text, arrow, cls } = formatDelta(delta.deltaPct);
         const bannerEl = document.createElement("div");
         bannerEl.innerHTML = `
           <span class="wl-delta-banner ${cls}">
-            ${arrow} 自上次訪問，${escHtmlWl(entry.district)}均價 ${text}
+            ${arrow} 自上次訪問，${escHtmlWl(districtStr)}均價 ${text}
           </span>
-          <div class="wl-snapshot-note">快照：${entry.snapshotDate} 基準 ${Number(entry.snapshotPrice).toFixed(1)} 萬/坪</div>
+          <div class="wl-snapshot-note">快照：${escHtmlWl(entry.snapshotDate ?? "")} 基準 ${isNaN(snapshotPrice) ? "—" : snapshotPrice.toFixed(1)} 萬/坪</div>
         `;
         item.appendChild(bannerEl);
-      } else if (typeof entry.snapshotPrice === "number" && entry.snapshotPrice > 0) {
+      } else if (!isNaN(snapshotPrice) && snapshotPrice > 0) {
         // No banner yet (same-day star or no current price) — show snapshot price only
         const noteEl = document.createElement("div");
         noteEl.className = "wl-snapshot-note";
-        noteEl.textContent = `關注於 ${entry.snapshotDate}，基準 ${Number(entry.snapshotPrice).toFixed(1)} 萬/坪`;
+        noteEl.textContent = `關注於 ${entry.snapshotDate ?? ""}，基準 ${snapshotPrice.toFixed(1)} 萬/坪`;
         item.appendChild(noteEl);
       }
 
