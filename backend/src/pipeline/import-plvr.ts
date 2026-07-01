@@ -22,6 +22,32 @@ import { loadDistrictAssessedValueMap, lookupAssessedValue } from "./import-asse
 
 const DATA_DIR = path.resolve(import.meta.dirname, "../../../data/downloads");
 
+// Column mappings for the two CSV formats emitted by plvr.land.moi.gov.tw:
+//
+// LEGACY (26 cols): per-city seasonal ZIP (pre-2025), e.g. A_lvr_land_A_113S4.csv
+// NEW (28 cols):    bulk national ZIP (2025+), e.g. a_lvr_land_a.csv — two extra
+//                  columns inserted at positions 5-6 after 都市土地使用分區.
+//
+// Both arrays must stay in sync with PlvrRawRecord in types.ts.
+const CSV_COLUMNS_LEGACY: string[] = [
+  "鄉鎮市區", "交易標的", "土地位置建物門牌", "土地移轉總面積平方公尺",
+  "都市土地使用分區", "交易年月日", "交易筆棟數", "移轉層次", "總樓層數",
+  "建物型態", "主要用途", "主要建材", "建築完成年月", "建物移轉總面積平方公尺",
+  "建物現況格局房", "建物現況格局廳", "建物現況格局衛", "建物現況格局隔間",
+  "有無管理組織", "總價元", "單價元平方公尺", "車位類別",
+  "車位移轉總面積平方公尺", "車位總價元", "備註", "編號",
+];
+const CSV_COLUMNS_NEW: string[] = [
+  "鄉鎮市區", "交易標的", "土地位置建物門牌", "土地移轉總面積平方公尺",
+  "都市土地使用分區", "非都市土地使用分區", "非都市土地使用編定",
+  "交易年月日", "交易筆棟數", "移轉層次", "總樓層數",
+  "建物型態", "主要用途", "主要建材", "建築完成年月", "建物移轉總面積平方公尺",
+  "建物現況格局房", "建物現況格局廳", "建物現況格局衛", "建物現況格局隔間",
+  "有無管理組織", "總價元", "單價元平方公尺", "車位類別",
+  "車位移轉總面積平方公尺", "車位總價元", "備註", "編號",
+  // Extra trailing columns beyond 編號 are ignored by relax_column_count.
+];
+
 function detectAndDecode(buffer: Buffer): string {
   // Check for UTF-8 BOM
   if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
@@ -123,37 +149,18 @@ async function importFile(filepath: string, cutoffDate: Date | null = null): Pro
   const lines = content.split("\n");
   const dataLines = lines.slice(2).join("\n");
 
-  // Detect CSV format by inspecting the Chinese header row (line 0, BOM stripped).
-  // The new bulk-ZIP format (2025+) has two extra columns at positions 5-6 vs the
-  // older per-city seasonal format. Using header-based detection keeps both formats
-  // importable without permanently breaking either.
-  const headerLine = lines[0].replace(/^\ufeff/, "");
+  // Detect CSV format from the Chinese header (line 0, BOM stripped).
+  // The new bulk-ZIP format (2025+) has 非都市土地使用分區 at position 5.
+  // Fall back to legacy schema for empty/missing headers.
+  const headerLine = (lines[0] ?? "").replace(/^\ufeff/, "");
   const isNewBulkFormat = headerLine.includes("非都市土地使用分區");
-
-  const COLUMNS_NEW: string[] = [
-    "鄉鎮市區", "交易標的", "土地位置建物門牌", "土地移轉總面積平方公尺",
-    "都市土地使用分區", "非都市土地使用分區", "非都市土地使用編定",
-    "交易年月日", "交易筆棟數", "移轉層次", "總樓層數",
-    "建物型態", "主要用途", "主要建材", "建築完成年月", "建物移轉總面積平方公尺",
-    "建物現況格局房", "建物現況格局廳", "建物現況格局衛", "建物現況格局隔間",
-    "有無管理組織", "總價元", "單價元平方公尺", "車位類別",
-    "車位移轉總面積平方公尺", "車位總價元", "備註", "編號",
-  ];
-  const COLUMNS_LEGACY: string[] = [
-    "鄉鎮市區", "交易標的", "土地位置建物門牌", "土地移轉總面積平方公尺",
-    "都市土地使用分區", "交易年月日", "交易筆棟數", "移轉層次", "總樓層數",
-    "建物型態", "主要用途", "主要建材", "建築完成年月", "建物移轉總面積平方公尺",
-    "建物現況格局房", "建物現況格局廳", "建物現況格局衛", "建物現況格局隔間",
-    "有無管理組織", "總價元", "單價元平方公尺", "車位類別",
-    "車位移轉總面積平方公尺", "車位總價元", "備註", "編號",
-  ];
 
   let records: PlvrRawRecord[];
   try {
     records = parse(dataLines, {
-      columns: isNewBulkFormat ? COLUMNS_NEW : COLUMNS_LEGACY,
+      columns: isNewBulkFormat ? CSV_COLUMNS_NEW : CSV_COLUMNS_LEGACY,
       skip_empty_lines: true,
-      relax_column_count: true, // ignores extra trailing columns beyond 編號
+      relax_column_count: true, // silently ignores extra trailing columns beyond 編號
     }) as PlvrRawRecord[];
   } catch (err) {
     console.error(`[error] CSV parse failed for ${filename}:`, (err as Error).message);
