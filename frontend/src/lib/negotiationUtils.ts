@@ -60,11 +60,11 @@ export interface NegotiationEstimate {
  * Velocity multiplier: falling transaction volume → more negotiation room.
  * YoY Δ% tiers (inclusive upper bound):
  *   ≤ −20 % → 1.5 (large supply excess)
- *   −20 to −10 % (exclusive −10) → 1.3
- *   −10 to 0 % (exclusive 0) → 1.1
- *   0 to +10 % (exclusive +10) → 1.0 (neutral)
- *   +10 to +20 % (exclusive +20) → 0.85
- *   > +20 % → 0.70 (hot market, little room)
+ *   −20 < x ≤ −10 % → 1.3
+ *   −10 < x < 0 % → 1.1
+ *   0 ≤ x < +10 % → 1.0 (neutral)
+ *   +10 ≤ x < +20 % → 0.85
+ *   ≥ +20 % → 0.70 (hot market, little room)
  */
 export function velocityMultiplier(yoyPct: number | null): number {
   if (yoyPct === null) return 1.0;
@@ -147,7 +147,7 @@ export function estimateNegotiationMargin(stats: DistrictStats): NegotiationEsti
     assessedRatioFactor(stats.assessedToMarketRatio);
 
   const center = Math.min(raw, MAX_MARGIN);
-  const low    = Math.max(center * (1 - SPREAD_FACTOR), 0.01);
+  const low    = Math.min(Math.max(center * (1 - SPREAD_FACTOR), 0.01), center);
   const high   = Math.min(center * (1 + SPREAD_FACTOR), MAX_MARGIN);
 
   const medianWan = stats.medianUnitPriceWan;
@@ -170,10 +170,11 @@ export function estimateNegotiationMargin(stats: DistrictStats): NegotiationEsti
  * relative to a population of other districts' margin estimates.
  *
  * Useful for "This district is at the Nth percentile vs. past 12 months" context.
- * Returns null when there are fewer than 2 sufficient estimates (including `target`).
+ * Returns null when `target` is insufficient or `others` contains no sufficient estimates.
+ * The `others` pool may or may not include `target`; it doesn't affect the ranking.
  *
  * @param target  The district estimate to rank.
- * @param others  Pool of district estimates to rank against. May or may not include `target`.
+ * @param others  Pool of district estimates to rank against.
  */
 export function computeNegotiationPercentile(
   target: NegotiationEstimate,
