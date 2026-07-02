@@ -66,6 +66,18 @@ describe("computeMonthsToGoal", () => {
     expect(computeMonthsToGoal(0, 50_000, -1)).toBe(0);
   });
 
+  it("returns 0 for NaN target", () => {
+    expect(computeMonthsToGoal(0, 50_000, NaN)).toBe(0);
+  });
+
+  it("returns Infinity for NaN current savings", () => {
+    expect(computeMonthsToGoal(NaN, 50_000, 100_000)).toBe(Infinity);
+  });
+
+  it("returns Infinity for NaN monthly savings", () => {
+    expect(computeMonthsToGoal(0, NaN, 100_000)).toBe(Infinity);
+  });
+
   it("rounds up to whole months (ceiling)", () => {
     // Gap of 100,001 at 50,000/month → 2.00002 months → ceil = 3
     expect(computeMonthsToGoal(0, 50_000, 100_001)).toBe(3);
@@ -126,6 +138,11 @@ describe("computeMonthlyMortgagePayment", () => {
 
   it("returns 0 for negative loan", () => {
     expect(computeMonthlyMortgagePayment(-100, 2.5, 30)).toBe(0);
+  });
+
+  it("returns 0 for zero or negative years", () => {
+    expect(computeMonthlyMortgagePayment(800, 2.5, 0)).toBe(0);
+    expect(computeMonthlyMortgagePayment(800, 2.5, -1)).toBe(0);
   });
 
   it("zero rate falls back to simple principal division", () => {

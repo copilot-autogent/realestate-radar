@@ -387,7 +387,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <div id="dpt-result" class="dpt-result" style="display:none">
           <div id="dpt-tiers" class="dpt-tiers"></div>
           <div id="dpt-affordability" class="dpt-affordability" style="display:none"></div>
-          <div id="dpt-sensitivity" class="dpt-sensitivity" style="display:none"></div>
         </div>
         <p id="dpt-placeholder" class="dpt-placeholder">請輸入存款與儲蓄金額以查看時間軸</p>
       </div>
@@ -1352,7 +1351,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
    * Inlined here to keep the panel self-contained without a dynamic import.
    */
   function dptMonthlyPayment(loanWan: number, ratePercent: number, years: number): number {
-    if (loanWan <= 0) return 0;
+    if (loanWan <= 0 || years <= 0) return 0;
     const P = loanWan * 10_000;
     if (ratePercent <= 0) return P / (years * 12);
     const r = ratePercent / 100 / 12;
@@ -1394,7 +1393,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const savedAlready = savingsNTD >= required;
     const progressPct = savedAlready
       ? 100
-      : monthlyNTD > 0 && required > 0
+      : required > 0
         ? Math.min(99, Math.round((savingsNTD / required) * 100))
         : 0;
 
@@ -1466,6 +1465,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         </div>`;
       dptAffordEl.style.display = "block";
     } else {
+      dptAffordEl.innerHTML = "";
       dptAffordEl.style.display = "none";
     }
 

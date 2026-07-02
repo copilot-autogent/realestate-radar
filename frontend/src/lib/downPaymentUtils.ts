@@ -77,9 +77,10 @@ export function computeMonthsToGoal(
   monthlySavingsNTD: number,
   targetNTD: number
 ): number {
-  if (targetNTD <= 0) return 0;
+  if (!Number.isFinite(targetNTD) || targetNTD <= 0) return 0;
+  if (!Number.isFinite(currentSavingsNTD)) return Infinity;
   if (currentSavingsNTD >= targetNTD) return 0;
-  if (monthlySavingsNTD <= 0) return Infinity;
+  if (!Number.isFinite(monthlySavingsNTD) || monthlySavingsNTD <= 0) return Infinity;
   const gap = targetNTD - currentSavingsNTD;
   return Math.ceil(gap / monthlySavingsNTD);
 }
@@ -111,6 +112,7 @@ export function computeMonthlyMortgagePayment(
   years: number
 ): number {
   if (!Number.isFinite(loanWan) || loanWan <= 0) return 0;
+  if (!Number.isFinite(years) || years <= 0) return 0;
   if (!Number.isFinite(ratePercent) || ratePercent <= 0) {
     // Zero-rate edge case: simple principal division
     return loanWan * 10_000 / (years * 12);
@@ -232,7 +234,7 @@ export function computeTimeline(
  * Used to auto-fill the total price input when a district is selected on the map.
  *
  * @param medianUnitPriceWan  Median unit price in 萬/坪
- * @param sizePin             Apartment size in 坪 (default 30)
+ * @param sizePing            Apartment size in 坪 (default 30)
  */
 export function suggestTotalPriceWan(medianUnitPriceWan: number, sizePing: number = 30): number {
   if (!Number.isFinite(medianUnitPriceWan) || medianUnitPriceWan <= 0) return 0;
