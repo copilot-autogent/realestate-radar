@@ -120,6 +120,10 @@ describe("monthsToColor", () => {
   it("Infinity → red", () => {
     expect(monthsToColor(Infinity)).toBe("red");
   });
+
+  it("NaN → red", () => {
+    expect(monthsToColor(NaN)).toBe("red");
+  });
 });
 
 // ── computeMonthlyMortgagePayment ─────────────────────────────────────────────
@@ -344,6 +348,11 @@ describe("arrayMedian", () => {
     arrayMedian(arr);
     expect(arr).toEqual([5, 3, 1, 4, 2]);
   });
+
+  it("filters out NaN and Infinity before computing median", () => {
+    expect(arrayMedian([NaN, 3, Infinity, 1, 2])).toBe(2);
+    expect(arrayMedian([NaN, Infinity])).toBeNull();
+  });
 });
 
 // ── formatMonths ──────────────────────────────────────────────────────────────
@@ -355,6 +364,10 @@ describe("formatMonths", () => {
 
   it("Infinity → cannot achieve", () => {
     expect(formatMonths(Infinity)).toContain("無法達成");
+  });
+
+  it("NaN → cannot achieve", () => {
+    expect(formatMonths(NaN)).toContain("無法達成");
   });
 
   it("12 months → show months", () => {

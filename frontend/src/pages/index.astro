@@ -1500,9 +1500,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const newKey = `${city ?? ""}|${district ?? ""}`;
     dptAutoDistrictLabel = district ?? "";
 
-    // Auto-fill suggested price: fill when field is empty OR when switching to a different district
+    // Auto-fill suggested price when the field is empty; update hint on every district change
     const suggested = Math.round(medianUnitWan * 30);
-    if ((!dptPriceInput.value || newKey !== dptLastAutoDistrictKey) && suggested > 0) {
+    if (!dptPriceInput.value && suggested > 0) {
       dptPriceInput.value = String(suggested);
       calculateDpt();
     }

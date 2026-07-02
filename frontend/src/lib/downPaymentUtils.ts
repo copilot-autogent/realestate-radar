@@ -92,7 +92,7 @@ export function computeMonthsToGoal(
  * ≤ 24 months → green; 24 < x ≤ 48 → amber; > 48 or Infinity → red.
  */
 export function monthsToColor(months: number): "green" | "amber" | "red" {
-  if (months === Infinity || months > 48) return "red";
+  if (!isFinite(months) || months > 48) return "red";
   if (months > 24) return "amber";
   return "green";
 }
@@ -144,7 +144,7 @@ export function computeAffordability(
   years: number,
   monthlyIncomeNTD: number
 ): AffordabilityCheck | null {
-  if (monthlyIncomeNTD <= 0) return null;
+  if (!Number.isFinite(monthlyIncomeNTD) || monthlyIncomeNTD <= 0) return null;
   if (!Number.isFinite(totalPriceWan) || totalPriceWan <= 0) return null;
 
   const loanWan = totalPriceWan * (1 - dpPct / 100);
@@ -248,8 +248,9 @@ export function suggestTotalPriceWan(medianUnitPriceWan: number, sizePing: numbe
  * Returns null for empty arrays.
  */
 export function arrayMedian(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
+  const finite = values.filter((v) => Number.isFinite(v));
+  if (finite.length === 0) return null;
+  const sorted = [...finite].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0
     ? (sorted[mid - 1]! + sorted[mid]!) / 2
@@ -258,8 +259,8 @@ export function arrayMedian(values: number[]): number | null {
 
 /** Format a number of months into a human-readable label (e.g. "18 個月", "約 3.5 年"). */
 export function formatMonths(months: number): string {
+  if (!isFinite(months) || months < 0) return "無法達成";
   if (months === 0) return "已達標 ✓";
-  if (months === Infinity) return "無法達成";
   if (months <= 24) return `${months} 個月`;
   const years = months / 12;
   return `約 ${years.toFixed(1)} 年`;
