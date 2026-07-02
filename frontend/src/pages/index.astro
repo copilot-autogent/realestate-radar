@@ -448,6 +448,64 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <p id="acq-placeholder" class="acq-placeholder">請輸入總價以查看費用明細</p>
       </div>
 
+      <!-- Loan Program Comparator (issue #125) -->
+      <div id="loan-program-comparator" class="loan-program-comparator">
+        <h3>🏦 貸款方案比較試算表</h3>
+
+        <!-- 青安截止倒數計時 banner (hidden client-side after 2026-07-31 23:59 TST) -->
+        <div id="lpc-deadline-banner" class="lpc-deadline-banner" role="alert" style="display:none">
+          ⚠️ <strong>青安截止日 2026-07-31</strong> — 剩 <span id="lpc-days-remaining">—</span> 天
+        </div>
+
+        <div class="calc-inputs">
+          <div class="calc-input-row">
+            <label for="lpc-total">目標總價 (萬)</label>
+            <div class="lpc-price-wrapper">
+              <input type="number" id="lpc-total" placeholder="例如: 1000" min="0" step="10"
+                aria-label="購屋總價（萬元）" />
+              <span id="lpc-price-hint" class="lpc-price-hint"></span>
+            </div>
+          </div>
+          <div class="calc-input-row lpc-slider-row">
+            <label for="lpc-down">自備款比例</label>
+            <div class="lpc-slider-wrapper">
+              <input type="range" id="lpc-down" min="10" max="40" step="10" value="20"
+                aria-label="自備款比例" />
+              <span id="lpc-down-display" class="lpc-down-display">20%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Program toggle checkboxes -->
+        <div id="lpc-toggles" class="lpc-toggles">
+          <span class="lpc-toggle-label">排除：</span>
+          <label class="lpc-toggle-chip">
+            <input type="checkbox" id="lpc-hide-civil" />
+            非公教人員（隱藏公教優惠）
+          </label>
+        </div>
+
+        <!-- Results table -->
+        <div id="lpc-result" class="lpc-result" style="display:none">
+          <div class="lpc-table-scroll">
+            <table class="lpc-table" aria-label="貸款方案比較表">
+              <thead>
+                <tr>
+                  <th>方案</th>
+                  <th>利率</th>
+                  <th>每月還款</th>
+                  <th>總利息</th>
+                  <th>備註</th>
+                </tr>
+              </thead>
+              <tbody id="lpc-tbody"></tbody>
+            </table>
+          </div>
+          <p class="lpc-footnote">以 30 年等額攤還計算。利率為參考值，實際以各行庫核定為準。</p>
+        </div>
+        <p id="lpc-placeholder" class="lpc-placeholder">請輸入總價以查看各方案比較</p>
+      </div>
+
       <div id="stats-panel" class="stats-panel">
         <h3>統計資訊</h3>
         {showBuyersMarket && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
@@ -1735,6 +1793,163 @@ const showBuyersMarket = !isStale && dataYear !== null;
   });
 
   // ============================================================
+  // ---- Loan Program Comparator (issue #125) ------------------
+  // ============================================================
+
+  {
+    // Inline the pure computation so there is no dynamic import needed (Astro define:vars limitation).
+    // Any update to LOAN_PROGRAMS must also be reflected in loanProgramUtils.ts.
+
+    interface _LoanProgram {
+      id: string;
+      name: string;
+      ratePercent: number;
+      termYears: number;
+      eligibilityNote: string;
+      deadlineDate: string | null;
+      rateTBD: boolean;
+    }
+
+    const LPC_PROGRAMS: _LoanProgram[] = [
+      { id: "qingan",       name: "🔴 青安貸款",     ratePercent: 1.775, termYears: 30, eligibilityNote: "首購族（資格審查）",      deadlineDate: "2026-07-31", rateTBD: false },
+      { id: "general",      name: "一般房貸",          ratePercent: 2.35,  termYears: 30, eligibilityNote: "市場均值，各行庫不同",    deadlineDate: null,         rateTBD: false },
+      { id: "civil-servant",name: "公教優惠貸款",      ratePercent: 1.36,  termYears: 30, eligibilityNote: "公務員 / 教師限定",      deadlineDate: null,         rateTBD: false },
+      { id: "qingan2",      name: "新青安2.0（待定）", ratePercent: 0,     termYears: 30, eligibilityNote: "政策宣告中，細節待定",    deadlineDate: null,         rateTBD: true  },
+    ];
+
+    const LPC_DEADLINE = new Date("2026-08-01T00:00:00+08:00");
+
+    function lpcMonthly(principalNTD: number, ratePercent: number, termYears: number): number {
+      if (principalNTD <= 0 || termYears <= 0 || ratePercent < 0) return 0;
+      const n = termYears * 12;
+      if (ratePercent === 0) return principalNTD / n;
+      const r = ratePercent / 100 / 12;
+      return principalNTD * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    }
+
+    function lpcFmt(n: number): string {
+      return Math.round(n).toLocaleString("zh-TW") + " 元";
+    }
+    function lpcFmtWan(n: number): string {
+      return (n / 10_000).toFixed(0) + " 萬";
+    }
+
+    const lpcTotalInput     = document.getElementById("lpc-total")          as HTMLInputElement;
+    const lpcPriceHint      = document.getElementById("lpc-price-hint")     as HTMLSpanElement;
+    const lpcDownSlider     = document.getElementById("lpc-down")            as HTMLInputElement;
+    const lpcDownDisplay    = document.getElementById("lpc-down-display")    as HTMLSpanElement;
+    const lpcHideCivil      = document.getElementById("lpc-hide-civil")      as HTMLInputElement;
+    const lpcResult         = document.getElementById("lpc-result")          as HTMLDivElement;
+    const lpcTbody          = document.getElementById("lpc-tbody")           as HTMLTableSectionElement;
+    const lpcPlaceholder    = document.getElementById("lpc-placeholder")     as HTMLParagraphElement;
+    const lpcDeadlineBanner = document.getElementById("lpc-deadline-banner") as HTMLDivElement;
+    const lpcDaysSpan       = document.getElementById("lpc-days-remaining")  as HTMLSpanElement;
+
+    function lpcUpdateDeadlineBanner(): void {
+      const now = new Date();
+      if (now >= LPC_DEADLINE) {
+        lpcDeadlineBanner.style.display = "none";
+        return;
+      }
+      const diffMs = LPC_DEADLINE.getTime() - now.getTime();
+      const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      lpcDaysSpan.textContent = String(days);
+      lpcDeadlineBanner.style.display = "flex";
+    }
+
+    function lpcRender(): void {
+      const priceWan = parseFloat(lpcTotalInput?.value ?? "");
+      const downPct = parseInt(lpcDownSlider?.value ?? "20", 10);
+      lpcDownDisplay.textContent = `${downPct}%`;
+
+      if (!Number.isFinite(priceWan) || priceWan <= 0) {
+        lpcResult.style.display = "none";
+        lpcPlaceholder.style.display = "block";
+        return;
+      }
+
+      const hideCivil = lpcHideCivil?.checked ?? false;
+      const principalNTD = priceWan * 10_000 * ((100 - downPct) / 100);
+
+      const rows = LPC_PROGRAMS
+        .filter((p) => !(hideCivil && p.id === "civil-servant"))
+        .map((p) => {
+          const monthly = p.rateTBD ? 0 : lpcMonthly(principalNTD, p.ratePercent, p.termYears);
+          const totalPaid = monthly * p.termYears * 12;
+          const totalInterest = Math.max(0, totalPaid - principalNTD);
+          return { p, monthly, totalInterest };
+        });
+
+      // Find cheapest non-TBD
+      const eligible = rows.filter((r) => !r.p.rateTBD && r.monthly > 0);
+      const minMonthly = eligible.length > 0 ? Math.min(...eligible.map((r) => r.monthly)) : -1;
+
+      lpcTbody.innerHTML = "";
+      for (const { p, monthly, totalInterest } of rows) {
+        const isCheapest = !p.rateTBD && monthly > 0 && Math.abs(monthly - minMonthly) < 0.01;
+        const tr = document.createElement("tr");
+        if (isCheapest) tr.classList.add("lpc-row-cheapest");
+
+        const rateCell = p.rateTBD
+          ? `<td class="lpc-rate">TBC</td>`
+          : `<td class="lpc-rate">${p.ratePercent}%</td>`;
+
+        const monthlyCell = p.rateTBD
+          ? `<td class="lpc-monthly lpc-tbd">待定</td>`
+          : `<td class="lpc-monthly">${lpcFmt(monthly)}${isCheapest ? ' <span class="lpc-badge">最優</span>' : ""}</td>`;
+
+        const interestCell = p.rateTBD
+          ? `<td class="lpc-interest lpc-tbd">—</td>`
+          : `<td class="lpc-interest">${lpcFmtWan(totalInterest)}</td>`;
+
+        const noteCell = p.deadlineDate
+          ? `<td class="lpc-note lpc-deadline">⚠️ 截止 ${p.deadlineDate}</td>`
+          : `<td class="lpc-note">${p.eligibilityNote}</td>`;
+
+        tr.innerHTML = `<td class="lpc-name">${p.name}</td>${rateCell}${monthlyCell}${interestCell}${noteCell}`;
+        lpcTbody.appendChild(tr);
+      }
+
+      lpcResult.style.display = "block";
+      lpcPlaceholder.style.display = "none";
+      lpcUpdateDeadlineBanner();
+    }
+
+    lpcTotalInput?.addEventListener("input", lpcRender);
+    lpcDownSlider?.addEventListener("input", lpcRender);
+    lpcHideCivil?.addEventListener("change", lpcRender);
+
+    // Auto-fill from district click (same stats-histogram event used by acq calculator)
+    document.addEventListener("stats-histogram", (e: Event) => {
+      const { pricesWan: rawPrices, district } =
+        (e as CustomEvent<{ pricesWan?: number[]; district?: string; city?: string }>).detail;
+      if (!rawPrices || rawPrices.length === 0) return;
+      const finite = rawPrices.filter((p: number) => Number.isFinite(p) && p > 0);
+      if (finite.length === 0) return;
+      const sorted = [...finite].sort((a: number, b: number) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const medianUnitWan = sorted.length % 2 === 0
+        ? (sorted[mid - 1]! + sorted[mid]!) / 2
+        : sorted[mid]!;
+      const sizePing = 30;
+      const suggested = Math.round(medianUnitWan * sizePing);
+      if (suggested > 0 && (!!district || !lpcTotalInput.value)) {
+        lpcTotalInput.value = String(suggested);
+        if (lpcPriceHint) {
+          const label = district
+            ? `${district} 中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`
+            : `中位 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`;
+          lpcPriceHint.textContent = `≈ ${label}`;
+        }
+        lpcRender();
+      }
+    });
+
+    // Initial deadline banner check on load
+    lpcUpdateDeadlineBanner();
+  }
+
+  // ============================================================
   // ---- Saved Search Feature ----------------------------------
   // ============================================================
 
@@ -2586,6 +2801,151 @@ const showBuyersMarket = !isStale && dataYear !== null;
     margin-top: 6px;
     padding-top: 6px;
     font-weight: 600;
+  }
+
+  /* ---- Loan Program Comparator (issue #125) ---- */
+  .loan-program-comparator {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .loan-program-comparator h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0 0 10px;
+  }
+  .lpc-deadline-banner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    color: #b91c1c;
+    margin-bottom: 10px;
+  }
+  .lpc-price-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 2px;
+  }
+  .lpc-price-hint {
+    font-size: 0.72rem;
+    color: #64748b;
+  }
+  .lpc-slider-row label {
+    white-space: nowrap;
+  }
+  .lpc-slider-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+  }
+  .lpc-slider-wrapper input[type="range"] {
+    flex: 1;
+    accent-color: #2563eb;
+    cursor: pointer;
+  }
+  .lpc-down-display {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #1e40af;
+    min-width: 34px;
+    text-align: right;
+  }
+  .lpc-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0;
+    font-size: 0.78rem;
+  }
+  .lpc-toggle-label {
+    color: #64748b;
+    font-weight: 600;
+  }
+  .lpc-toggle-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #f1f5f9;
+    border-radius: 99px;
+    padding: 3px 8px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.78rem;
+    color: #334155;
+  }
+  .lpc-toggle-chip input { cursor: pointer; }
+  .lpc-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .lpc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    min-width: 340px;
+  }
+  .lpc-table th {
+    background: #f8fafc;
+    color: #64748b;
+    font-weight: 600;
+    text-align: left;
+    padding: 5px 6px;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+  }
+  .lpc-table td {
+    padding: 6px 6px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+  }
+  .lpc-table tr:last-child td { border-bottom: none; }
+  .lpc-row-cheapest {
+    background: #f0fdf4;
+  }
+  .lpc-row-cheapest .lpc-name {
+    font-weight: 700;
+    color: #15803d;
+  }
+  .lpc-name { font-weight: 500; white-space: nowrap; }
+  .lpc-rate { white-space: nowrap; color: #334155; }
+  .lpc-monthly { font-weight: 600; white-space: nowrap; color: #1e293b; }
+  .lpc-interest { white-space: nowrap; color: #64748b; }
+  .lpc-note { font-size: 0.72rem; color: #64748b; }
+  .lpc-deadline { color: #b91c1c; }
+  .lpc-tbd { color: #94a3b8; font-style: italic; }
+  .lpc-badge {
+    display: inline-block;
+    background: #dcfce7;
+    color: #15803d;
+    border-radius: 99px;
+    padding: 1px 5px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    margin-left: 3px;
+    white-space: nowrap;
+  }
+  .lpc-footnote {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    margin-top: 6px;
+    padding: 0;
+  }
+  .lpc-placeholder {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    text-align: center;
+    padding: 12px 0;
   }
 
   /* ---- Saved Search ---- */
