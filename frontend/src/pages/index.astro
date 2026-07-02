@@ -194,6 +194,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <label for="completion-overlay-toggle">📦 完工供給強度</label>
       </div>
 
+      <!-- Supply pressure overlay toggle -->
+      <div class="toggle-row">
+        <input type="checkbox" id="supply-pressure-toggle" />
+        <label for="supply-pressure-toggle">⚠️ 供給壓力</label>
+      </div>
+
       <!-- Buyer timing score overlay toggle -->
       <div class="toggle-row">
         <input type="checkbox" id="buyer-score-toggle" />
@@ -4534,6 +4540,41 @@ const showBuyersMarket = !isStale && dataYear !== null;
   document.getElementById("city-select")?.addEventListener("change", async () => {
     if (completionOverlayToggle?.checked) {
       await updateCompletionOverlay();
+    }
+  });
+
+  // ── Supply pressure overlay toggle → dispatch to Map.astro ─────────────────
+  const supplyPressureToggle = document.getElementById("supply-pressure-toggle") as HTMLInputElement | null;
+
+  async function updateSupplyPressureOverlay(): Promise<void> {
+    const enabled = supplyPressureToggle?.checked ?? false;
+    if (enabled) {
+      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethToggle && !choroplethToggle.checked) {
+        choroplethToggle.checked = true;
+        choroplethToggle.dispatchEvent(new Event("change"));
+      }
+      const data = await loadPermitsData();
+      if (!data) {
+        if (supplyPressureToggle) supplyPressureToggle.checked = false;
+        return;
+      }
+      document.dispatchEvent(new CustomEvent("supply-pressure-mode-change", {
+        detail: { enabled: true, permitsData: data },
+      }));
+    } else {
+      document.dispatchEvent(new CustomEvent("supply-pressure-mode-change", {
+        detail: { enabled: false, permitsData: null },
+      }));
+    }
+  }
+
+  supplyPressureToggle?.addEventListener("change", updateSupplyPressureOverlay);
+
+  // Re-fire supply pressure when city changes (district allocation is city-scoped)
+  document.getElementById("city-select")?.addEventListener("change", async () => {
+    if (supplyPressureToggle?.checked) {
+      await updateSupplyPressureOverlay();
     }
   });
 
