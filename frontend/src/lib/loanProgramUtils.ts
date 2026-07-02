@@ -127,6 +127,7 @@ export function computeDaysRemaining(
   now: Date = new Date()
 ): number | null {
   if (!deadlineDate) return null;
+  if (isNaN(now.getTime())) return null; // guard against invalid injected date
 
   // Require strict YYYY-MM-DD format
   if (!/^\d{4}-\d{2}-\d{2}$/.test(deadlineDate)) return null;

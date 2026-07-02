@@ -1839,14 +1839,22 @@ const showBuyersMarket = !isStale && dataYear !== null;
       return Math.round(n).toLocaleString("zh-TW") + " 元";
     }
     function lpcFmtWan(n: number): string {
+      if (!Number.isFinite(n)) return "— 萬";
       return (n / 10_000).toFixed(1) + " 萬";
     }
 
     /** Returns days remaining until program deadline; null if no deadline or already past. */
     function lpcDaysRemaining(deadlineDate: string | null): number | null {
       if (!deadlineDate) return null;
-      // Require strict YYYY-MM-DD format to reject impossible dates like "2026-02-30"
+      // Require strict YYYY-MM-DD format
       if (!/^\d{4}-\d{2}-\d{2}$/.test(deadlineDate)) return null;
+      // Round-trip check: reject impossible dates JS would normalize (e.g. 2026-02-30 → 2026-03-02)
+      const parts = deadlineDate.split("-").map(Number);
+      const [y, m, d] = parts as [number, number, number];
+      const check = new Date(Date.UTC(y, m - 1, d));
+      if (check.getUTCFullYear() !== y || check.getUTCMonth() + 1 !== m || check.getUTCDate() !== d) {
+        return null;
+      }
       const deadline = new Date(`${deadlineDate}T23:59:59+08:00`);
       if (isNaN(deadline.getTime())) return null;
       const diffMs = deadline.getTime() - Date.now();
@@ -1975,6 +1983,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     // Initial deadline banner check on load
     lpcUpdateDeadlineBanner();
+    // Refresh banner every hour to handle midnight/deadline crossing without page reload
+    setInterval(lpcUpdateDeadlineBanner, 60 * 60 * 1000);
   }
 
   // ============================================================
