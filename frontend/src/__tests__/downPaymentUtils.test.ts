@@ -151,6 +151,10 @@ describe("computeMonthlyMortgagePayment", () => {
     expect(payment).toBeCloseTo(10_000, 0);
   });
 
+  it("returns 0 for negative rate (invalid input)", () => {
+    expect(computeMonthlyMortgagePayment(800, -1, 30)).toBe(0);
+  });
+
   it("higher rate → higher payment", () => {
     const low = computeMonthlyMortgagePayment(800, 2.0, 30);
     const high = computeMonthlyMortgagePayment(800, 4.0, 30);

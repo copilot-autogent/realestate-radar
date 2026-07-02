@@ -1351,9 +1351,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
    * Inlined here to keep the panel self-contained without a dynamic import.
    */
   function dptMonthlyPayment(loanWan: number, ratePercent: number, years: number): number {
-    if (loanWan <= 0 || years <= 0) return 0;
+    if (loanWan <= 0 || years <= 0 || ratePercent < 0) return 0;
     const P = loanWan * 10_000;
-    if (ratePercent <= 0) return P / (years * 12);
+    if (ratePercent === 0) return P / (years * 12);
     const r = ratePercent / 100 / 12;
     const n = years * 12;
     return P * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
@@ -1480,8 +1480,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // Auto-fill total price from district median when user selects a district on the map.
   // Listens to the same stats-histogram event used by the price histogram panel.
+  // NOTE: pricesWan carries UNIT prices in 萬/坪 (元/坪 ÷ 10,000) — see Map.astro
+  //       dispatch: `pricesWan: last12mPricesWan` where items are `unitPrice / 10000`.
+  //       Median × 30坪 → suggested total price in 萬.
+  let dptLastAutoDistrictKey: string = "";
   document.addEventListener("stats-histogram", (e: Event) => {
-    const { pricesWan: rawPrices, district } = (e as CustomEvent<{ pricesWan?: number[]; district?: string; city?: string }>).detail;
+    const { pricesWan: rawPrices, district, city } = (e as CustomEvent<{ pricesWan?: number[]; district?: string; city?: string }>).detail;
     if (!rawPrices || rawPrices.length === 0) return;
     const finite = rawPrices.filter((p) => Number.isFinite(p) && p > 0);
     if (finite.length === 0) return;
@@ -1493,14 +1497,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
       ? (sorted[mid - 1]! + sorted[mid]!) / 2
       : sorted[mid]!;
 
+    const newKey = `${city ?? ""}|${district ?? ""}`;
     dptAutoDistrictLabel = district ?? "";
 
-    // Suggest total price = median unit price × 30坪, only auto-fill when field is empty
+    // Auto-fill suggested price: fill when field is empty OR when switching to a different district
     const suggested = Math.round(medianUnitWan * 30);
-    if (!dptPriceInput.value && suggested > 0) {
+    if ((!dptPriceInput.value || newKey !== dptLastAutoDistrictKey) && suggested > 0) {
       dptPriceInput.value = String(suggested);
       calculateDpt();
     }
+    dptLastAutoDistrictKey = newKey;
 
     // Update hint regardless
     if (dptPriceHint) {

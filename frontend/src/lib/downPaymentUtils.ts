@@ -113,7 +113,8 @@ export function computeMonthlyMortgagePayment(
 ): number {
   if (!Number.isFinite(loanWan) || loanWan <= 0) return 0;
   if (!Number.isFinite(years) || years <= 0) return 0;
-  if (!Number.isFinite(ratePercent) || ratePercent <= 0) {
+  if (!Number.isFinite(ratePercent) || ratePercent < 0) return 0;
+  if (ratePercent === 0) {
     // Zero-rate edge case: simple principal division
     return loanWan * 10_000 / (years * 12);
   }
