@@ -2117,16 +2117,11 @@
 
   /**
    * Computes months elapsed since the district's median-price quarterly peak.
-   * Scans rawAllFeatures over the last 3 years. Returns null when data is sparse (< 5 tx).
+   * Accepts a pre-filtered feature array (district + unitPrice > 0) to avoid
+   * redundant rawAllFeatures scans.
+   * Returns null when data is sparse (< 5 tx in 3-year window).
    */
-  function computeMonthsSincePeak(district: string, city?: string): number | null {
-    const features = rawAllFeatures.filter(
-      (f) =>
-        f.properties?.district === district &&
-        (f.properties?.unitPrice as number) > 0 &&
-        (!city || f.properties?.city === city)
-    );
-
+  function computeMonthsSincePeakFromFeatures(features: any[]): number | null {
     const validTimes = features
       .map((f) => new Date((f.properties?.date as string) ?? "").getTime())
       .filter((t) => !isNaN(t));
@@ -2159,17 +2154,18 @@
       const dt = new Date(t);
       const q = Math.floor(dt.getMonth() / 3) + 1;
       const key = `${dt.getFullYear()}-Q${q}`;
-      (qBuckets[key] ??= []).push(f.properties.unitPrice as number);
+      (qBuckets[key] ??= []).push(f.properties?.unitPrice as number);
     }
 
     const sortedQKeys = Object.keys(qBuckets).sort();
     if (sortedQKeys.length < 2) return null;
 
     let peakMedian = -Infinity;
-    let peakQKey = sortedQKeys[0];
+    // On ties, keep the *latest* quarter (most recent peak → shorter monthsSincePeak)
+    let peakQKey = sortedQKeys[sortedQKeys.length - 1]!;
     for (const k of sortedQKeys) {
-      const m = localMedian(qBuckets[k]);
-      if (m > peakMedian) { peakMedian = m; peakQKey = k; }
+      const m = localMedian(qBuckets[k]!);
+      if (m >= peakMedian) { peakMedian = m; peakQKey = k; }
     }
 
     const [yr, qStr] = peakQKey.split("-Q");
@@ -2179,7 +2175,8 @@
 
   /**
    * Builds a DistrictStats object for the negotiation margin estimator from rawAllFeatures.
-   * Assessed-to-market ratio is averaged over all available transactions for the district.
+   * Assessed-to-market ratio is averaged over the most recent 24 months only (to avoid
+   * stale historical ratios dominating a current estimate).
    */
   function buildNegotiationStats(district: string, city?: string): DistrictStats {
     const features = rawAllFeatures.filter(
@@ -2195,12 +2192,14 @@
 
     let txCount12mo = 0;
     let medianUnitPriceWan: number | null = null;
+    let assessedToMarketRatio: number | null = null;
 
     if (validTimes.length > 0) {
       const maxTime = validTimes.reduce((a, b) => (a > b ? a : b), -Infinity);
+      const toTime = (f: any) => new Date((f.properties?.date as string) ?? "").getTime();
+
       const cut12mo = new Date(maxTime);
       cut12mo.setFullYear(cut12mo.getFullYear() - 1);
-      const toTime = (f: any) => new Date((f.properties?.date as string) ?? "").getTime();
       const recent12 = features.filter((f) => {
         const t = toTime(f);
         return !isNaN(t) && t > cut12mo.getTime() && t <= maxTime;
@@ -2211,26 +2210,31 @@
         const prices = recent12.map((f) => Number(f.properties.unitPrice));
         const sorted = [...prices].sort((a, b) => a - b);
         const mid = Math.floor(sorted.length / 2);
-        const med = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+        const med = sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
         medianUnitPriceWan = med / 10_000;
       }
-    }
 
-    // Average assessed-to-market ratio over all available transactions in the district
-    const ratioValues = features
-      .map((f) => Number(f.properties?.assessedToMarketRatio))
-      .filter((v) => !isNaN(v) && v > 0 && v <= 2);
-    const assessedToMarketRatio =
-      ratioValues.length > 0
-        ? ratioValues.reduce((a, b) => a + b, 0) / ratioValues.length
-        : null;
+      // Limit assessed ratio to most recent 24 months to avoid stale data bias
+      const cut24mo = new Date(maxTime);
+      cut24mo.setFullYear(cut24mo.getFullYear() - 2);
+      const recent24 = features.filter((f) => {
+        const t = toTime(f);
+        return !isNaN(t) && t > cut24mo.getTime() && t <= maxTime;
+      });
+      const ratioValues = recent24
+        .map((f) => Number(f.properties?.assessedToMarketRatio))
+        .filter((v) => !isNaN(v) && v > 0 && v <= 2);
+      if (ratioValues.length > 0) {
+        assessedToMarketRatio = ratioValues.reduce((a, b) => a + b, 0) / ratioValues.length;
+      }
+    }
 
     const vol = computeVolumeYoYSignal(district, city);
 
     return {
       txCount12mo,
       velocityYoYPct: vol.pct,
-      monthsSincePeak: computeMonthsSincePeak(district, city),
+      monthsSincePeak: computeMonthsSincePeakFromFeatures(features),
       assessedToMarketRatio,
       medianUnitPriceWan,
     };

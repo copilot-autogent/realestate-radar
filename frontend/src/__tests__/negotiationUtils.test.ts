@@ -31,12 +31,14 @@ describe("velocityMultiplier", () => {
     expect(velocityMultiplier(null)).toBe(1.0);
   });
 
-  it("returns 1.5 for large volume decline (< −20%)", () => {
+  it("returns 1.5 for large volume decline (≤ −20%)", () => {
     expect(velocityMultiplier(-30)).toBe(1.5);
+    expect(velocityMultiplier(-20)).toBe(1.5);
   });
 
   it("returns 1.3 for moderate decline (−15%)", () => {
     expect(velocityMultiplier(-15)).toBe(1.3);
+    expect(velocityMultiplier(-10)).toBe(1.3);
   });
 
   it("returns 1.1 for slight decline (−5%)", () => {
@@ -69,18 +71,23 @@ describe("peakFactor", () => {
 
   it("returns 1.3 for > 24 months since peak", () => {
     expect(peakFactor(36)).toBe(1.3);
+    expect(peakFactor(25)).toBe(1.3);
   });
 
   it("returns 1.15 for 12–24 months since peak", () => {
     expect(peakFactor(18)).toBe(1.15);
+    expect(peakFactor(13)).toBe(1.15);
   });
 
-  it("returns 1.0 for 6–12 months since peak", () => {
+  it("returns 1.0 for 6–12 months since peak (inclusive of 6)", () => {
     expect(peakFactor(9)).toBe(1.0);
+    expect(peakFactor(6)).toBe(1.0);
+    expect(peakFactor(12)).toBe(1.0);
   });
 
   it("returns 0.85 for < 6 months since peak", () => {
     expect(peakFactor(3)).toBe(0.85);
+    expect(peakFactor(5.9)).toBe(0.85);
   });
 });
 
@@ -95,15 +102,19 @@ describe("assessedRatioFactor", () => {
     expect(assessedRatioFactor(0.1)).toBe(1.3);
   });
 
-  it("returns 1.15 for ratio 0.2–0.4", () => {
+  it("returns 1.15 for ratio 0.2 to < 0.4", () => {
+    expect(assessedRatioFactor(0.2)).toBe(1.15);
     expect(assessedRatioFactor(0.3)).toBe(1.15);
   });
 
-  it("returns 1.0 for ratio 0.4–0.6", () => {
+  it("returns 1.0 for ratio 0.4 to 0.6 (inclusive)", () => {
+    expect(assessedRatioFactor(0.4)).toBe(1.0);
     expect(assessedRatioFactor(0.5)).toBe(1.0);
+    expect(assessedRatioFactor(0.6)).toBe(1.0);
   });
 
   it("returns 0.9 for high ratio (> 0.6)", () => {
+    expect(assessedRatioFactor(0.7)).toBe(0.9);
     expect(assessedRatioFactor(0.8)).toBe(0.9);
   });
 });
@@ -239,20 +250,20 @@ describe("computeNegotiationPercentile", () => {
     expect(computeNegotiationPercentile(target, others)).toBeNull();
   });
 
-  it("returns null when fewer than 2 comparable estimates exist", () => {
+  it("returns null when others pool is empty", () => {
     const target = makeEstimate(0.05);
-    expect(computeNegotiationPercentile(target, [target])).toBeNull();
+    expect(computeNegotiationPercentile(target, [])).toBeNull();
   });
 
   it("returns 0 for the lowest margin in the population", () => {
     const target = makeEstimate(0.03);
-    const others = [makeEstimate(0.03), makeEstimate(0.07), makeEstimate(0.10)];
+    const others = [makeEstimate(0.07), makeEstimate(0.10), makeEstimate(0.12)];
     expect(computeNegotiationPercentile(target, others)).toBe(0);
   });
 
   it("returns 100 for the highest margin in the population", () => {
     const target = makeEstimate(0.15);
-    const others = [makeEstimate(0.03), makeEstimate(0.07), makeEstimate(0.15)];
+    const others = [makeEstimate(0.03), makeEstimate(0.07), makeEstimate(0.10)];
     expect(computeNegotiationPercentile(target, others)).toBe(100);
   });
 });

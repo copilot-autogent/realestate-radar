@@ -58,36 +58,36 @@ export interface NegotiationEstimate {
 
 /**
  * Velocity multiplier: falling transaction volume → more negotiation room.
- * Linear interpretation of YoY Δ%:
- *   < −20 % → 1.5 (large supply excess)
- *   −20 to −10 % → 1.3
- *   −10 to 0 % → 1.1
- *   0 to +10 % → 1.0 (neutral)
- *   +10 to +20 % → 0.85
+ * YoY Δ% tiers (inclusive upper bound):
+ *   ≤ −20 % → 1.5 (large supply excess)
+ *   −20 to −10 % (exclusive −10) → 1.3
+ *   −10 to 0 % (exclusive 0) → 1.1
+ *   0 to +10 % (exclusive +10) → 1.0 (neutral)
+ *   +10 to +20 % (exclusive +20) → 0.85
  *   > +20 % → 0.70 (hot market, little room)
  */
 export function velocityMultiplier(yoyPct: number | null): number {
   if (yoyPct === null) return 1.0;
-  if (yoyPct < -20) return 1.5;
-  if (yoyPct < -10) return 1.3;
-  if (yoyPct < 0)   return 1.1;
-  if (yoyPct < 10)  return 1.0;
-  if (yoyPct < 20)  return 0.85;
+  if (yoyPct <= -20) return 1.5;
+  if (yoyPct <= -10) return 1.3;
+  if (yoyPct <   0) return 1.1;
+  if (yoyPct <  10) return 1.0;
+  if (yoyPct <  20) return 0.85;
   return 0.70;
 }
 
 /**
  * Peak-time factor: longer since price peak → more negotiation room.
  *   > 24 months since peak → 1.3
- *   12–24 months → 1.15
- *   6–12 months → 1.0 (neutral)
+ *   > 12 to 24 months → 1.15
+ *   ≥ 6 to 12 months → 1.0 (neutral)
  *   < 6 months → 0.85 (still near peak)
  */
 export function peakFactor(monthsSincePeak: number | null): number {
   if (monthsSincePeak === null) return 1.0;
-  if (monthsSincePeak > 24) return 1.3;
-  if (monthsSincePeak > 12) return 1.15;
-  if (monthsSincePeak > 6)  return 1.0;
+  if (monthsSincePeak >  24) return 1.3;
+  if (monthsSincePeak >  12) return 1.15;
+  if (monthsSincePeak >=  6) return 1.0;
   return 0.85;
 }
 
@@ -96,16 +96,16 @@ export function peakFactor(monthsSincePeak: number | null): number {
  * A low ratio means market price greatly exceeds assessed value (speculative premium) →
  * buyers have more room to negotiate below the "inflated" ask price.
  *   < 0.2  → 1.30
- *   0.2–0.4 → 1.15
- *   0.4–0.6 → 1.0 (neutral)
+ *   0.2 to < 0.4 → 1.15
+ *   0.4 to ≤ 0.6 → 1.0 (neutral)
  *   > 0.6  → 0.90 (market price closer to assessed → less speculation buffer)
  * Null (unavailable) defaults to 1.0 (no adjustment).
  */
 export function assessedRatioFactor(ratio: number | null): number {
   if (ratio === null) return 1.0;
-  if (ratio < 0.2) return 1.3;
-  if (ratio < 0.4) return 1.15;
-  if (ratio < 0.6) return 1.0;
+  if (ratio <  0.2) return 1.3;
+  if (ratio <  0.4) return 1.15;
+  if (ratio <= 0.6) return 1.0;
   return 0.9;
 }
 
@@ -170,10 +170,10 @@ export function estimateNegotiationMargin(stats: DistrictStats): NegotiationEsti
  * relative to a population of other districts' margin estimates.
  *
  * Useful for "This district is at the Nth percentile vs. past 12 months" context.
- * Returns null when there are fewer than 2 comparable (sufficient) estimates.
+ * Returns null when there are fewer than 2 sufficient estimates (including `target`).
  *
  * @param target  The district estimate to rank.
- * @param others  All comparable district estimates (including `target`).
+ * @param others  Pool of district estimates to rank against. May or may not include `target`.
  */
 export function computeNegotiationPercentile(
   target: NegotiationEstimate,
@@ -183,7 +183,7 @@ export function computeNegotiationPercentile(
   const margins = others
     .filter((e) => e.sufficient && e.marginCenter !== null)
     .map((e) => e.marginCenter as number);
-  if (margins.length < 2) return null;
+  if (margins.length < 1) return null;
   const below = margins.filter((m) => m < (target.marginCenter as number)).length;
-  return Math.round((below / (margins.length - 1)) * 100);
+  return Math.round((below / margins.length) * 100);
 }
