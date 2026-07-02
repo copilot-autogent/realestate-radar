@@ -1983,8 +1983,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     // Initial deadline banner check on load
     lpcUpdateDeadlineBanner();
-    // Refresh banner every hour to handle midnight/deadline crossing without page reload
-    setInterval(lpcUpdateDeadlineBanner, 60 * 60 * 1000);
+    // Refresh banner + re-render table every hour to handle midnight/deadline crossing
+    // (ensures expired programs lose their 最優 badge without requiring page reload)
+    setInterval(() => {
+      lpcUpdateDeadlineBanner();
+      if (lpcResult.style.display !== "none") lpcRender();
+    }, 60 * 60 * 1000);
   }
 
   // ============================================================
