@@ -3690,10 +3690,16 @@
           return typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) && d >= cutoff12mStr;
         })
         .map((f: any) => (f.properties.unitPrice as number) / 10000);
-      // Compute median building age (numeric) for acquisition-cost pre-fill
+      // Compute median building age (numeric) for acquisition-cost pre-fill.
+      // Use the same last-12-month cutoff as last12mPricesWan for temporal consistency.
       const _acqCurrentYear = new Date().getFullYear();
       const _acqAges = txFeatures
-        .filter((f: any) => f.properties.district === district && (!clickedCity || !f.properties.city || f.properties.city === clickedCity))
+        .filter((f: any) => {
+          if (f.properties.district !== district) return false;
+          if (clickedCity && f.properties.city && f.properties.city !== clickedCity) return false;
+          const d = f.properties.date as string | undefined;
+          return typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) && d >= cutoff12mStr;
+        })
         .map((f: any) => {
           const rawBY = f.properties.buildYear ? Number(f.properties.buildYear) : null;
           if (!rawBY || rawBY <= 0) return null;
@@ -3703,9 +3709,13 @@
         })
         .filter((a: number | null): a is number => a !== null)
         .sort((a: number, b: number) => a - b);
-      const _acqMedianAge = _acqAges.length
-        ? _acqAges[Math.floor(_acqAges.length / 2)]
-        : null;
+      // Average the two middle elements for even-length arrays (same approach as index.astro price median)
+      const _acqMid = Math.floor(_acqAges.length / 2);
+      const _acqMedianAge = _acqAges.length === 0
+        ? null
+        : _acqAges.length % 2 === 0
+          ? (_acqAges[_acqMid - 1]! + _acqAges[_acqMid]!) / 2
+          : _acqAges[_acqMid]!;
       document.dispatchEvent(new CustomEvent("stats-histogram", {
         detail: { pricesWan: last12mPricesWan, district, city: clickedCity, medianBuildingAgeYears: _acqMedianAge },
       }));

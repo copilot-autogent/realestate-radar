@@ -220,6 +220,10 @@ describe("computeTotalUpfrontNTD", () => {
   it("handles NaN price gracefully (returns hidden costs only)", () => {
     expect(computeTotalUpfrontNTD(NaN, 20, 100_000)).toBe(100_000);
   });
+
+  it("clamps downPaymentPct > 100 to 100", () => {
+    expect(computeTotalUpfrontNTD(10_000_000, 150, 0)).toBe(10_000_000);
+  });
 });
 
 // ── formatNTD ─────────────────────────────────────────────────────────────────

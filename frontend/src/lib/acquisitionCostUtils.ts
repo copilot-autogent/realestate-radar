@@ -210,8 +210,10 @@ export function computeTotalUpfrontNTD(
   downPaymentPct: number,
   hiddenCostsNTD: number
 ): number {
-  const safePrice = Number.isFinite(priceNTD)       && priceNTD       > 0 ? priceNTD       : 0;
-  const safePct   = Number.isFinite(downPaymentPct) && downPaymentPct >= 0 ? downPaymentPct : 0;
+  const safePrice = Number.isFinite(priceNTD)       && priceNTD       > 0   ? priceNTD       : 0;
+  const safePct   = Number.isFinite(downPaymentPct) && downPaymentPct >= 0
+    ? Math.min(downPaymentPct, 100)
+    : 0;
   const safeCosts = Number.isFinite(hiddenCostsNTD) && hiddenCostsNTD >= 0 ? hiddenCostsNTD : 0;
   const dp = Math.round(safePrice * (safePct / 100));
   return dp + safeCosts;

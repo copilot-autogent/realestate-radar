@@ -1618,9 +1618,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
 
     const priceNTD   = priceWan * 10_000;
+    // If ping/age are missing (NaN or ≤0) treat as 0 — renovation shows NT$0 with a note
     const safePing   = Number.isFinite(ping) && ping > 0 ? ping : 0;
     const safeAge    = Number.isFinite(age)  && age  >= 0 ? age  : 0;
     const safeDpPct  = Number.isFinite(dpPct) && dpPct >= 0 && dpPct <= 100 ? dpPct : 20;
+    const missingPing = !Number.isFinite(ping) || ping <= 0;
+    const missingAge  = !Number.isFinite(age)  || age < 0;
 
     const result = computeAcqSummary(priceNTD, safePing, safeAge, includeAgent);
 
@@ -1629,19 +1632,26 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const isZero    = item.amountNTD === 0;
       const labelCls  = item.isOptional ? "acq-item-label acq-item-optional" : "acq-item-label";
       const amountCls = isZero ? "acq-item-amount acq-item-zero" : "acq-item-amount";
+      // Add asterisk note for renovation when ping is missing
+      const noteFlag  = item.key === "renovation" && missingPing ? " *" : "";
       return `<tr>
-        <td class="${labelCls}">${item.label}</td>
+        <td class="${labelCls}">${item.label}${noteFlag}</td>
         <td class="acq-item-rate">${item.rateDescription}</td>
-        <td class="${amountCls}">${isZero ? "—" : fmtNTD(item.amountNTD)}</td>
+        <td class="${amountCls}">${isZero ? (item.key === "renovation" && missingPing ? "請輸入坪數" : "—") : fmtNTD(item.amountNTD)}</td>
       </tr>`;
     }).join("");
+
+    // Note when ping or age missing
+    const missingNote = missingPing || missingAge
+      ? `<p style="font-size:0.72rem;color:#b45309;margin:0 0 6px">* ${[missingPing ? "請輸入坪數以計算裝修費" : "", missingAge ? "請輸入屋齡以取得精確裝修費率" : ""].filter(Boolean).join("；")}</p>`
+      : "";
 
     // Summary row
     const totalHidden  = result.totalHiddenCostsNTD;
     const hiddenPct    = result.hiddenCostsPct;
     const totalUpfront = computeUpfront(priceNTD, safeDpPct, totalHidden);
 
-    acqSummaryEl.innerHTML = `
+    acqSummaryEl.innerHTML = missingNote + `
       <div class="acq-summary-total-hidden">
         隱藏費用合計：${fmtNTD(totalHidden)}（${fmtPct(hiddenPct)} of 總價）
       </div>
@@ -1683,11 +1693,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (!acqPriceInput.value && suggested > 0) {
       acqPriceInput.value = String(suggested);
     }
-    if (acqPriceHint) {
-      const label = district
-        ? `${district} 中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`
-        : `中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`;
-      acqPriceHint.textContent = `≈ ${label}`;
+    // Only update hint when price was auto-filled (not manually entered by user)
+    if (!acqPriceInput.value || suggested > 0) {
+      if (acqPriceHint) {
+        const label = district
+          ? `${district} 中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`
+          : `中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`;
+        acqPriceHint.textContent = `≈ ${label}`;
+      }
     }
 
     // Pre-fill ping (default 30坪 if field is empty)
