@@ -423,6 +423,22 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <div id="seasonal-summary" class="seasonal-summary" style="display:none"></div>
       </div>
 
+      <!-- ── Monthly heatmap (issue #112) ── -->
+      <div id="heatmap-panel" class="heatmap-panel" style="display:none">
+        <div class="heatmap-header">
+          <h3>🗓 月份成交量熱力圖</h3>
+          <div class="heatmap-scope-toggle" role="group" aria-label="選擇範圍">
+            <button id="heatmap-btn-district" class="heatmap-scope-btn active" data-scope="district">本區</button>
+            <button id="heatmap-btn-global"   class="heatmap-scope-btn"        data-scope="global">全臺灣</button>
+          </div>
+        </div>
+        <p class="heatmap-note">成交筆數 × 月份，顏色深淺 = 相對熱度。🔵 = 買方優勢月（量 &lt; 年高峰 70%）</p>
+        <div id="heatmap-insufficient" class="heatmap-insufficient" style="display:none">資料不足（需 ≥12 個月歷史）</div>
+        <canvas id="heatmap-canvas" class="heatmap-canvas" aria-label="月份成交量熱力圖"></canvas>
+        <div id="heatmap-tooltip" class="heatmap-tooltip" style="display:none"></div>
+        <div id="heatmap-buyer-summary" class="heatmap-buyer-summary" style="display:none"></div>
+      </div>
+
       <div id="histogram-panel" class="histogram-panel" style="display:none">
         <h3>單價分佈 (萬/坪)<span id="histogram-district-label" class="histogram-district-label"></span></h3>
         <p class="histogram-note">近 12 個月成交</p>
@@ -1919,6 +1935,86 @@ const showBuyersMarket = !isStale && dataYear !== null;
     line-height: 1.5;
   }
 
+  /* ── Monthly heatmap panel (issue #112) ── */
+  .heatmap-panel {
+    margin-top: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .heatmap-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2px;
+  }
+  .heatmap-header h3 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+  }
+  .heatmap-scope-toggle {
+    display: flex;
+    gap: 3px;
+  }
+  .heatmap-scope-btn {
+    font-size: 0.65rem;
+    padding: 2px 7px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #f8fafc;
+    color: #64748b;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .heatmap-scope-btn.active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+  .heatmap-note {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin: 2px 0 8px;
+    line-height: 1.4;
+  }
+  .heatmap-insufficient {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    font-style: italic;
+    margin-top: 4px;
+  }
+  .heatmap-canvas {
+    display: block;
+    max-width: 100%;
+  }
+  .heatmap-tooltip {
+    position: fixed;
+    background: rgba(15, 23, 42, 0.9);
+    color: #f1f5f9;
+    font-size: 0.72rem;
+    padding: 6px 10px;
+    border-radius: 6px;
+    pointer-events: none;
+    z-index: 9999;
+    white-space: nowrap;
+    line-height: 1.5;
+  }
+  .heatmap-buyer-summary {
+    margin-top: 8px;
+    font-size: 0.72rem;
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-left: 3px solid #3b82f6;
+    border-radius: 4px;
+    padding: 5px 8px;
+    line-height: 1.5;
+  }
+
   .histogram-panel {
     margin-top: 12px;
     background: #fff;
@@ -3278,6 +3374,281 @@ const showBuyersMarket = !isStale && dataYear !== null;
         summaryEl.style.display = "none";
       }
     }
+  });
+
+  // ── Monthly transaction volume calendar heatmap (issue #112) ─────────────
+  // Canvas-based custom rendering — no additional Chart.js plugins needed.
+
+  // Stored data for scope toggle (global vs district)
+  let _heatmapDistrictData: any = null;
+  let _heatmapGlobalData:   any = null;
+  let _heatmapActiveScope: "district" | "global" = "district";
+
+  const MONTH_LABELS_SHORT = ["1","2","3","4","5","6","7","8","9","10","11","12"];
+  const MONTH_NAMES_ZH = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+
+  function renderHeatmapCanvas(heatmapData: any) {
+    const panel       = document.getElementById("heatmap-panel")         as HTMLDivElement | null;
+    const insuffEl    = document.getElementById("heatmap-insufficient")  as HTMLDivElement | null;
+    const canvas      = document.getElementById("heatmap-canvas")        as HTMLCanvasElement | null;
+    const buyerSumEl  = document.getElementById("heatmap-buyer-summary") as HTMLDivElement | null;
+    const tooltip     = document.getElementById("heatmap-tooltip")       as HTMLDivElement | null;
+    if (!panel || !canvas) return;
+
+    panel.style.display = "block";
+
+    // Always reset insufficient text to default before any show/hide decision
+    if (insuffEl) insuffEl.textContent = "資料不足（需 ≥12 個月歷史）";
+
+    if (!heatmapData || !heatmapData.sufficient) {
+      if (insuffEl) insuffEl.style.display = "block";
+      canvas.style.display = "none";
+      if (buyerSumEl) buyerSumEl.style.display = "none";
+      if (tooltip) tooltip.style.display = "none";
+      return;
+    }
+
+    if (insuffEl) insuffEl.style.display = "none";
+    canvas.style.display = "block";
+
+    const cells: any[] = heatmapData.cells;
+    const years: number[] = heatmapData.years;
+
+    // ── Responsive: mobile = last 12 months single row ────────────────────
+    const isMobile = window.innerWidth < 600;
+
+    let renderCells: any[];
+    let renderYears: number[];
+    if (isMobile) {
+      // Mirror last12Cells() from heatmapUtils: find max (year, month) and walk back 12
+      let maxYear = 0, maxMonth = 0;
+      for (const c of cells) {
+        if (c.year > maxYear || (c.year === maxYear && c.month > maxMonth)) {
+          maxYear = c.year; maxMonth = c.month;
+        }
+      }
+      const pairs: { year: number; month: number }[] = [];
+      let y = maxYear, mo = maxMonth;
+      for (let i = 0; i < 12; i++) {
+        pairs.unshift({ year: y, month: mo });
+        mo--; if (mo < 1) { mo = 12; y--; }
+      }
+      renderCells = pairs.map(({ year, month }) =>
+        cells.find((c: any) => c.year === year && c.month === month) ??
+        { year, month, count: 0, medianUnitPriceWan: null, isBuyerAdvantaged: false }
+      );
+      renderYears = [];  // single row, year labels suppressed
+    } else {
+      renderCells = cells;
+      renderYears = years;
+    }
+
+    // ── Canvas sizing ─────────────────────────────────────────────────────
+    const CELL_W = 18;
+    const CELL_H = 18;
+    const CELL_PAD = 2;
+    const LABEL_W = isMobile ? 0 : 28;  // y-axis (year) labels
+    const LABEL_H = 16;                  // x-axis (month) labels
+    const COLS = 12;
+    const ROWS = isMobile ? 1 : renderYears.length;
+
+    const canvasW = LABEL_W + COLS * (CELL_W + CELL_PAD) + 4;
+    const canvasH = LABEL_H + ROWS * (CELL_H + CELL_PAD) + 4;
+
+    // Use devicePixelRatio for sharp rendering on retina
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = canvasW * dpr;
+    canvas.height = canvasH * dpr;
+    canvas.style.width  = `${canvasW}px`;
+    canvas.style.height = `${canvasH}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, canvasW, canvasH);
+
+    // Colour scale: light blue → deep blue
+    // #dbeafe = rgb(219, 234, 254) → #1d4ed8 = rgb(29, 78, 216)
+    const maxCount = Math.max(...renderCells.map((c: any) => c.count), 1);
+    function cellColor(count: number): string {
+      if (count === 0) return "#f1f5f9";
+      const t = count / maxCount;
+      const r = Math.round(219 + t * (29  - 219));
+      const g = Math.round(234 + t * (78  - 234));
+      const b = Math.round(254 + t * (216 - 254));
+      return `rgb(${r},${g},${b})`;
+    }
+
+    // Polyfill for ctx.roundRect (unsupported on Safari <16)
+    function drawRoundRect(c2d: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+      if (typeof c2d.roundRect === "function") {
+        c2d.beginPath();
+        c2d.roundRect(x, y, w, h, r);
+      } else {
+        const rr = Math.min(r, w / 2, h / 2);
+        c2d.beginPath();
+        c2d.moveTo(x + rr, y);
+        c2d.lineTo(x + w - rr, y);
+        c2d.arcTo(x + w, y, x + w, y + rr, rr);
+        c2d.lineTo(x + w, y + h - rr);
+        c2d.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+        c2d.lineTo(x + rr, y + h);
+        c2d.arcTo(x, y + h, x, y + h - rr, rr);
+        c2d.lineTo(x, y + rr);
+        c2d.arcTo(x, y, x + rr, y, rr);
+        c2d.closePath();
+      }
+    }
+
+    // ── Draw month-axis labels ────────────────────────────────────────────
+    ctx.font = "9px sans-serif";
+    ctx.fillStyle = "#94a3b8";
+    ctx.textAlign = "center";
+    for (let mo = 0; mo < 12; mo++) {
+      const x = LABEL_W + mo * (CELL_W + CELL_PAD) + CELL_W / 2;
+      ctx.fillText(MONTH_LABELS_SHORT[mo]!, x, LABEL_H - 3);
+    }
+
+    // ── Cell positions lookup for hover ──────────────────────────────────
+    const cellRects: { x: number; y: number; w: number; h: number; cell: any }[] = [];
+
+    // ── Draw cells ────────────────────────────────────────────────────────
+    for (let ri = 0; ri < ROWS; ri++) {
+      const yearVal = isMobile ? null : renderYears[ri];
+      const rowCells = isMobile
+        ? renderCells
+        : renderCells.filter((c: any) => c.year === yearVal);
+
+      // Year label
+      if (!isMobile && yearVal) {
+        ctx.font = "9px sans-serif";
+        ctx.fillStyle = "#64748b";
+        ctx.textAlign = "right";
+        ctx.fillText(String(yearVal), LABEL_W - 3, LABEL_H + ri * (CELL_H + CELL_PAD) + CELL_H - 3);
+      }
+
+      for (let mo = 0; mo < 12; mo++) {
+        const cell = isMobile
+          ? rowCells[mo]
+          : rowCells.find((c: any) => c.month === mo + 1);
+
+        const cx = LABEL_W + mo * (CELL_W + CELL_PAD);
+        const cy = LABEL_H + ri * (CELL_H + CELL_PAD);
+
+        // Fill cell
+        ctx.fillStyle = cell ? cellColor(cell.count) : "#f1f5f9";
+        drawRoundRect(ctx, cx, cy, CELL_W, CELL_H, 2);
+        ctx.fill();
+
+        // Buyer-advantaged ring (🔵 = blue border)
+        if (cell?.isBuyerAdvantaged) {
+          ctx.strokeStyle = "#3b82f6";
+          ctx.lineWidth = 1.5;
+          drawRoundRect(ctx, cx + 0.75, cy + 0.75, CELL_W - 1.5, CELL_H - 1.5, 2);
+          ctx.stroke();
+        }
+
+        if (cell) {
+          cellRects.push({ x: cx, y: cy, w: CELL_W, h: CELL_H, cell });
+        }
+      }
+    }
+
+    // ── Hover tooltip ─────────────────────────────────────────────────────
+    canvas.onmousemove = (ev: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = ev.clientX - rect.left;
+      const my = ev.clientY - rect.top;
+      const hit = cellRects.find(
+        (r) => mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h
+      );
+      if (hit && tooltip) {
+        const c = hit.cell;
+        const priceStr = c.medianUnitPriceWan != null ? `均價 NT$${c.medianUnitPriceWan}萬/坪` : "（無價格資料）";
+        const advantaged = c.isBuyerAdvantaged ? "  🔵 買方優勢月" : "";
+        tooltip.innerHTML = `<strong>${c.year}年${MONTH_NAMES_ZH[c.month - 1]}</strong><br>${c.count} 筆成交 · ${priceStr}${advantaged}`;
+        tooltip.style.display = "block";
+        tooltip.style.left = `${ev.clientX + 12}px`;
+        tooltip.style.top  = `${ev.clientY - 8}px`;
+      } else if (tooltip) {
+        tooltip.style.display = "none";
+      }
+    };
+    canvas.onmouseleave = () => {
+      if (tooltip) tooltip.style.display = "none";
+    };
+
+    // ── Buyer-advantaged summary (based on visible cells only) ───────────────
+    if (buyerSumEl) {
+      const buyerCells = renderCells.filter((c: any) => c.isBuyerAdvantaged);
+      if (buyerCells.length > 0) {
+        const byYear: Record<number, string[]> = {};
+        for (const c of buyerCells) {
+          if (!byYear[c.year]) byYear[c.year] = [];
+          byYear[c.year]!.push(MONTH_NAMES_ZH[c.month - 1]!);
+        }
+        const lines = Object.entries(byYear)
+          .sort(([a], [b]) => Number(a) - Number(b))
+          .map(([yr, mos]) => `${yr}年：${mos.join("、")}`);
+        buyerSumEl.innerHTML = `🔵 買方優勢月（量 &lt; 年高峰 70%）：<br>${lines.join("<br>")}`;
+        buyerSumEl.style.display = "block";
+      } else {
+        buyerSumEl.style.display = "none";
+      }
+    }
+  }
+
+  document.addEventListener("district-heatmap", (e: Event) => {
+    const { heatmap, isInitialGlobal } = (e as CustomEvent).detail as {
+      heatmap: any;
+      isInitialGlobal: boolean;
+    };
+
+    if (isInitialGlobal) {
+      _heatmapGlobalData = heatmap;
+      // Show global view on initial load (no district selected yet)
+      if (!_heatmapDistrictData) {
+        _heatmapActiveScope = "global";
+        updateHeatmapScopeButtons();
+        renderHeatmapCanvas(heatmap);
+      }
+    } else {
+      _heatmapDistrictData = heatmap;
+      _heatmapActiveScope = "district";
+      updateHeatmapScopeButtons();
+      renderHeatmapCanvas(heatmap);
+    }
+  });
+
+  function updateHeatmapScopeButtons() {
+    const btnDistrict = document.getElementById("heatmap-btn-district");
+    const btnGlobal   = document.getElementById("heatmap-btn-global");
+    if (btnDistrict) btnDistrict.classList.toggle("active", _heatmapActiveScope === "district");
+    if (btnGlobal)   btnGlobal.classList.toggle("active",   _heatmapActiveScope === "global");
+  }
+
+  document.getElementById("heatmap-btn-district")?.addEventListener("click", () => {
+    if (!_heatmapDistrictData) {
+      // Show hint — no district has been selected yet; reset on next render
+      const insuffEl = document.getElementById("heatmap-insufficient") as HTMLDivElement | null;
+      const canvas   = document.getElementById("heatmap-canvas")       as HTMLCanvasElement | null;
+      if (insuffEl) {
+        insuffEl.textContent = "請先點選地圖上的行政區以查看本區熱力圖";
+        insuffEl.style.display = "block";
+      }
+      if (canvas) canvas.style.display = "none";
+      return;
+    }
+    _heatmapActiveScope = "district";
+    updateHeatmapScopeButtons();
+    renderHeatmapCanvas(_heatmapDistrictData);
+  });
+
+  document.getElementById("heatmap-btn-global")?.addEventListener("click", () => {
+    if (!_heatmapGlobalData) return;
+    _heatmapActiveScope = "global";
+    updateHeatmapScopeButtons();
+    renderHeatmapCanvas(_heatmapGlobalData);
   });
 
   // ── Building-age depreciation curve chart ───────────────────────────────────

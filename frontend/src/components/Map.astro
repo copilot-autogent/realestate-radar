@@ -964,6 +964,7 @@
 <script>
   import maplibregl from "maplibre-gl";
   import { computeMedianPrice12mo } from "../lib/districtTableUtils.js";
+  import { computeHeatmapData } from "../lib/heatmapUtils.js";
   import {
     clearStaleEntries,
     computeDeltaPct,
@@ -2794,6 +2795,13 @@
         document.dispatchEvent(new CustomEvent("rawdata-loaded", { detail: { features: rawAllFeatures } }));
         // Run watchlist stale-check and delta computation once data is ready
         wlCheckStaleOnce(rawAllFeatures);
+        // Dispatch global heatmap (全臺灣) on initial data load
+        {
+          const globalHeatmap = computeHeatmapData(rawAllFeatures, null);
+          document.dispatchEvent(new CustomEvent("district-heatmap", {
+            detail: { heatmap: globalHeatmap, isInitialGlobal: true },
+          }));
+        }
       }
 
       // Client-side filtering
@@ -3181,6 +3189,15 @@
             annualAvg: seasonality.annualAvg,
             sufficient: seasonality.sufficient,
           },
+        }));
+      }
+
+      // ── Monthly heatmap (dot click) ───────────────────────────────────────
+      {
+        const txCity = props.city as string | undefined;
+        const heatmap = computeHeatmapData(rawAllFeatures, txDistrict, txCity || undefined);
+        document.dispatchEvent(new CustomEvent("district-heatmap", {
+          detail: { heatmap, isInitialGlobal: false },
         }));
       }
     }
@@ -3642,6 +3659,14 @@
           annualAvg: seasonality.annualAvg,
           sufficient: seasonality.sufficient,
         },
+      }));
+    }
+
+    // ── Monthly heatmap (district polygon click) ──────────────────────────────
+    {
+      const heatmap = computeHeatmapData(rawAllFeatures, district, clickedCity || undefined);
+      document.dispatchEvent(new CustomEvent("district-heatmap", {
+        detail: { heatmap, isInitialGlobal: false },
       }));
     }
 
