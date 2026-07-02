@@ -91,13 +91,9 @@ export function computeHeatmapData(
     return { district: label, isGlobal, cells: [], years: [], sufficient: false };
   }
 
-  // Determine trailing years from the latest date present in data
   // Anchor to the latest (year, month) pair present in data — avoids manufacturing
   // zero-count "future" cells when the newest data doesn't reach December.
-  const allKeys = [...cellMap.keys()].sort(); // "YYYY-MM" lexicographic sort
-  if (allKeys.length === 0) {
-    return { district: label, isGlobal, cells: [], years: [], sufficient: false };
-  }
+  const allKeys = [...cellMap.keys()].sort(); // "YYYY-MM" lexicographic sort — always non-empty (size ≥ 12)
   const latestKey   = allKeys[allKeys.length - 1]!;
   const latestYear  = parseInt(latestKey.slice(0, 4), 10);
   const latestMonth = parseInt(latestKey.slice(5, 7), 10);

@@ -3397,10 +3397,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     panel.style.display = "block";
 
+    // Always reset insufficient text to default before any show/hide decision
+    if (insuffEl) insuffEl.textContent = "資料不足（需 ≥12 個月歷史）";
+
     if (!heatmapData || !heatmapData.sufficient) {
       if (insuffEl) insuffEl.style.display = "block";
       canvas.style.display = "none";
       if (buyerSumEl) buyerSumEl.style.display = "none";
+      if (tooltip) tooltip.style.display = "none";
       return;
     }
 
@@ -3440,8 +3444,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
 
     // ── Canvas sizing ─────────────────────────────────────────────────────
-    const CELL_W = isMobile ? 18 : 18;
-    const CELL_H = isMobile ? 18 : 18;
+    const CELL_W = 18;
+    const CELL_H = 18;
     const CELL_PAD = 2;
     const LABEL_W = isMobile ? 0 : 28;  // y-axis (year) labels
     const LABEL_H = 16;                  // x-axis (month) labels
@@ -3625,12 +3629,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   document.getElementById("heatmap-btn-district")?.addEventListener("click", () => {
     if (!_heatmapDistrictData) {
-      // Show hint — no district has been selected yet
+      // Show hint — no district has been selected yet; reset on next render
       const insuffEl = document.getElementById("heatmap-insufficient") as HTMLDivElement | null;
+      const canvas   = document.getElementById("heatmap-canvas")       as HTMLCanvasElement | null;
       if (insuffEl) {
         insuffEl.textContent = "請先點選地圖上的行政區以查看本區熱力圖";
         insuffEl.style.display = "block";
       }
+      if (canvas) canvas.style.display = "none";
       return;
     }
     _heatmapActiveScope = "district";
@@ -3644,6 +3650,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     updateHeatmapScopeButtons();
     renderHeatmapCanvas(_heatmapGlobalData);
   });
+
+  // ── Building-age depreciation curve chart ───────────────────────────────────
   let ageCurveChartInstance: any = null;
 
   document.addEventListener("district-age-curve", async (e: Event) => {
