@@ -3690,8 +3690,24 @@
           return typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) && d >= cutoff12mStr;
         })
         .map((f: any) => (f.properties.unitPrice as number) / 10000);
+      // Compute median building age (numeric) for acquisition-cost pre-fill
+      const _acqCurrentYear = new Date().getFullYear();
+      const _acqAges = txFeatures
+        .filter((f: any) => f.properties.district === district && (!clickedCity || !f.properties.city || f.properties.city === clickedCity))
+        .map((f: any) => {
+          const rawBY = f.properties.buildYear ? Number(f.properties.buildYear) : null;
+          if (!rawBY || rawBY <= 0) return null;
+          const by = rawBY < 200 ? rawBY + 1911 : rawBY;
+          const age = _acqCurrentYear - by;
+          return age >= 0 && age < 200 ? age : null;
+        })
+        .filter((a: number | null): a is number => a !== null)
+        .sort((a: number, b: number) => a - b);
+      const _acqMedianAge = _acqAges.length
+        ? _acqAges[Math.floor(_acqAges.length / 2)]
+        : null;
       document.dispatchEvent(new CustomEvent("stats-histogram", {
-        detail: { pricesWan: last12mPricesWan, district, city: clickedCity },
+        detail: { pricesWan: last12mPricesWan, district, city: clickedCity, medianBuildingAgeYears: _acqMedianAge },
       }));
     }
 

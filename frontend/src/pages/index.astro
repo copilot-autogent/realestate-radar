@@ -391,6 +391,57 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <p id="dpt-placeholder" class="dpt-placeholder">請輸入存款與儲蓄金額以查看時間軸</p>
       </div>
 
+      <!-- Hidden Acquisition Cost Calculator (issue #121) -->
+      <div id="acquisition-cost-calculator" class="acquisition-cost-calculator">
+        <h3>💰 首購隱藏費用明細</h3>
+        <div class="calc-inputs">
+          <div class="calc-input-row">
+            <label for="acq-price">總價 (萬)</label>
+            <div class="acq-price-wrapper">
+              <input type="number" id="acq-price" placeholder="例如: 1000" min="0" step="10"
+                aria-label="購屋總價（萬元）" />
+              <span id="acq-price-hint" class="acq-price-hint"></span>
+            </div>
+          </div>
+          <div class="calc-input-row">
+            <label for="acq-ping">坪數</label>
+            <input type="number" id="acq-ping" placeholder="例如: 30" min="1" step="1"
+              aria-label="房屋坪數" />
+          </div>
+          <div class="calc-input-row">
+            <label for="acq-age">屋齡 (年)</label>
+            <input type="number" id="acq-age" placeholder="例如: 10" min="0" step="1"
+              aria-label="屋齡（年）" />
+          </div>
+          <div class="calc-input-row">
+            <label for="acq-dp">頭期款 (%)</label>
+            <input type="number" id="acq-dp" value="20" min="0" max="100" step="5"
+              aria-label="頭期款比例（%）" />
+          </div>
+          <div class="calc-input-row acq-toggle-row">
+            <label class="acq-toggle-label">
+              <input type="checkbox" id="acq-agent" checked aria-label="是否含仲介費" />
+              含仲介費（1%）
+            </label>
+          </div>
+        </div>
+
+        <div id="acq-result" class="acq-result" style="display:none">
+          <table class="acq-breakdown-table" aria-label="隱藏費用明細表">
+            <thead>
+              <tr>
+                <th>費用項目</th>
+                <th class="acq-th-rate">計算依據</th>
+                <th class="acq-th-amount">金額</th>
+              </tr>
+            </thead>
+            <tbody id="acq-breakdown-body"></tbody>
+          </table>
+          <div id="acq-summary" class="acq-summary" aria-live="polite"></div>
+        </div>
+        <p id="acq-placeholder" class="acq-placeholder">請輸入總價以查看費用明細</p>
+      </div>
+
       <div id="stats-panel" class="stats-panel">
         <h3>統計資訊</h3>
         {showBuyersMarket && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
@@ -1532,6 +1583,127 @@ const showBuyersMarket = !isStale && dataYear !== null;
   });
 
   // ============================================================
+  // ---- Acquisition Cost Calculator (issue #121) --------------
+  // ============================================================
+
+  const {
+    computeAcquisitionCostSummary: computeAcqSummary,
+    computeTotalUpfrontNTD: computeUpfront,
+    formatNTD: fmtNTD,
+    formatPct: fmtPct,
+  } = await import("../lib/acquisitionCostUtils.js");
+
+  const acqPriceInput   = document.getElementById("acq-price")   as HTMLInputElement;
+  const acqPingInput    = document.getElementById("acq-ping")    as HTMLInputElement;
+  const acqAgeInput     = document.getElementById("acq-age")     as HTMLInputElement;
+  const acqDpInput      = document.getElementById("acq-dp")      as HTMLInputElement;
+  const acqAgentChk     = document.getElementById("acq-agent")   as HTMLInputElement;
+  const acqPriceHint    = document.getElementById("acq-price-hint") as HTMLSpanElement;
+  const acqResult       = document.getElementById("acq-result")  as HTMLDivElement;
+  const acqBodyEl       = document.getElementById("acq-breakdown-body") as HTMLTableSectionElement;
+  const acqSummaryEl    = document.getElementById("acq-summary") as HTMLDivElement;
+  const acqPlaceholder  = document.getElementById("acq-placeholder") as HTMLParagraphElement;
+
+  function calculateAcq(): void {
+    const priceWan = parseFloat(acqPriceInput?.value ?? "");
+    const ping     = parseFloat(acqPingInput?.value  ?? "");
+    const age      = parseFloat(acqAgeInput?.value   ?? "");
+    const dpPct    = parseFloat(acqDpInput?.value    ?? "20");
+    const includeAgent = acqAgentChk?.checked ?? true;
+
+    if (!Number.isFinite(priceWan) || priceWan <= 0) {
+      acqResult.style.display = "none";
+      acqPlaceholder.style.display = "block";
+      return;
+    }
+
+    const priceNTD   = priceWan * 10_000;
+    const safePing   = Number.isFinite(ping) && ping > 0 ? ping : 0;
+    const safeAge    = Number.isFinite(age)  && age  >= 0 ? age  : 0;
+    const safeDpPct  = Number.isFinite(dpPct) && dpPct >= 0 && dpPct <= 100 ? dpPct : 20;
+
+    const result = computeAcqSummary(priceNTD, safePing, safeAge, includeAgent);
+
+    // Render breakdown rows
+    acqBodyEl.innerHTML = result.items.map((item) => {
+      const isZero    = item.amountNTD === 0;
+      const labelCls  = item.isOptional ? "acq-item-label acq-item-optional" : "acq-item-label";
+      const amountCls = isZero ? "acq-item-amount acq-item-zero" : "acq-item-amount";
+      return `<tr>
+        <td class="${labelCls}">${item.label}</td>
+        <td class="acq-item-rate">${item.rateDescription}</td>
+        <td class="${amountCls}">${isZero ? "—" : fmtNTD(item.amountNTD)}</td>
+      </tr>`;
+    }).join("");
+
+    // Summary row
+    const totalHidden  = result.totalHiddenCostsNTD;
+    const hiddenPct    = result.hiddenCostsPct;
+    const totalUpfront = computeUpfront(priceNTD, safeDpPct, totalHidden);
+
+    acqSummaryEl.innerHTML = `
+      <div class="acq-summary-total-hidden">
+        隱藏費用合計：${fmtNTD(totalHidden)}（${fmtPct(hiddenPct)} of 總價）
+      </div>
+      <div class="acq-summary-upfront">
+        頭期款所需現金 = 頭期款 ${safeDpPct}%（${fmtNTD(priceNTD * safeDpPct / 100)}）＋ 隱藏費用（${fmtNTD(totalHidden)}）<br>
+        <strong>合計：${fmtNTD(totalUpfront)}</strong>
+      </div>
+    `;
+
+    acqPlaceholder.style.display = "none";
+    acqResult.style.display = "block";
+  }
+
+  acqPriceInput?.addEventListener("input", calculateAcq);
+  acqPingInput?.addEventListener("input", calculateAcq);
+  acqAgeInput?.addEventListener("input", calculateAcq);
+  acqDpInput?.addEventListener("input", calculateAcq);
+  acqAgentChk?.addEventListener("change", calculateAcq);
+
+  // Pre-fill from district click via stats-histogram event
+  document.addEventListener("stats-histogram", (e: Event) => {
+    const { pricesWan: rawPrices, district, medianBuildingAgeYears } =
+      (e as CustomEvent<{ pricesWan?: number[]; district?: string; city?: string; medianBuildingAgeYears?: number | null }>).detail;
+    if (!rawPrices || rawPrices.length === 0) return;
+    const finite = rawPrices.filter((p) => Number.isFinite(p) && p > 0);
+    if (finite.length === 0) return;
+
+    const sorted = [...finite].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const medianUnitWan = sorted.length % 2 === 0
+      ? (sorted[mid - 1]! + sorted[mid]!) / 2
+      : sorted[mid]!;
+
+    // Default 30坪 if not filled
+    const pingVal = parseFloat(acqPingInput?.value ?? "");
+    const sizePing = Number.isFinite(pingVal) && pingVal > 0 ? pingVal : 30;
+    const suggested = Math.round(medianUnitWan * sizePing);
+
+    if (!acqPriceInput.value && suggested > 0) {
+      acqPriceInput.value = String(suggested);
+    }
+    if (acqPriceHint) {
+      const label = district
+        ? `${district} 中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`
+        : `中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`;
+      acqPriceHint.textContent = `≈ ${label}`;
+    }
+
+    // Pre-fill ping (default 30坪 if field is empty)
+    if (!acqPingInput.value) {
+      acqPingInput.value = String(sizePing);
+    }
+
+    // Pre-fill building age if available
+    if (typeof medianBuildingAgeYears === "number" && Number.isFinite(medianBuildingAgeYears) && !acqAgeInput.value) {
+      acqAgeInput.value = String(Math.round(medianBuildingAgeYears));
+    }
+
+    calculateAcq();
+  });
+
+  // ============================================================
   // ---- Saved Search Feature ----------------------------------
   // ============================================================
 
@@ -2251,6 +2423,138 @@ const showBuyersMarket = !isStale && dataYear !== null;
     font-size: 0.72rem;
     display: block;
     margin-top: 3px;
+  }
+
+  /* ---- Acquisition Cost Calculator (issue #121) ---- */
+  .acquisition-cost-calculator {
+    margin-top: 12px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .acquisition-cost-calculator h3 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #78350f;
+    margin-bottom: 10px;
+  }
+  .acquisition-cost-calculator .calc-input-row label {
+    color: #92400e;
+    min-width: 90px;
+  }
+  .acquisition-cost-calculator .calc-input-row input[type="number"] {
+    border: 1px solid #fcd34d;
+    background: #fff;
+    flex: 1;
+    padding: 6px 8px;
+    border-radius: 5px;
+    font-size: 0.85rem;
+  }
+  .acquisition-cost-calculator .calc-input-row input[type="number"]:focus {
+    outline: none;
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245,158,11,0.2);
+  }
+  .acq-price-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 2px;
+  }
+  .acq-price-hint {
+    font-size: 0.7rem;
+    color: #b45309;
+    line-height: 1.3;
+  }
+  .acq-toggle-row {
+    padding: 2px 0;
+  }
+  .acq-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: #78350f;
+    cursor: pointer;
+    min-width: unset;
+  }
+  .acq-toggle-label input[type="checkbox"] {
+    accent-color: #f59e0b;
+    width: 15px;
+    height: 15px;
+  }
+  .acq-placeholder {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin-top: 10px;
+    text-align: center;
+  }
+  .acq-result {
+    margin-top: 12px;
+  }
+  .acq-breakdown-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+  }
+  .acq-breakdown-table th {
+    text-align: left;
+    font-size: 0.72rem;
+    color: #92400e;
+    padding: 4px 6px;
+    border-bottom: 1px solid #fde68a;
+  }
+  .acq-th-rate   { width: 45%; }
+  .acq-th-amount { text-align: right; white-space: nowrap; }
+  .acq-breakdown-table td {
+    padding: 5px 6px;
+    vertical-align: top;
+    border-bottom: 1px solid #fef9c3;
+  }
+  .acq-item-label {
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .acq-item-optional {
+    color: #6b7280;
+  }
+  .acq-item-rate {
+    color: #6b7280;
+    font-style: italic;
+  }
+  .acq-item-amount {
+    text-align: right;
+    font-weight: 600;
+    color: #1e293b;
+    white-space: nowrap;
+  }
+  .acq-item-zero {
+    color: #9ca3af;
+    text-decoration: line-through;
+  }
+  .acq-summary {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 0.82rem;
+    line-height: 1.6;
+  }
+  .acq-summary-total-hidden {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #78350f;
+    margin-bottom: 4px;
+  }
+  .acq-summary-upfront {
+    font-size: 0.82rem;
+    color: #1e293b;
+    border-top: 1px solid #fcd34d;
+    margin-top: 6px;
+    padding-top: 6px;
+    font-weight: 600;
   }
 
   /* ---- Saved Search ---- */
