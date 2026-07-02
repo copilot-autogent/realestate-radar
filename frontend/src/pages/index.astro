@@ -1624,6 +1624,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const safeAge    = Number.isFinite(age)  && age  >= 0 ? age  : 0;
     const safeDpPct  = Number.isFinite(dpPct) && dpPct >= 0 && dpPct <= 100 ? dpPct : 20;
     const missingPing = !Number.isFinite(ping) || ping <= 0;
+    // Blank age defaults to 0 (new building, 3,000/坪) — flag for info note
+    const ageIsBlank  = acqAgeInput.value.trim() === "";
 
     const result = computeAcqSummary(priceNTD, safePing, safeAge, includeAgent);
 
@@ -1642,9 +1644,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </tr>`;
     }).join("");
 
-    // Note when ping missing
-    const missingNote = missingPing
-      ? `<p style="font-size:0.72rem;color:#b45309;margin:0 0 6px">* 請輸入坪數以計算裝修費</p>`
+    // Note when ping missing or age blank (default to new-building rate)
+    const notes: string[] = [];
+    if (missingPing) notes.push("請輸入坪數以計算裝修費");
+    if (ageIsBlank)  notes.push("未輸入屋齡，以新成屋（3,000/坪）估算裝修費");
+    const missingNote = notes.length
+      ? `<p style="font-size:0.72rem;color:#b45309;margin:0 0 6px">ℹ ${notes.join("；")}</p>`
       : "";
 
     // Use Math.round for down payment to match computeTotalUpfrontNTD
@@ -1687,32 +1692,37 @@ const showBuyersMarket = !isStale && dataYear !== null;
       ? (sorted[mid - 1]! + sorted[mid]!) / 2
       : sorted[mid]!;
 
-    // Use current or default ping for suggested price; always overwrite on district change
+    // When a specific district is provided (polygon click), always overwrite auto-fill fields
+    // so repeated district clicks stay in sync. For non-district events (search results), use
+    // one-shot fill (don't overwrite what the user has typed manually).
+    const isDistrictClick = !!district;
+
+    // Use current or default ping for suggested price
     const pingVal = parseFloat(acqPingInput?.value ?? "");
     const sizePing = Number.isFinite(pingVal) && pingVal > 0 ? pingVal : 30;
     const suggested = Math.round(medianUnitWan * sizePing);
 
-    // Capture whether the price was empty BEFORE we set it (for hint guard)
-    const priceWasEmpty = !acqPriceInput.value;
-    if (priceWasEmpty && suggested > 0) {
+    if ((isDistrictClick || !acqPriceInput.value) && suggested > 0) {
       acqPriceInput.value = String(suggested);
-    }
-    // Only update hint when price was auto-filled (not when user has manually entered a price)
-    if (priceWasEmpty && acqPriceHint) {
-      const label = district
-        ? `${district} 中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`
-        : `中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`;
-      acqPriceHint.textContent = `≈ ${label}`;
+      // Update hint whenever price was (re-)auto-filled
+      if (acqPriceHint) {
+        const label = district
+          ? `${district} 中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`
+          : `中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`;
+        acqPriceHint.textContent = `≈ ${label}`;
+      }
     }
 
-    // Pre-fill ping (default 30坪) if field is empty
+    // Pre-fill ping if empty
     if (!acqPingInput.value) {
       acqPingInput.value = String(sizePing);
     }
 
-    // Pre-fill building age if available and field is empty
-    if (typeof medianBuildingAgeYears === "number" && Number.isFinite(medianBuildingAgeYears) && !acqAgeInput.value) {
-      acqAgeInput.value = String(Math.round(medianBuildingAgeYears));
+    // Pre-fill building age if available; always overwrite on district click
+    if (typeof medianBuildingAgeYears === "number" && Number.isFinite(medianBuildingAgeYears)) {
+      if (isDistrictClick || !acqAgeInput.value) {
+        acqAgeInput.value = String(Math.round(medianBuildingAgeYears));
+      }
     }
 
     calculateAcq();
