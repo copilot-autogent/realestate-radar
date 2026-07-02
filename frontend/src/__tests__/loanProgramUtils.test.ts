@@ -68,6 +68,7 @@ describe("computeDaysRemaining", () => {
   it("returns null for malformed deadline date string", () => {
     expect(computeDaysRemaining("not-a-date")).toBeNull();
     expect(computeDaysRemaining("2026-99-99")).toBeNull();
+    expect(computeDaysRemaining("2026-02-30")).toBeNull(); // impossible date, JS would normalize without strict check
   });
 
   it("returns positive days for future deadline", () => {
@@ -123,7 +124,9 @@ describe("computeLoanComparison", () => {
   });
 
   it("civil servant rate is cheapest (lowest rate among non-TBD)", () => {
-    const result = computeLoanComparison(1000, 20);
+    // Use explicit date well before 青安 deadline so it is eligible too
+    const before = new Date("2025-01-01");
+    const result = computeLoanComparison(1000, 20, LOAN_PROGRAMS, before);
     const cheapest = result.find((r) => r.isCheapest);
     expect(cheapest?.program.id).toBe("civil-servant");
   });

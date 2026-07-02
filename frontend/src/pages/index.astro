@@ -1835,6 +1835,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
 
     function lpcFmt(n: number): string {
+      if (!Number.isFinite(n)) return "— 元";
       return Math.round(n).toLocaleString("zh-TW") + " 元";
     }
     function lpcFmtWan(n: number): string {
@@ -1844,6 +1845,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     /** Returns days remaining until program deadline; null if no deadline or already past. */
     function lpcDaysRemaining(deadlineDate: string | null): number | null {
       if (!deadlineDate) return null;
+      // Require strict YYYY-MM-DD format to reject impossible dates like "2026-02-30"
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(deadlineDate)) return null;
       const deadline = new Date(`${deadlineDate}T23:59:59+08:00`);
       if (isNaN(deadline.getTime())) return null;
       const diffMs = deadline.getTime() - Date.now();
@@ -1898,14 +1901,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
           return { p, monthly, totalInterest, daysLeft, isExpired };
         });
 
-      // Find cheapest non-TBD, non-expired program
+      // Find cheapest non-TBD, non-expired program (first tie only, matching computeLoanComparison)
       const eligible = rows.filter((r) => !r.p.rateTBD && r.monthly > 0 && !r.isExpired);
       const minMonthly = eligible.length > 0 ? Math.min(...eligible.map((r) => r.monthly)) : -1;
+      const cheapestId = eligible.find((r) => Math.abs(r.monthly - minMonthly) < 0.01)?.p.id ?? null;
 
       lpcTbody.innerHTML = "";
       for (const { p, monthly, totalInterest, daysLeft, isExpired } of rows) {
-        const isCheapest = eligible.some((r) => r.p.id === p.id) &&
-                           Math.abs(monthly - minMonthly) < 0.01;
+        const isCheapest = cheapestId !== null && p.id === cheapestId;
         const tr = document.createElement("tr");
         if (isCheapest) tr.classList.add("lpc-row-cheapest");
         if (isExpired) tr.classList.add("lpc-row-expired");

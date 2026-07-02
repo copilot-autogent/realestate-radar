@@ -128,9 +128,19 @@ export function computeDaysRemaining(
 ): number | null {
   if (!deadlineDate) return null;
 
+  // Require strict YYYY-MM-DD format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deadlineDate)) return null;
+  // Round-trip check: reject impossible dates JS would normalize (e.g. 2026-02-30 → 2026-03-02)
+  const [y, m, d] = deadlineDate.split("-").map(Number);
+  const check = new Date(Date.UTC(y!, m! - 1, d!));
+  if (
+    check.getUTCFullYear() !== y ||
+    check.getUTCMonth() + 1 !== m ||
+    check.getUTCDate() !== d
+  ) return null;
   // Interpret deadline as end-of-day Taiwan time (UTC+8 = UTC+480min)
   const deadline = new Date(`${deadlineDate}T23:59:59+08:00`);
-  if (isNaN(deadline.getTime())) return null; // malformed date string
+  if (isNaN(deadline.getTime())) return null; // fallback guard
   const diffMs = deadline.getTime() - now.getTime();
   if (diffMs <= 0) return null; // already past
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
