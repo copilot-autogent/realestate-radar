@@ -119,6 +119,7 @@ export function computeMonthlyPayment(
  * based on device clock.
  *
  * Returns null when deadlineDate is null.
+ * Returns null when deadlineDate is malformed or unparseable.
  * Returns null (past) when the deadline has already passed (Taiwan time UTC+8).
  */
 export function computeDaysRemaining(
@@ -129,6 +130,7 @@ export function computeDaysRemaining(
 
   // Interpret deadline as end-of-day Taiwan time (UTC+8 = UTC+480min)
   const deadline = new Date(`${deadlineDate}T23:59:59+08:00`);
+  if (isNaN(deadline.getTime())) return null; // malformed date string
   const diffMs = deadline.getTime() - now.getTime();
   if (diffMs <= 0) return null; // already past
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
@@ -191,13 +193,19 @@ export function computeLoanComparison(
   });
 
   // Mark cheapest: lowest monthly payment among non-TBD programs with principal > 0
-  const eligible = results.filter((r) => !r.program.rateTBD && r.monthlyPaymentNTD > 0);
+  // that have not passed their deadline (expired programs are no longer accessible).
+  // A program with no deadline (deadlineDate === null) is always considered active.
+  const eligible = results.filter(
+    (r) => !r.program.rateTBD && r.monthlyPaymentNTD > 0 &&
+           (r.program.deadlineDate === null || r.daysRemaining !== null)
+  );
   if (eligible.length > 0) {
     const minPayment = Math.min(...eligible.map((r) => r.monthlyPaymentNTD));
-    for (const r of results) {
-      if (!r.program.rateTBD && Math.abs(r.monthlyPaymentNTD - minPayment) < 0.01) {
+    // Only mark a program cheapest if it is in the eligible set (non-TBD, active deadline)
+    for (const r of eligible) {
+      if (Math.abs(r.monthlyPaymentNTD - minPayment) < 0.01) {
         r.isCheapest = true;
-        break; // only mark one
+        break; // only mark one (first tie wins)
       }
     }
   }

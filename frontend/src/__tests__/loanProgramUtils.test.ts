@@ -65,6 +65,11 @@ describe("computeDaysRemaining", () => {
     expect(computeDaysRemaining(null)).toBeNull();
   });
 
+  it("returns null for malformed deadline date string", () => {
+    expect(computeDaysRemaining("not-a-date")).toBeNull();
+    expect(computeDaysRemaining("2026-99-99")).toBeNull();
+  });
+
   it("returns positive days for future deadline", () => {
     const future = new Date("2024-01-01");
     const deadline = "2024-12-31";
@@ -193,6 +198,16 @@ describe("computeLoanComparison", () => {
     expect(result).toHaveLength(1);
     expect(result[0].program.id).toBe("custom");
     expect(result[0].isCheapest).toBe(true); // only one non-TBD program
+  });
+
+  it("expired 青安 is not marked cheapest after its deadline", () => {
+    // After 青安 expires, civil servant (1.36%) should be cheapest
+    const after = new Date("2026-08-01T00:00:00+08:00");
+    const result = computeLoanComparison(1000, 20, LOAN_PROGRAMS, after);
+    const qingan = result.find((r) => r.program.id === "qingan");
+    const civilServant = result.find((r) => r.program.id === "civil-servant");
+    expect(qingan?.isCheapest).toBe(false);
+    expect(civilServant?.isCheapest).toBe(true);
   });
 
   it("daysRemaining is null for programs without a deadline", () => {
