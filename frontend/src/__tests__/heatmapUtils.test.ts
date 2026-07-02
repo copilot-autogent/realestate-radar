@@ -133,6 +133,18 @@ describe("computeHeatmapData", () => {
     expect(jan).toBeDefined();
     expect(jan!.count).toBe(1);
   });
+
+  it("does not produce future zero-count cells when latest month is not December", () => {
+    // Data ends in 2024-06 — cells for 2024-07..12 should NOT be manufactured
+    const features = makeMonthlyFeatures("大安區", "台北市", "2022-07", 24, 2);
+    const result = computeHeatmapData(features, "大安區", "台北市");
+    expect(result.sufficient).toBe(true);
+    const future = result.cells.find((c) => c.year === 2024 && c.month === 7);
+    expect(future).toBeUndefined();
+    const latest = result.cells.find((c) => c.year === 2024 && c.month === 6);
+    expect(latest).toBeDefined();
+    expect(latest!.count).toBe(2);
+  });
 });
 
 describe("last12Cells", () => {
@@ -158,7 +170,7 @@ describe("last12Cells", () => {
   });
 
   it("fills count=0 for months with no transactions", () => {
-    // 36 months with a gap: skip month 2023-06
+    // 2023 has a gap at 2023-06; all other months have 2 transactions
     const features: any[] = [];
     for (let mo = 1; mo <= 12; mo++) {
       if (mo !== 6) {
@@ -170,9 +182,12 @@ describe("last12Cells", () => {
     features.push(...makeMonthlyFeatures("大安區", "台北市", "2024-01", 12, 2));
 
     const data = computeHeatmapData(features, "大安區", "台北市");
-    const cells = last12Cells(data);
-    const jun2023 = cells.find((c) => c.year === 2024 && c.month === 6);
-    // 2024-06 should have count=2 (gap is in 2023-06, not 2024-06)
-    expect(jun2023?.count ?? 0).toBe(2);
+    // 2023-06 should be zero (gap)
+    const jun2023 = data.cells.find((c) => c.year === 2023 && c.month === 6);
+    expect(jun2023).toBeDefined();
+    expect(jun2023!.count).toBe(0);
+    // 2024-06 should be 2 (not affected by the 2023 gap)
+    const jun2024 = data.cells.find((c) => c.year === 2024 && c.month === 6);
+    expect(jun2024!.count).toBe(2);
   });
 });

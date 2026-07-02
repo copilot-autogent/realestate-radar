@@ -3416,7 +3416,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     let renderCells: any[];
     let renderYears: number[];
     if (isMobile) {
-      // last12Cells equivalent inline
+      // Mirror last12Cells() from heatmapUtils: find max (year, month) and walk back 12
       let maxYear = 0, maxMonth = 0;
       for (const c of cells) {
         if (c.year > maxYear || (c.year === maxYear && c.month > maxMonth)) {
@@ -3433,7 +3433,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         cells.find((c: any) => c.year === year && c.month === month) ??
         { year, month, count: 0, medianUnitPriceWan: null, isBuyerAdvantaged: false }
       );
-      renderYears = ["last12mo"] as any; // single row
+      renderYears = [];  // single row, year labels suppressed
     } else {
       renderCells = cells;
       renderYears = years;
@@ -3463,16 +3463,37 @@ const showBuyersMarket = !isStale && dataYear !== null;
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, canvasW, canvasH);
 
-    // Colour scale: light blue → deep blue (Tailwind slate-inspired)
+    // Colour scale: light blue → deep blue
+    // #dbeafe = rgb(219, 234, 254) → #1d4ed8 = rgb(29, 78, 216)
     const maxCount = Math.max(...renderCells.map((c: any) => c.count), 1);
     function cellColor(count: number): string {
       if (count === 0) return "#f1f5f9";
       const t = count / maxCount;
-      // Interpolate: #dbeafe (t=0) → #1d4ed8 (t=1)
       const r = Math.round(219 + t * (29  - 219));
-      const g = Math.round(191 + t * (78  - 191));
+      const g = Math.round(234 + t * (78  - 234));
       const b = Math.round(254 + t * (216 - 254));
       return `rgb(${r},${g},${b})`;
+    }
+
+    // Polyfill for ctx.roundRect (unsupported on Safari <16)
+    function drawRoundRect(c2d: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+      if (typeof c2d.roundRect === "function") {
+        c2d.beginPath();
+        c2d.roundRect(x, y, w, h, r);
+      } else {
+        const rr = Math.min(r, w / 2, h / 2);
+        c2d.beginPath();
+        c2d.moveTo(x + rr, y);
+        c2d.lineTo(x + w - rr, y);
+        c2d.arcTo(x + w, y, x + w, y + rr, rr);
+        c2d.lineTo(x + w, y + h - rr);
+        c2d.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+        c2d.lineTo(x + rr, y + h);
+        c2d.arcTo(x, y + h, x, y + h - rr, rr);
+        c2d.lineTo(x, y + rr);
+        c2d.arcTo(x, y, x + rr, y, rr);
+        c2d.closePath();
+      }
     }
 
     // ── Draw month-axis labels ────────────────────────────────────────────
@@ -3512,16 +3533,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
         // Fill cell
         ctx.fillStyle = cell ? cellColor(cell.count) : "#f1f5f9";
-        ctx.beginPath();
-        ctx.roundRect(cx, cy, CELL_W, CELL_H, 2);
+        drawRoundRect(ctx, cx, cy, CELL_W, CELL_H, 2);
         ctx.fill();
 
         // Buyer-advantaged ring (🔵 = blue border)
         if (cell?.isBuyerAdvantaged) {
           ctx.strokeStyle = "#3b82f6";
           ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.roundRect(cx + 0.75, cy + 0.75, CELL_W - 1.5, CELL_H - 1.5, 2);
+          drawRoundRect(ctx, cx + 0.75, cy + 0.75, CELL_W - 1.5, CELL_H - 1.5, 2);
           ctx.stroke();
         }
 
@@ -3555,9 +3574,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
       if (tooltip) tooltip.style.display = "none";
     };
 
-    // ── Buyer-advantaged summary ──────────────────────────────────────────
+    // ── Buyer-advantaged summary (based on visible cells only) ───────────────
     if (buyerSumEl) {
-      const buyerCells = cells.filter((c: any) => c.isBuyerAdvantaged);
+      const buyerCells = renderCells.filter((c: any) => c.isBuyerAdvantaged);
       if (buyerCells.length > 0) {
         const byYear: Record<number, string[]> = {};
         for (const c of buyerCells) {
@@ -3605,7 +3624,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   document.getElementById("heatmap-btn-district")?.addEventListener("click", () => {
-    if (!_heatmapDistrictData) return;
+    if (!_heatmapDistrictData) {
+      // Show hint — no district has been selected yet
+      const insuffEl = document.getElementById("heatmap-insufficient") as HTMLDivElement | null;
+      if (insuffEl) {
+        insuffEl.textContent = "請先點選地圖上的行政區以查看本區熱力圖";
+        insuffEl.style.display = "block";
+      }
+      return;
+    }
     _heatmapActiveScope = "district";
     updateHeatmapScopeButtons();
     renderHeatmapCanvas(_heatmapDistrictData);

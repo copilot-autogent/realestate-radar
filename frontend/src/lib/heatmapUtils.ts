@@ -39,7 +39,7 @@ function median(arr: number[]): number {
 function parseDateKey(raw: unknown): { year: number; month: number } | null {
   if (!raw || typeof raw !== "string") return null;
   const s = raw.normalize("NFKC");
-  const m = /^(\d{4})[-/](\d{2})/.exec(s);
+  const m = /^(\d{4})[-/](\d{1,2})/.exec(s);
   if (!m) return null;
   const year = parseInt(m[1]!, 10);
   const month = parseInt(m[2]!, 10);
@@ -92,28 +92,35 @@ export function computeHeatmapData(
   }
 
   // Determine trailing years from the latest date present in data
-  const allYears = [...cellMap.keys()]
-    .map((k) => parseInt(k.slice(0, 4), 10))
-    .filter((y) => !isNaN(y));
-  if (allYears.length === 0) {
+  // Anchor to the latest (year, month) pair present in data — avoids manufacturing
+  // zero-count "future" cells when the newest data doesn't reach December.
+  const allKeys = [...cellMap.keys()].sort(); // "YYYY-MM" lexicographic sort
+  if (allKeys.length === 0) {
     return { district: label, isGlobal, cells: [], years: [], sufficient: false };
   }
-  const latestYear = Math.max(...allYears);
+  const latestKey   = allKeys[allKeys.length - 1]!;
+  const latestYear  = parseInt(latestKey.slice(0, 4), 10);
+  const latestMonth = parseInt(latestKey.slice(5, 7), 10);
+
+  // Build a window of maxYears trailing calendar years, but cap months in the
+  // latest year to [1..latestMonth] so we don't emit empty future months.
+  const firstYear = latestYear - maxYears + 1;
   const years: number[] = [];
-  for (let y = latestYear - maxYears + 1; y <= latestYear; y++) years.push(y);
+  for (let y = firstYear; y <= latestYear; y++) years.push(y);
 
   // Build cells for each (year, month) within the window
   const cells: HeatmapCell[] = [];
   for (const year of years) {
+    const maxMo = year === latestYear ? latestMonth : 12;
     // Counts per month this year (for buyer-advantaged threshold)
     const monthCounts: number[] = Array(12).fill(0);
-    for (let mo = 1; mo <= 12; mo++) {
+    for (let mo = 1; mo <= maxMo; mo++) {
       const key = `${year}-${String(mo).padStart(2, "0")}`;
       monthCounts[mo - 1] = cellMap.get(key)?.count ?? 0;
     }
-    const yearPeak = Math.max(...monthCounts);
+    const yearPeak = Math.max(...monthCounts.slice(0, maxMo));
 
-    for (let mo = 1; mo <= 12; mo++) {
+    for (let mo = 1; mo <= maxMo; mo++) {
       const key = `${year}-${String(mo).padStart(2, "0")}`;
       const entry = cellMap.get(key);
       const count = entry?.count ?? 0;
