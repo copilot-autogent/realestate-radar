@@ -2343,7 +2343,7 @@
 
   // ---- Supply Pressure overlay state ----
   let supplyPressureActive = false;
-  /** Cached supply pressure results keyed by district name. */
+  /** Cached supply pressure results keyed by "city:district" to avoid cross-city collisions. */
   let cachedSupplyPressureByDistrict: Record<string, SupplyPressureResult> = {};
   /** Permits data retained for supply pressure computation (set when supply-pressure-mode-change arrives). */
   let supplyPressurePermitsData: {
@@ -2871,6 +2871,7 @@
   }
 
   function computeDistrictMedians(features: any[]): Record<string, number> {
+    const byDistrict: Record<string, number[]> = {};
     for (const f of features) {
       const d = f.properties?.district as string | undefined;
       const p = f.properties?.unitPrice as number | undefined;
@@ -3019,9 +3020,10 @@
       for (const f of districtGeoJSON.features) {
         const district = f.properties.district as string;
         const city = f.properties.city as string | undefined;
+        const key = `${city ?? ""}:${district}`;
         const { txCount12mo, txCountPrior12mo } = computeDistrictTxCounts(district, city);
         const buyerScore = computeBuyerTimingScore(district, city);
-        newCache[district] = computeSupplyPressure({
+        newCache[key] = computeSupplyPressure({
           district,
           city,
           upcomingCompletions: freshByDistrict[district] ?? 0,
@@ -3032,6 +3034,9 @@
         });
       }
       cachedSupplyPressureByDistrict = newCache;
+    } else if (!supplyPressureActive) {
+      // Clear stale cache when overlay is disabled or rawAllFeatures is empty
+      cachedSupplyPressureByDistrict = {};
     }
 
     const updated = {
@@ -3062,8 +3067,8 @@
         props.mrtPremium    = mrtPremiums[`${city ?? ""}:${district}`] ?? -9998;
         props.presaleSpread = presaleSpreads[`${city ?? ""}:${district}`] ?? -9999;
         // Join supply pressure tier for choropleth fill and hover tooltip
-        if (supplyPressureActive && cachedSupplyPressureByDistrict[district]) {
-          const sp = cachedSupplyPressureByDistrict[district]!;
+        if (supplyPressureActive && cachedSupplyPressureByDistrict[`${city ?? ""}:${district}`]) {
+          const sp = cachedSupplyPressureByDistrict[`${city ?? ""}:${district}`]!;
           props.supplyPressureTier   = sp.insufficient ? "insufficient" : sp.tier;
           props.supplyPressureScore  = sp.score;
           props.supplyPressurePer1k  = sp.completionsPer1000;
@@ -4147,7 +4152,9 @@
     // Supply pressure badge — shown when overlay is active
     let supplyPressureClickHtml = "";
     if (supplyPressureActive) {
-      const sp = cachedSupplyPressureByDistrict[district];
+      const clickCity = (e.features[0].properties.city as string | undefined) ?? activeCity ?? "";
+      const spKey = `${clickCity}:${district}`;
+      const sp = cachedSupplyPressureByDistrict[spKey];
       if (!sp || sp.insufficient) {
         supplyPressureClickHtml = `
           <div class="popup-row" style="margin-top:4px">
@@ -4156,7 +4163,7 @@
           </div>`;
       } else {
         const completionsCount = completionByDistrict[district] ?? 0;
-        const { txCount12mo } = computeDistrictTxCounts(district);
+        const { txCount12mo } = computeDistrictTxCounts(district, clickCity || undefined);
         const color = sp.tier === "high" ? "#dc2626" : sp.tier === "medium-high" ? "#f97316" : sp.tier === "medium" ? "#a16207" : "#15803d";
         supplyPressureClickHtml = `
           <div class="popup-row" style="margin-top:4px;flex-direction:column;align-items:flex-start;gap:3px">
@@ -4363,22 +4370,23 @@
     // Supply pressure tooltip row (visible only when overlay is active)
     let supplyPressureHoverHtml = "";
     if (supplyPressureActive) {
+      const hoverDistrict = props.district as string;
+      const hoverCity = props.city as string | undefined;
       const tier = props.supplyPressureTier as string | undefined;
-      const per1k = props.supplyPressurePer1k as number | undefined;
-      const txNow = props.txCount12mo as number | undefined;
-      const sp = tier && tier !== "insufficient" && cachedSupplyPressureByDistrict[props.district as string]
-        ? cachedSupplyPressureByDistrict[props.district as string]!
-        : null;
+      const spKey = `${hoverCity ?? ""}:${hoverDistrict}`;
+      const sp = tier && tier !== "insufficient" ? cachedSupplyPressureByDistrict[spKey] ?? null : null;
       if (!tier || tier === "insufficient") {
         supplyPressureHoverHtml = `<div class="popup-row" style="margin-top:4px"><span class="popup-label">⚠️ 供給壓力</span><span style="color:#94a3b8;font-size:0.76rem">資料不足</span></div>`;
       } else if (sp) {
         const labelZh = SUPPLY_TIER_LABEL_ZH[sp.tier];
-        const completionsCount = completionByDistrict[props.district as string] ?? 0;
-        const txCount12mo = sp.insufficient ? 0 : (cachedSupplyPressureByDistrict[props.district as string]?.velocityWeight != null ? "" : "");
-        const districtTxCounts = computeDistrictTxCounts(props.district as string);
+        // Use the pre-computed tx counts from the cache for consistency; avoid O(n) scan on mousemove
+        const completionsCount = (props.completionCount as number | undefined) ?? (props.supplyPressurePer1k != null ? 0 : 0);
+        const { txCount12mo: hoverTx12mo } = computeDistrictTxCounts(hoverDistrict, hoverCity);
+        // Look up completions from the score's own input (stored in completionsPer1000 × population / 1000)
+        const completionUnits = completionByDistrict[hoverDistrict] ?? 0;
         // Tooltip text per spec: "此區 2026 年預計完工 N 戶 / 近12月成交 M 件 — 供給壓力：中高"
         supplyPressureHoverHtml = `<div class="popup-row" style="margin-top:4px;flex-direction:column;align-items:flex-start;gap:2px">
-          <span style="font-size:0.73rem;color:#475569">此區 2026 年預計完工 <strong>${completionsCount.toLocaleString()}</strong> 戶 / 近12月成交 <strong>${districtTxCounts.txCount12mo}</strong> 件 — 供給壓力：<strong style="color:${tier === "high" ? "#dc2626" : tier === "medium-high" ? "#f97316" : "#374151"}">${labelZh}</strong></span>
+          <span style="font-size:0.73rem;color:#475569">此區 2026 年預計完工 <strong>${completionUnits.toLocaleString()}</strong> 戶 / 近12月成交 <strong>${hoverTx12mo}</strong> 件 — 供給壓力：<strong style="color:${tier === "high" ? "#dc2626" : tier === "medium-high" ? "#f97316" : "#374151"}">${labelZh}</strong></span>
         </div>`;
         if (tier === "high") {
           supplyPressureHoverHtml += `<div class="popup-row" style="margin-top:2px;color:#dc2626;font-size:0.73rem;font-weight:600">⚠️ 大量新屋即將完工，可能影響議價空間</div>`;
@@ -4580,7 +4588,8 @@
       if (!map.getLayer("districts-fill")) return;
 
       updateChoropleth();
-      map.setPaintProperty("districts-fill", "fill-color", getSupplyPressureFillColor());
+      // updateChoropleth() already applied getSupplyPressureFillColor() via the priority chain;
+      // no redundant setPaintProperty call needed here.
       updateSupplyPressureLegend(true);
       const legend = document.getElementById("choropleth-legend");
       if (legend) legend.style.opacity = "1";
@@ -4608,10 +4617,14 @@
         updatePresaleSpreadLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
+        updateAffordabilityLegend(true, affordabilityThreshold / 10000);
       } else {
         map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+        // No other overlay is active — reset legend to affordability/default
+        updateAffordabilityLegend(false);
       }
-      updateSupplyPressureLegend(false);
+      // Note: updateSupplyPressureLegend(false) is NOT called here because another overlay
+      // legend was already applied in the if/else chain above.
     }
   });
 

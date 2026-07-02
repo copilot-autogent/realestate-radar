@@ -4555,8 +4555,17 @@ const showBuyersMarket = !isStale && dataYear !== null;
         choroplethToggle.dispatchEvent(new Event("change"));
       }
       const data = await loadPermitsData();
+      // Re-check after await in case user toggled off during fetch, or fetch failed
       if (!data) {
         if (supplyPressureToggle) supplyPressureToggle.checked = false;
+        // Dispatch disable to clear any partially active state
+        document.dispatchEvent(new CustomEvent("supply-pressure-mode-change", {
+          detail: { enabled: false, permitsData: null },
+        }));
+        return;
+      }
+      if (!(supplyPressureToggle?.checked ?? false)) {
+        // User unchecked while we were fetching — abort silently
         return;
       }
       document.dispatchEvent(new CustomEvent("supply-pressure-mode-change", {
