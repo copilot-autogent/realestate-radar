@@ -2345,6 +2345,8 @@
   let supplyPressureActive = false;
   /** Cached supply pressure results keyed by "city:district" to avoid cross-city collisions. */
   let cachedSupplyPressureByDistrict: Record<string, SupplyPressureResult> = {};
+  /** Pre-computed 12-month tx counts keyed by "city:district", set alongside cachedSupplyPressureByDistrict. */
+  let cachedSupplyPressureTxCounts: Record<string, number> = {};
   /** Permits data retained for supply pressure computation (set when supply-pressure-mode-change arrives). */
   let supplyPressurePermitsData: {
     quarters: string[];
@@ -3013,15 +3015,15 @@
     // Pre-compute supply pressure scores (gated on supplyPressureActive to avoid O(n) work when off)
     if (supplyPressureActive && supplyPressurePermitsData && rawAllFeatures.length > 0) {
       const citySelect = document.getElementById("city-select") as HTMLSelectElement | null;
-      const currentCity = citySelect?.value || "台北市";
+      const currentCity = citySelect?.value || activeCity || "台北市";
       const recordCount = countPermitRecordsForCity(currentCity, supplyPressurePermitsData);
-      const freshByDistrict: Record<string, number> = completionActive
+      // Shallow-clone to avoid aliasing with completionByDistrict when that overlay is also active.
+      const freshByDistrict: Record<string, number> = { ...(completionActive
         ? completionByDistrict
-        : buildCompletionByDistrict(currentCity, supplyPressurePermitsData);
-      // Store fresh completions at module scope so tooltips can access them regardless of
-      // whether the completion overlay is also active.
+        : buildCompletionByDistrict(currentCity, supplyPressurePermitsData)) };
       supplyPressureCompletionByDistrict = freshByDistrict;
       const newCache: Record<string, SupplyPressureResult> = {};
+      const newTxCounts: Record<string, number> = {};
       for (const f of districtGeoJSON.features) {
         const district = f.properties.district as string;
         const city = f.properties.city as string | undefined;
@@ -3037,13 +3039,14 @@
           txCountPrior12mo,
           buyerTimingScore: buyerScore,
         });
-        // Tag tx12mo onto a per-key map so hover handler doesn't re-scan rawAllFeatures
-        (newCache[key] as any)._txCount12mo = txCount12mo;
+        newTxCounts[key] = txCount12mo;
       }
       cachedSupplyPressureByDistrict = newCache;
+      cachedSupplyPressureTxCounts = newTxCounts;
     } else {
       // Clear stale cache when overlay is disabled, permits data missing, or rawAllFeatures empty
       cachedSupplyPressureByDistrict = {};
+      cachedSupplyPressureTxCounts = {};
       supplyPressureCompletionByDistrict = {};
     }
 
@@ -3080,7 +3083,7 @@
           props.supplyPressureTier        = sp.insufficient ? "insufficient" : sp.tier;
           props.supplyPressureScore       = sp.score;
           props.supplyPressureCompletions = supplyPressureCompletionByDistrict[district] ?? 0;
-          props.supplyPressureTx12mo      = (sp as any)._txCount12mo ?? 0;
+          props.supplyPressureTx12mo      = cachedSupplyPressureTxCounts[`${city ?? ""}:${district}`] ?? 0;
         }
         return { ...f, properties: props };
       }),
@@ -4173,8 +4176,8 @@
       } else {
         // Use supplyPressureCompletionByDistrict (works even when completion overlay is off)
         const completionsCount = supplyPressureCompletionByDistrict[district] ?? 0;
-        const txCount12mo = (sp as any)._txCount12mo as number ?? 0;
-        const color = sp.tier === "high" ? "#dc2626" : sp.tier === "medium-high" ? "#f97316" : sp.tier === "medium" ? "#a16207" : "#15803d";
+        const txCount12mo = cachedSupplyPressureTxCounts[spKey] ?? 0;
+        const color = sp.tier === "high" ? "#dc2626" : sp.tier === "medium-high" ? "#f97316" : sp.tier === "medium" ? "#ca8a04" : "#15803d";
         supplyPressureClickHtml = `
           <div class="popup-row" style="margin-top:4px;flex-direction:column;align-items:flex-start;gap:3px">
             <span class="popup-label">⚠️ 供給壓力</span>
@@ -4602,35 +4605,28 @@
       supplyPressureActive = false;
       supplyPressurePermitsData = null;
       cachedSupplyPressureByDistrict = {};
+      cachedSupplyPressureTxCounts = {};
       supplyPressureCompletionByDistrict = {};
 
       if (!map.getLayer("districts-fill")) return;
+      // updateChoropleth re-applies the correct fill and legend for whatever overlay is now active
+      // via the priority chain at the bottom of that function. No separate setPaintProperty needed.
       updateChoropleth();
       if (completionActive) {
-        map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
         updateCompletionLegend(true, Math.max(...Object.values(completionByDistrict), 1));
       } else if (volatilityActive) {
-        map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
         updateVolatilityLegend(true);
       } else if (buyerScoreActive) {
-        map.setPaintProperty("districts-fill", "fill-color", getBuyerScoreFillColor());
         updateBuyerScoreLegend(true);
       } else if (mrtPremiumActive) {
-        map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
         updateMrtPremiumLegend(true);
       } else if (presaleSpreadActive) {
-        map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
         updatePresaleSpreadLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
-        map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
       } else {
-        map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
-        // No other overlay is active — reset legend to affordability/default
         updateAffordabilityLegend(false);
       }
-      // Note: updateSupplyPressureLegend(false) is NOT called here because another overlay
-      // legend was already applied in the if/else chain above.
     }
   });
 

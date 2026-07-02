@@ -32,7 +32,8 @@ const DEFAULT_POPULATION = 30_000;
 /**
  * Score scale factor: raw formula value is multiplied by this to produce a 0–100 score.
  * Calibrated so a district with ~30 completions/1000 residents, buyer score 50,
- * flat velocity lands in the medium tier (~score 20).
+ * flat velocity lands near the low→medium-low boundary (~score 20).
+ * rawScore example: 30 × (1/50) × 1.0 × 33 = 19.8 → "low" (just below the 20 cutoff).
  */
 const SCORE_SCALE = 33;
 
@@ -151,10 +152,12 @@ export function computeSupplyPressure(data: DistrictSupplyDemand): SupplyPressur
       : 0;
 
   // Component 2: 1 / buyer_timing_score
-  // Clamped to [1, 100] to prevent division by zero.
-  // Low buyer score (hot / seller's market) → large multiplier → higher pressure signal.
+  // Use loose != null to guard against both null and undefined from untyped callers.
+  // Clamped to [1, 100] to prevent division by zero; negative values treated as null.
   const buyerScore =
-    data.buyerTimingScore !== null ? clamp(data.buyerTimingScore, 1, 100) : 50;
+    data.buyerTimingScore != null && data.buyerTimingScore > 0
+      ? clamp(data.buyerTimingScore, 1, 100)
+      : 50;
   const inverseBuyerScore = 1 / buyerScore;
 
   // Component 3: velocity weight
@@ -163,10 +166,10 @@ export function computeSupplyPressure(data: DistrictSupplyDemand): SupplyPressur
   // Raw score — product of three components
   const rawScore = completionsPer1000 * inverseBuyerScore * velocityWeight;
 
-  // Normalize to 0–100
+  // Normalize to 0–100; determine tier from unrounded score to avoid rounding-boundary flips
   const score = clamp(rawScore * SCORE_SCALE, 0, 100);
+  const tier = scoreToTier(score); // use unrounded score for tier to avoid off-by-one at boundaries
   const roundedScore = Math.round(score * 10) / 10;
-  const tier = scoreToTier(roundedScore);
 
   return {
     tier,

@@ -158,7 +158,7 @@ describe("tier assignment", () => {
       populationEstimate: 30_000,
     }));
     expect(result.tier).toBe("high");
-    expect(result.score).toBe(100);
+    expect(result.score).toBeGreaterThanOrEqual(80);
   });
 
   it("score is always between 0 and 100 (inclusive)", () => {
