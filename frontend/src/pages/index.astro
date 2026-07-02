@@ -358,6 +358,40 @@ const showBuyersMarket = !isStale && dataYear !== null;
         </div>
       </div>
 
+      <!-- Down-Payment Timeline Calculator (issue #111) -->
+      <div id="down-payment-timeline" class="down-payment-timeline">
+        <h3>📅 首付款時間軸</h3>
+        <div class="calc-inputs">
+          <div class="calc-input-row">
+            <label for="dpt-savings">目前存款 (萬)</label>
+            <input type="number" id="dpt-savings" placeholder="例如: 50" min="0" step="1" />
+          </div>
+          <div class="calc-input-row">
+            <label for="dpt-monthly">每月儲蓄 (萬)</label>
+            <input type="number" id="dpt-monthly" placeholder="例如: 3" min="0" step="0.5" />
+          </div>
+          <div class="calc-input-row">
+            <label for="dpt-price">目標總價 (萬)</label>
+            <div class="dpt-price-wrapper">
+              <input type="number" id="dpt-price" placeholder="例如: 1000" min="0" step="10" />
+              <span id="dpt-price-hint" class="dpt-price-hint"></span>
+            </div>
+          </div>
+          <div class="calc-input-row">
+            <label for="dpt-income">月收入 (萬，選填)</label>
+            <input type="number" id="dpt-income" placeholder="例如: 8" min="0" step="0.5" />
+          </div>
+        </div>
+
+        <!-- Timeline bar result -->
+        <div id="dpt-result" class="dpt-result" style="display:none">
+          <div id="dpt-tiers" class="dpt-tiers"></div>
+          <div id="dpt-affordability" class="dpt-affordability" style="display:none"></div>
+          <div id="dpt-sensitivity" class="dpt-sensitivity" style="display:none"></div>
+        </div>
+        <p id="dpt-placeholder" class="dpt-placeholder">請輸入存款與儲蓄金額以查看時間軸</p>
+      </div>
+
       <div id="stats-panel" class="stats-panel">
         <h3>統計資訊</h3>
         {showBuyersMarket && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
@@ -1294,6 +1328,188 @@ const showBuyersMarket = !isStale && dataYear !== null;
   qinganPanel?.addEventListener("qingan-open", calculateQinganCompare);
 
   // ============================================================
+  // ---- Down-Payment Timeline Calculator (issue #111) --------
+  // ============================================================
+
+  /** NT$ ↔ 萬 conversion helper (1 萬 = NT$10,000) */
+  const wanToNTD = (w: number) => w * 10_000;
+
+  const dptSavingsInput  = document.getElementById("dpt-savings")  as HTMLInputElement;
+  const dptMonthlyInput  = document.getElementById("dpt-monthly")  as HTMLInputElement;
+  const dptPriceInput    = document.getElementById("dpt-price")    as HTMLInputElement;
+  const dptIncomeInput   = document.getElementById("dpt-income")   as HTMLInputElement;
+  const dptPriceHint     = document.getElementById("dpt-price-hint")    as HTMLSpanElement;
+  const dptResult        = document.getElementById("dpt-result")   as HTMLDivElement;
+  const dptTiersEl       = document.getElementById("dpt-tiers")    as HTMLDivElement;
+  const dptAffordEl      = document.getElementById("dpt-affordability") as HTMLDivElement;
+  const dptPlaceholder   = document.getElementById("dpt-placeholder")  as HTMLParagraphElement;
+
+  /** Last district name for the hint label */
+  let dptAutoDistrictLabel: string = "";
+
+  /**
+   * Amortization monthly payment (matches computeMonthlyMortgagePayment in lib).
+   * Inlined here to keep the panel self-contained without a dynamic import.
+   */
+  function dptMonthlyPayment(loanWan: number, ratePercent: number, years: number): number {
+    if (loanWan <= 0) return 0;
+    const P = loanWan * 10_000;
+    if (ratePercent <= 0) return P / (years * 12);
+    const r = ratePercent / 100 / 12;
+    const n = years * 12;
+    return P * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  }
+
+  function dptFmtMonths(months: number): string {
+    if (months === 0) return "已達標 ✓";
+    if (!isFinite(months)) return "無法達成";
+    if (months <= 24) return `${months} 個月`;
+    return `約 ${(months / 12).toFixed(1)} 年`;
+  }
+
+  function dptMonthsToColor(months: number): "green" | "amber" | "red" {
+    if (!isFinite(months) || months > 48) return "red";
+    if (months > 24) return "amber";
+    return "green";
+  }
+
+  function dptMonthsToGoal(savingsNTD: number, monthlyNTD: number, targetNTD: number): number {
+    if (targetNTD <= 0) return 0;
+    if (savingsNTD >= targetNTD) return 0;
+    if (monthlyNTD <= 0) return Infinity;
+    return Math.ceil((targetNTD - savingsNTD) / monthlyNTD);
+  }
+
+  function renderDptTier(
+    pct: 5 | 10 | 20,
+    savingsNTD: number,
+    monthlyNTD: number,
+    totalPriceWan: number,
+    boostedMonthlyNTD: number
+  ): string {
+    const required = totalPriceWan * 10_000 * (pct / 100);
+    const months = dptMonthsToGoal(savingsNTD, monthlyNTD, required);
+    const boostedMonths = dptMonthsToGoal(savingsNTD, boostedMonthlyNTD, required);
+    const color = dptMonthsToColor(months);
+    const savedAlready = savingsNTD >= required;
+    const progressPct = savedAlready
+      ? 100
+      : monthlyNTD > 0 && required > 0
+        ? Math.min(99, Math.round((savingsNTD / required) * 100))
+        : 0;
+
+    const colorClass = `dpt-tier-${color}`;
+    const requiredWan = Math.round(required / 10_000);
+    const monthsLabel = dptFmtMonths(months);
+    const sensLabel = isFinite(boostedMonths) && boostedMonths < months
+      ? `（+5千/月可縮短至 ${dptFmtMonths(boostedMonths)}）`
+      : "";
+
+    return `
+      <div class="dpt-tier ${colorClass}">
+        <div class="dpt-tier-header">
+          <span class="dpt-tier-pct">${pct}% 頭期款</span>
+          <span class="dpt-tier-required">需 ${requiredWan.toLocaleString("zh-TW")} 萬</span>
+        </div>
+        <div class="dpt-tier-bar-wrap">
+          <div class="dpt-tier-bar-track">
+            <div class="dpt-tier-bar-fill dpt-fill-${color}" style="width:${progressPct}%"></div>
+          </div>
+        </div>
+        <div class="dpt-tier-footer">
+          <span class="dpt-tier-months">${monthsLabel}</span>
+          ${sensLabel ? `<span class="dpt-tier-sens">${sensLabel}</span>` : ""}
+        </div>
+      </div>`;
+  }
+
+  function calculateDpt(): void {
+    const savingsWan  = parseFloat(dptSavingsInput?.value ?? "");
+    const monthlyWan  = parseFloat(dptMonthlyInput?.value ?? "");
+    const priceWan    = parseFloat(dptPriceInput?.value ?? "");
+    const incomeWan   = parseFloat(dptIncomeInput?.value ?? "");
+
+    const hasInputs = Number.isFinite(savingsWan) && Number.isFinite(monthlyWan) && Number.isFinite(priceWan);
+
+    if (!hasInputs || priceWan <= 0) {
+      dptResult.style.display = "none";
+      dptPlaceholder.style.display = "block";
+      return;
+    }
+
+    const savingsNTD  = wanToNTD(savingsWan);
+    const monthlyNTD  = wanToNTD(monthlyWan);
+    const boostedNTD  = monthlyNTD + 5_000;
+    const incomeNTD   = Number.isFinite(incomeWan) && incomeWan > 0 ? wanToNTD(incomeWan) : 0;
+
+    // Render three tiers
+    dptTiersEl.innerHTML =
+      renderDptTier(5,  savingsNTD, monthlyNTD, priceWan, boostedNTD) +
+      renderDptTier(10, savingsNTD, monthlyNTD, priceWan, boostedNTD) +
+      renderDptTier(20, savingsNTD, monthlyNTD, priceWan, boostedNTD);
+
+    // Affordability cliff check (based on 20% down, 2.5% rate, 30yr)
+    if (incomeNTD > 0) {
+      const loanWan    = priceWan * 0.8;
+      const monthly    = dptMonthlyPayment(loanWan, 2.5, 30);
+      const ratio      = monthly / incomeNTD;
+      const overCliff  = ratio > 0.33;
+      const formattedMonthly = Math.round(monthly).toLocaleString("zh-TW");
+      const ratioPct   = Math.round(ratio * 100);
+      const cliffClass = overCliff ? "dpt-cliff-warn" : "dpt-cliff-ok";
+      const cliffIcon  = overCliff ? "⚠️" : "✅";
+      dptAffordEl.innerHTML = `
+        <div class="${cliffClass}">
+          ${cliffIcon} 房貸占收入比：<strong>${ratioPct}%</strong>
+          — 預估月付 ${formattedMonthly} 元（20%頭期、2.5%利率、30年）
+          ${overCliff ? '<br><span class="dpt-cliff-note">超過建議上限 33%，財務壓力偏高</span>' : ""}
+        </div>`;
+      dptAffordEl.style.display = "block";
+    } else {
+      dptAffordEl.style.display = "none";
+    }
+
+    dptResult.style.display = "block";
+    dptPlaceholder.style.display = "none";
+  }
+
+  dptSavingsInput?.addEventListener("input", calculateDpt);
+  dptMonthlyInput?.addEventListener("input", calculateDpt);
+  dptPriceInput?.addEventListener("input", calculateDpt);
+  dptIncomeInput?.addEventListener("input", calculateDpt);
+
+  // Auto-fill total price from district median when user selects a district on the map.
+  // Listens to the same stats-histogram event used by the price histogram panel.
+  document.addEventListener("stats-histogram", (e: Event) => {
+    const { pricesWan: rawPrices, district } = (e as CustomEvent<{ pricesWan?: number[]; district?: string; city?: string }>).detail;
+    if (!rawPrices || rawPrices.length === 0) return;
+    const finite = rawPrices.filter((p) => Number.isFinite(p) && p > 0);
+    if (finite.length === 0) return;
+
+    // Compute median unit price in 萬/坪
+    const sorted = [...finite].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const medianUnitWan = sorted.length % 2 === 0
+      ? (sorted[mid - 1]! + sorted[mid]!) / 2
+      : sorted[mid]!;
+
+    dptAutoDistrictLabel = district ?? "";
+
+    // Suggest total price = median unit price × 30坪, only auto-fill when field is empty
+    const suggested = Math.round(medianUnitWan * 30);
+    if (!dptPriceInput.value && suggested > 0) {
+      dptPriceInput.value = String(suggested);
+      calculateDpt();
+    }
+
+    // Update hint regardless
+    if (dptPriceHint) {
+      const label = dptAutoDistrictLabel ? `${dptAutoDistrictLabel} 中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × 30坪` : `中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × 30坪`;
+      dptPriceHint.textContent = `≈ ${label}`;
+    }
+  });
+
+  // ============================================================
   // ---- Saved Search Feature ----------------------------------
   // ============================================================
 
@@ -1795,6 +2011,144 @@ const showBuyersMarket = !isStale && dataYear !== null;
     background: #2563eb;
     color: white;
     border-color: #2563eb;
+  }
+
+  /* ---- Down-Payment Timeline Calculator ---- */
+  .down-payment-timeline {
+    margin-top: 12px;
+    background: #eff6ff;
+    border: 1px solid #93c5fd;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .down-payment-timeline h3 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #1e3a8a;
+    margin-bottom: 10px;
+  }
+  .down-payment-timeline .calc-input-row label {
+    color: #1e40af;
+    min-width: 115px;
+  }
+  .down-payment-timeline .calc-input-row input {
+    border: 1px solid #93c5fd;
+    background: #fff;
+    flex: 1;
+    padding: 6px 8px;
+    border-radius: 5px;
+    font-size: 0.85rem;
+  }
+  .dpt-price-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 2px;
+  }
+  .dpt-price-hint {
+    font-size: 0.7rem;
+    color: #3b82f6;
+    line-height: 1.3;
+  }
+  .dpt-placeholder {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin-top: 10px;
+    text-align: center;
+  }
+  .dpt-result {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .dpt-tiers {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .dpt-tier {
+    border-radius: 6px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+  }
+  .dpt-tier-green { background: #f0fdf4; border-color: #86efac; }
+  .dpt-tier-amber { background: #fffbeb; border-color: #fcd34d; }
+  .dpt-tier-red   { background: #fef2f2; border-color: #fca5a5; }
+  .dpt-tier-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 5px;
+  }
+  .dpt-tier-pct {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+  .dpt-tier-required {
+    font-size: 0.72rem;
+    color: #64748b;
+  }
+  .dpt-tier-bar-wrap {
+    margin-bottom: 4px;
+  }
+  .dpt-tier-bar-track {
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .dpt-tier-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+  .dpt-fill-green { background: #22c55e; }
+  .dpt-fill-amber { background: #f59e0b; }
+  .dpt-fill-red   { background: #ef4444; }
+  .dpt-tier-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .dpt-tier-months {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .dpt-tier-green .dpt-tier-months { color: #15803d; }
+  .dpt-tier-amber .dpt-tier-months { color: #92400e; }
+  .dpt-tier-red   .dpt-tier-months { color: #b91c1c; }
+  .dpt-tier-sens {
+    font-size: 0.7rem;
+    color: #6b7280;
+    font-style: italic;
+  }
+  .dpt-affordability {
+    margin-top: 4px;
+    font-size: 0.78rem;
+  }
+  .dpt-cliff-warn {
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: 5px;
+    padding: 6px 9px;
+    color: #92400e;
+    line-height: 1.45;
+  }
+  .dpt-cliff-ok {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 5px;
+    padding: 6px 9px;
+    color: #15803d;
+    line-height: 1.45;
+  }
+  .dpt-cliff-note {
+    font-size: 0.72rem;
+    display: block;
+    margin-top: 3px;
   }
 
   /* ---- Saved Search ---- */
