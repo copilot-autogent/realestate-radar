@@ -1618,35 +1618,37 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
 
     const priceNTD   = priceWan * 10_000;
-    // If ping/age are missing (NaN or ≤0) treat as 0 — renovation shows NT$0 with a note
+    // If ping is missing treat as 0 — renovation shows "請輸入坪數"
     const safePing   = Number.isFinite(ping) && ping > 0 ? ping : 0;
+    // Age defaults to 0 (new building rate) when not provided — valid assumption
     const safeAge    = Number.isFinite(age)  && age  >= 0 ? age  : 0;
     const safeDpPct  = Number.isFinite(dpPct) && dpPct >= 0 && dpPct <= 100 ? dpPct : 20;
     const missingPing = !Number.isFinite(ping) || ping <= 0;
-    const missingAge  = !Number.isFinite(age)  || age < 0;
 
     const result = computeAcqSummary(priceNTD, safePing, safeAge, includeAgent);
 
     // Render breakdown rows
     acqBodyEl.innerHTML = result.items.map((item) => {
       const isZero    = item.amountNTD === 0;
+      const showNote  = item.key === "renovation" && missingPing;
+      // Only apply zero style for genuinely zero amounts (not for the missing-ping text note)
       const labelCls  = item.isOptional ? "acq-item-label acq-item-optional" : "acq-item-label";
-      const amountCls = isZero ? "acq-item-amount acq-item-zero" : "acq-item-amount";
-      // Add asterisk note for renovation when ping is missing
-      const noteFlag  = item.key === "renovation" && missingPing ? " *" : "";
+      const amountCls = isZero && !showNote ? "acq-item-amount acq-item-zero" : "acq-item-amount";
+      const amountTxt = showNote ? "請輸入坪數" : (isZero ? "—" : fmtNTD(item.amountNTD));
       return `<tr>
-        <td class="${labelCls}">${item.label}${noteFlag}</td>
+        <td class="${labelCls}">${item.label}</td>
         <td class="acq-item-rate">${item.rateDescription}</td>
-        <td class="${amountCls}">${isZero ? (item.key === "renovation" && missingPing ? "請輸入坪數" : "—") : fmtNTD(item.amountNTD)}</td>
+        <td class="${amountCls}">${amountTxt}</td>
       </tr>`;
     }).join("");
 
-    // Note when ping or age missing
-    const missingNote = missingPing || missingAge
-      ? `<p style="font-size:0.72rem;color:#b45309;margin:0 0 6px">* ${[missingPing ? "請輸入坪數以計算裝修費" : "", missingAge ? "請輸入屋齡以取得精確裝修費率" : ""].filter(Boolean).join("；")}</p>`
+    // Note when ping missing
+    const missingNote = missingPing
+      ? `<p style="font-size:0.72rem;color:#b45309;margin:0 0 6px">* 請輸入坪數以計算裝修費</p>`
       : "";
 
-    // Summary row
+    // Use Math.round for down payment to match computeTotalUpfrontNTD
+    const dpNTD        = Math.round(priceNTD * safeDpPct / 100);
     const totalHidden  = result.totalHiddenCostsNTD;
     const hiddenPct    = result.hiddenCostsPct;
     const totalUpfront = computeUpfront(priceNTD, safeDpPct, totalHidden);
@@ -1656,7 +1658,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         隱藏費用合計：${fmtNTD(totalHidden)}（${fmtPct(hiddenPct)} of 總價）
       </div>
       <div class="acq-summary-upfront">
-        頭期款所需現金 = 頭期款 ${safeDpPct}%（${fmtNTD(priceNTD * safeDpPct / 100)}）＋ 隱藏費用（${fmtNTD(totalHidden)}）<br>
+        頭期款所需現金 = 頭期款 ${safeDpPct}%（${fmtNTD(dpNTD)}）＋ 隱藏費用（${fmtNTD(totalHidden)}）<br>
         <strong>合計：${fmtNTD(totalUpfront)}</strong>
       </div>
     `;
@@ -1685,30 +1687,30 @@ const showBuyersMarket = !isStale && dataYear !== null;
       ? (sorted[mid - 1]! + sorted[mid]!) / 2
       : sorted[mid]!;
 
-    // Default 30坪 if not filled
+    // Use current or default ping for suggested price; always overwrite on district change
     const pingVal = parseFloat(acqPingInput?.value ?? "");
     const sizePing = Number.isFinite(pingVal) && pingVal > 0 ? pingVal : 30;
     const suggested = Math.round(medianUnitWan * sizePing);
 
-    if (!acqPriceInput.value && suggested > 0) {
+    // Capture whether the price was empty BEFORE we set it (for hint guard)
+    const priceWasEmpty = !acqPriceInput.value;
+    if (priceWasEmpty && suggested > 0) {
       acqPriceInput.value = String(suggested);
     }
-    // Only update hint when price was auto-filled (not manually entered by user)
-    if (!acqPriceInput.value || suggested > 0) {
-      if (acqPriceHint) {
-        const label = district
-          ? `${district} 中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`
-          : `中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`;
-        acqPriceHint.textContent = `≈ ${label}`;
-      }
+    // Only update hint when price was auto-filled (not when user has manually entered a price)
+    if (priceWasEmpty && acqPriceHint) {
+      const label = district
+        ? `${district} 中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`
+        : `中位單價 ${medianUnitWan.toFixed(1)} 萬/坪 × ${sizePing}坪`;
+      acqPriceHint.textContent = `≈ ${label}`;
     }
 
-    // Pre-fill ping (default 30坪 if field is empty)
+    // Pre-fill ping (default 30坪) if field is empty
     if (!acqPingInput.value) {
       acqPingInput.value = String(sizePing);
     }
 
-    // Pre-fill building age if available
+    // Pre-fill building age if available and field is empty
     if (typeof medianBuildingAgeYears === "number" && Number.isFinite(medianBuildingAgeYears) && !acqAgeInput.value) {
       acqAgeInput.value = String(Math.round(medianBuildingAgeYears));
     }

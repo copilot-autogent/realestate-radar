@@ -132,7 +132,7 @@ export function computeAcquisitionCosts(
       key: "renovation",
       label: "裝修預算",
       amountNTD: renovation,
-      rateDescription: `NT$${renovRate.toLocaleString()}/坪 × ${safePing}坪（屋齡${safeAge}年）`,
+      rateDescription: `NT$${renovRate.toLocaleString("en-US")}/坪 × ${safePing}坪（屋齡${safeAge}年）`,
       isOptional: false,
     },
     {
@@ -184,7 +184,7 @@ export function formatNTD(amountNTD: number): string {
   if (amountNTD >= 10_000) {
     return `NT$${(amountNTD / 10_000).toFixed(1)}萬`;
   }
-  return `NT$${amountNTD.toLocaleString()}`;
+  return `NT$${amountNTD.toLocaleString("en-US")}`;
 }
 
 /**
