@@ -163,8 +163,10 @@ export function computeDistrictBoxPlots(
   for (const f of features) {
     const p = f?.properties;
     if (!p) continue;
-    if ((p.district as string | undefined)?.normalize("NFKC") !== normDistrict) continue;
-    if (normCity && (p.city as string | undefined)?.normalize("NFKC") !== normCity) continue;
+    if (typeof p.district !== "string" || p.district.normalize("NFKC") !== normDistrict) continue;
+    if (normCity) {
+      if (typeof p.city !== "string" || p.city.normalize("NFKC") !== normCity) continue;
+    }
     const up = Number(p.unitPrice);
     if (!isFinite(up) || up <= 0) continue;
     const yr = parseDateYear(p.date);
@@ -181,9 +183,11 @@ export function computeDistrictBoxPlots(
   for (const f of features) {
     const p = f?.properties;
     if (!p) continue;
-    if ((p.district as string | undefined)?.normalize("NFKC") !== normDistrict) continue;
+    if (typeof p.district !== "string" || p.district.normalize("NFKC") !== normDistrict) continue;
     // City filter: rows with missing city are excluded when city filter is set
-    if (normCity && (p.city as string | undefined)?.normalize("NFKC") !== normCity) continue;
+    if (normCity) {
+      if (typeof p.city !== "string" || p.city.normalize("NFKC") !== normCity) continue;
+    }
     const yr = parseDateYear(p.date);
     if (!yr || !(yr in yearPrices)) continue;
     const up = Number(p.unitPrice);

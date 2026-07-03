@@ -2460,6 +2460,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   @media (max-width: 480px) {
     #boxplot-canvas {
       width: 100% !important;
+      /* height attribute is also set to 120 via JS at render time on mobile */
       height: 120px !important;
     }
   }
@@ -4236,13 +4237,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
     // Mobile: on narrow screens show only the latest year's box
     const isMobile = window.innerWidth <= 480;
     const plotsToShow = isMobile ? plots.slice(-1) : plots;
+    // Match canvas pixel buffer height to CSS display height to avoid distortion
+    if (isMobile) canvas.height = 120;
+    else canvas.height = 180;
     renderBoxPlotCanvas(canvas, plotsToShow);
 
     // Percentile label: hide on mobile (single-box view lacks historical context)
     if (percentileEl && percentileRank !== null && !isMobile) {
       const histYears = plots.length - 1;
       percentileEl.style.display = "block";
-      percentileEl.textContent   = `現今中位價在近${histYears * 12}月第 ${percentileRank} 百分位`;
+      percentileEl.textContent   = `現今中位價在近${histYears}年第 ${percentileRank} 百分位`;
     } else if (percentileEl) {
       percentileEl.style.display = "none";
     }
