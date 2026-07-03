@@ -224,6 +224,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <label for="presale-spread-toggle">🏗 預售溢價熱力圖</label>
       </div>
 
+      <!-- First-buyer affordability heat-map overlay toggle (issue #133) -->
+      <div class="toggle-row">
+        <input type="checkbox" id="affordability-overlay" />
+        <label for="affordability-overlay">🏠 首購族負擔能力地圖</label>
+      </div>
+
       <!-- MRT stations layer toggle (shown when MRT filter active) -->
       <div class="toggle-row" id="mrt-layer-toggle-row" style="display:none">
         <input type="checkbox" id="mrt-layer-toggle" checked />
@@ -395,6 +401,32 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <div id="dpt-affordability" class="dpt-affordability" style="display:none"></div>
         </div>
         <p id="dpt-placeholder" class="dpt-placeholder">請輸入存款與儲蓄金額以查看時間軸</p>
+      </div>
+
+      <!-- First-buyer affordability heat-map panel (issue #133) -->
+      <div id="first-buyer-panel" class="first-buyer-panel">
+        <h3>🏠 首購族負擔能力地圖</h3>
+        <div class="calc-inputs">
+          <div class="calc-input-row">
+            <label for="fb-monthly-income">月收入 (萬)</label>
+            <input type="number" id="fb-monthly-income" placeholder="例如: 8" min="0" step="0.5"
+              aria-label="月家庭收入（萬元）" />
+          </div>
+          <div class="calc-input-row">
+            <label for="fb-down-payment">自備款 (萬)</label>
+            <input type="number" id="fb-down-payment" placeholder="例如: 300" min="0" step="10"
+              aria-label="自備款金額（萬元）" />
+          </div>
+        </div>
+        <div id="fb-result" class="fb-result" style="display:none">
+          <p>最高可負擔總價：<strong id="fb-max-affordable">0</strong> 萬</p>
+        </div>
+        <div class="fb-legend-hint">
+          <span class="fb-tier-dot" style="background:#22c55e"></span>可負擔 (≥90%)
+          <span class="fb-tier-dot" style="background:#eab308;margin-left:8px"></span>勉強可負擔 (60–90%)
+          <span class="fb-tier-dot" style="background:#ef4444;margin-left:8px"></span>超出能力範圍
+        </div>
+        <button id="fb-reset-btn" class="fb-reset-btn" aria-label="清除負擔能力地圖覆蓋層">重設</button>
       </div>
 
       <!-- Hidden Acquisition Cost Calculator (issue #121) -->
@@ -2851,6 +2883,69 @@ const showBuyersMarket = !isStale && dataYear !== null;
     display: block;
     margin-top: 3px;
   }
+
+  /* ---- First-buyer affordability panel (issue #133) ---- */
+  .first-buyer-panel {
+    margin-top: 12px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .first-buyer-panel h3 {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #166534;
+    margin: 0 0 10px;
+  }
+  .first-buyer-panel .calc-input-row label {
+    font-size: 0.8rem;
+    color: #374151;
+    font-weight: 500;
+  }
+  .first-buyer-panel .calc-input-row input[type="number"] {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.85rem;
+  }
+  .fb-result {
+    margin-top: 10px;
+    font-size: 0.82rem;
+    color: #166534;
+    background: #dcfce7;
+    border-radius: 5px;
+    padding: 7px 10px;
+  }
+  .fb-result strong { font-weight: 700; }
+  .fb-legend-hint {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: #475569;
+    margin: 8px 0 6px;
+  }
+  .fb-tier-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .fb-reset-btn {
+    margin-top: 6px;
+    padding: 4px 12px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    color: #475569;
+    cursor: pointer;
+  }
+  .fb-reset-btn:hover { background: #e2e8f0; }
 
   /* ---- Acquisition Cost Calculator (issue #121) ---- */
   .acquisition-cost-calculator {
@@ -5710,6 +5805,61 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   presaleSpreadToggle?.addEventListener("change", updatePresaleSpreadOverlay);
+
+  // ── First-buyer affordability heat-map overlay (issue #133) ────────────────
+
+  const fbOverlayToggle   = document.getElementById("affordability-overlay") as HTMLInputElement | null;
+  const fbMonthlyIncome   = document.getElementById("fb-monthly-income")     as HTMLInputElement | null;
+  const fbDownPayment     = document.getElementById("fb-down-payment")       as HTMLInputElement | null;
+  const fbResult          = document.getElementById("fb-result")             as HTMLDivElement | null;
+  const fbMaxAffordable   = document.getElementById("fb-max-affordable")     as HTMLElement | null;
+  const fbResetBtn        = document.getElementById("fb-reset-btn")          as HTMLButtonElement | null;
+
+  function dispatchFirstBuyerOverlay(): void {
+    const enabled = fbOverlayToggle?.checked ?? false;
+    const incomeWan  = parseFloat(fbMonthlyIncome?.value ?? "");
+    const dpWan      = parseFloat(fbDownPayment?.value   ?? "");
+
+    if (enabled && Number.isFinite(incomeWan) && incomeWan > 0 &&
+        Number.isFinite(dpWan) && dpWan > 0) {
+      const monthlyIncomeNTD = incomeWan * 10_000;
+      const downPaymentNTD   = dpWan    * 10_000;
+      // Show max-affordable result
+      const maxByDP     = downPaymentNTD   / 0.2;
+      const maxByIncome = monthlyIncomeNTD * 12 * 25;
+      const maxAffordableWan = Math.min(maxByDP, maxByIncome) / 10_000;
+      if (fbMaxAffordable) fbMaxAffordable.textContent = maxAffordableWan.toFixed(0);
+      if (fbResult) fbResult.style.display = "block";
+      document.dispatchEvent(new CustomEvent("first-buyer-overlay-change", {
+        detail: { enabled: true, monthlyIncomeNTD, downPaymentNTD },
+      }));
+    } else {
+      if (fbResult) fbResult.style.display = "none";
+      document.dispatchEvent(new CustomEvent("first-buyer-overlay-change", {
+        detail: { enabled: false },
+      }));
+    }
+  }
+
+  fbOverlayToggle?.addEventListener("change", dispatchFirstBuyerOverlay);
+  fbMonthlyIncome?.addEventListener("input", () => { if (fbOverlayToggle?.checked) dispatchFirstBuyerOverlay(); });
+  fbDownPayment?.addEventListener("input",   () => { if (fbOverlayToggle?.checked) dispatchFirstBuyerOverlay(); });
+
+  fbResetBtn?.addEventListener("click", () => {
+    if (fbOverlayToggle) fbOverlayToggle.checked = false;
+    if (fbMonthlyIncome) fbMonthlyIncome.value = "";
+    if (fbDownPayment)   fbDownPayment.value   = "";
+    if (fbResult) fbResult.style.display = "none";
+    document.dispatchEvent(new CustomEvent("first-buyer-overlay-change", { detail: { enabled: false } }));
+  });
+
+  // Pre-fill income from district click (stats-histogram event carries district median prices)
+  document.addEventListener("stats-histogram", (e: Event) => {
+    const detail = (e as CustomEvent).detail as { district?: string; pricesWan?: number[] };
+    if (!detail.district) return;
+    // Re-dispatch affordability update if overlay is active and district data arrives
+    if (fbOverlayToggle?.checked) dispatchFirstBuyerOverlay();
+  });
 
 </script>
 
