@@ -228,6 +228,8 @@ describe("computeDistrictBoxPlots", () => {
       makeFeature("信義區", "台北市", "2023-06-15", 500000)
     );
     const result = computeDistrictBoxPlots([...good, ...bad], "大安區", "台北市");
+    // Insufficient (only 1 year) but verify no 信義區 data leaked in
+    expect(result.plots.length).toBeGreaterThan(0);
     expect(result.plots.every((p) => p.median === 300000)).toBe(true);
   });
 
