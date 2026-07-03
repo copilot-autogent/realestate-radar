@@ -97,6 +97,11 @@ describe("parseBuildYear", () => {
     expect(parseBuildYear("不明")).toBe(null);
   });
 
+  it("returns null for prefix-numeric strings like '74年' or '1985abc'", () => {
+    expect(parseBuildYear("74年")).toBe(null);
+    expect(parseBuildYear("1985abc")).toBe(null);
+  });
+
   it("returns null for implausibly old Western year (< 1900)", () => {
     expect(parseBuildYear(1800)).toBe(null);
   });
@@ -311,6 +316,19 @@ describe("computeBuildingAgeDistribution", () => {
     // Only 台北市 features should count
     expect(result.buckets[2]!.count).toBe(5); // 10–20年
     expect(result.buckets[5]!.count).toBe(0); // > 40年 (基隆市 excluded)
+  });
+
+  it("strict city filter: features with no city field are excluded when city is provided", () => {
+    const withCity = makeFeaturesByAge("中山區", "台北市", 10, 5, REF_YEAR);
+    // Features without a city field (might be legacy data for same district name)
+    const noCity = Array.from({ length: 5 }, () => ({
+      ...makeFeature("中山區", "", 1990),
+      properties: { district: "中山區", buildYear: 1990 }, // no city field
+    }));
+    const result = computeBuildingAgeDistribution([...withCity, ...noCity], "中山區", "台北市", REF_YEAR);
+    // Features with no city should be excluded when city filter is active
+    expect(result.completenessPercent).toBe(100); // only the 5 台北市 features counted
+    expect(result.buckets.reduce((s, b) => s + b.count, 0)).toBe(5);
   });
 
   it("bucket labels match spec", () => {

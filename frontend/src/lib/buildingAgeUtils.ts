@@ -83,6 +83,8 @@ export function parseBuildYear(raw: unknown): number | null {
     // NFKC normalises full-width CJK digits (U+FF10–FF19) to ASCII digits
     const s = raw.normalize("NFKC").trim();
     if (s === "") return null;
+    // Reject strings with non-digit characters (e.g. "74年", "1985abc")
+    if (!/^\d+$/.test(s)) return null;
     n = parseInt(s, 10);
   } else if (typeof raw === "number") {
     n = raw;
@@ -108,7 +110,9 @@ export function parseBuildYear(raw: unknown): number | null {
     return null;
   }
 
-  // Sanity: building years between 1900 and current year + 1 are plausible
+  // Sanity: building years between 1900 and current year + 1 are plausible.
+  // Using new Date().getFullYear() is intentional: parseBuildYear is a wall-clock-aware
+  // helper; callers that need reproducibility should clamp the result themselves.
   if (year < 1900 || year > new Date().getFullYear() + 1) return null;
   return year;
 }
@@ -143,11 +147,14 @@ export function computeBuildingAgeDistribution(
 ): BuildingAgeResult {
   const refYear = referenceYear ?? new Date().getFullYear();
 
-  // Filter to the requested district (and optional city)
+  // Filter to the requested district (and optional city).
+  // When city is provided, only include features with a matching city —
+  // features without a city field are excluded to prevent same-name districts
+  // from different cities (e.g. 中山區 in 台北市 vs 基隆市) from leaking in.
   const districtFeatures = features.filter((f) => {
     const p = f?.properties ?? f;
     if ((p.district as string | undefined) !== districtId) return false;
-    if (city && p.city && (p.city as string) !== city) return false;
+    if (city && (!p.city || (p.city as string) !== city)) return false;
     return true;
   });
 
