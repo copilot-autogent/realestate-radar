@@ -72,12 +72,13 @@ export function computeAffordability(
   const maxByIncome = monthlyIncome * 12 * INCOME_MULTIPLIER;
   const maxAffordable = Math.min(maxByDownPayment, maxByIncome);
 
-  const ratio = (maxAffordable / districtMedianPrice) * 100;
+  const rawRatio = (maxAffordable / districtMedianPrice) * 100;
 
+  // Classify tier using raw ratio (before rounding) to avoid boundary misclassification
   const tier: AffordabilityTier =
-    ratio >= AFFORDABLE_THRESHOLD
+    rawRatio >= AFFORDABLE_THRESHOLD
       ? "affordable"
-      : ratio >= STRETCH_THRESHOLD
+      : rawRatio >= STRETCH_THRESHOLD
         ? "stretch"
         : "outOfRange";
 
@@ -85,7 +86,7 @@ export function computeAffordability(
 
   return {
     maxAffordable: Math.round(maxAffordable),
-    ratio: parseFloat(ratio.toFixed(2)),
+    ratio: parseFloat(rawRatio.toFixed(2)),
     tier,
     gap: Math.round(gap),
   };

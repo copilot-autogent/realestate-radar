@@ -2905,21 +2905,27 @@
     return medians;
   }
 
-  /** Compute median TOTAL property price (NT$) per district from transaction features. */
+  /** Compute median TOTAL property price (NT$) per district from transaction features, keyed by "city:district". */
   function computeDistrictTotalMedians(features: any[]): Record<string, number> {
-    const byDistrict: Record<string, number[]> = {};
+    const byKey: Record<string, number[]> = {};
     for (const f of features) {
       const d = f.properties?.district as string | undefined;
+      const c = f.properties?.city as string | undefined;
       const p = f.properties?.totalPrice as number | undefined;
       if (d && p && p > 0) {
-        if (!byDistrict[d]) byDistrict[d] = [];
-        byDistrict[d].push(p);
+        const key = `${c ?? ""}:${d}`;
+        if (!byKey[key]) byKey[key] = [];
+        byKey[key].push(p);
       }
     }
     const medians: Record<string, number> = {};
-    for (const [d, prices] of Object.entries(byDistrict)) {
+    for (const [key, prices] of Object.entries(byKey)) {
       const sorted = [...prices].sort((a, b) => a - b);
-      medians[d] = sorted[Math.floor(sorted.length / 2)];
+      const mid = Math.floor(sorted.length / 2);
+      // True median: average two middle values for even-length arrays
+      medians[key] = sorted.length % 2 === 0
+        ? (sorted[mid - 1]! + sorted[mid]!) / 2
+        : sorted[mid]!;
     }
     return medians;
   }
@@ -2952,6 +2958,17 @@
         </div>`;
       legend.style.opacity = "1";
     } else {
+      // Restore legend for the next active overlay in priority order
+      if (supplyPressureActive) { updateSupplyPressureLegend(true); return; }
+      if (completionActive) {
+        const maxUnits = Math.max(...Object.values(completionByDistrict), 1);
+        updateCompletionLegend(true, maxUnits);
+        return;
+      }
+      if (volatilityActive) { updateVolatilityLegend(true); return; }
+      if (buyerScoreActive) { updateBuyerScoreLegend(true); return; }
+      if (mrtPremiumActive) { updateMrtPremiumLegend(true); return; }
+      if (presaleSpreadActive) { updatePresaleSpreadLegend(true); return; }
       updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
     }
   }
@@ -3011,13 +3028,13 @@
     const firstBuyerGapWanMap: Record<string, number> = {};
     if (firstBuyerActive) {
       const totalMedians = computeDistrictTotalMedians(currentTxGeojson.features ?? []);
-      for (const [district, totalPrice] of Object.entries(totalMedians)) {
+      for (const [key, totalPrice] of Object.entries(totalMedians)) {
         const result = computeAffordability(totalPrice, firstBuyerMonthlyIncome, firstBuyerDownPayment);
         if (result) {
-          firstBuyerTierMap[district] = result.tier === "affordable" ? 0 : result.tier === "stretch" ? 1 : 2;
-          firstBuyerGapWanMap[district] = result.gap / 10_000;
+          firstBuyerTierMap[key] = result.tier === "affordable" ? 0 : result.tier === "stretch" ? 1 : 2;
+          firstBuyerGapWanMap[key] = result.gap / 10_000;
         } else {
-          firstBuyerTierMap[district] = -1;
+          firstBuyerTierMap[key] = -1;
         }
       }
     }
@@ -3155,8 +3172,8 @@
           props.buyerScore = buyerScores[district] ?? -1;
         }
         // Join first-buyer affordability tier for choropleth fill and hover tooltip
-        props.firstBuyerTier    = firstBuyerTierMap[district] ?? -1;
-        props.firstBuyerGapWan  = firstBuyerGapWanMap[district] ?? 0;
+        props.firstBuyerTier    = firstBuyerTierMap[`${city ?? ""}:${district}`] ?? -1;
+        props.firstBuyerGapWan  = firstBuyerGapWanMap[`${city ?? ""}:${district}`] ?? 0;
         props.volatilityCV  = volatilityCVs[`${city ?? ""}:${district}`] ?? -1;
         props.mrtPremium    = mrtPremiums[`${city ?? ""}:${district}`] ?? -9998;
         props.presaleSpread = presaleSpreads[`${city ?? ""}:${district}`] ?? -9999;
@@ -3188,6 +3205,9 @@
     } else if (firstBuyerActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
       updateFirstBuyerLegend(true);
+    } else if (affordabilityActive && affordabilityThreshold > 0 && map.getLayer("districts-fill")) {
+      map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
+      updateAffordabilityLegend(true, affordabilityThreshold / 10000);
     }
 
     // Update pulsing ring markers for qualifying buyer's market districts
