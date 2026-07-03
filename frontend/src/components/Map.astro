@@ -1026,6 +1026,7 @@
     type SupplyPressureResult,
   } from "../lib/supplyPressureUtils.js";
   import { computeAffordability } from "../lib/affordabilityUtils.js";
+  import { computeBuildingAgeDistribution } from "../lib/buildingAgeUtils.js";
 
   const API_BASE = import.meta.env.DEV ? "/api" : "";
   const BASE_URL = import.meta.env.BASE_URL;
@@ -3690,6 +3691,14 @@
           detail: { district: txDistrict, referenceYear: refYear, volumeYoY },
         }));
       }
+      // ── Building age distribution (dot click, issue #134) ─────────────────
+      {
+        const txCity = props.city as string | undefined;
+        const ageResult = computeBuildingAgeDistribution(rawAllFeatures, txDistrict, txCity, new Date().getFullYear());
+        document.dispatchEvent(new CustomEvent("district-building-age", {
+          detail: { district: txDistrict, city: txCity || "", ageResult },
+        }));
+      }
     }
   });
 
@@ -4182,6 +4191,19 @@
       const volumeYoY = computeVolumeYoY(rawAllFeatures, district, refYear, clickedCity || undefined);
       document.dispatchEvent(new CustomEvent("district-volume-yoy", {
         detail: { district, referenceYear: refYear, volumeYoY },
+      }));
+    }
+
+    // ── Building age distribution chart (issue #134) ───────────────────────
+    {
+      const ageResult = computeBuildingAgeDistribution(
+        rawAllFeatures,
+        district,
+        clickedCity || undefined,
+        new Date().getFullYear(),
+      );
+      document.dispatchEvent(new CustomEvent("district-building-age", {
+        detail: { district, city: clickedCity || "", ageResult },
       }));
     }
 
