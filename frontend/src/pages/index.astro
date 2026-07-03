@@ -606,6 +606,20 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <div id="transaction-list-content" class="transaction-list-content"></div>
       </div>
 
+      <!-- ── Volume YoY Panel (issue #132) ── -->
+      <div id="volume-yoy-panel" class="volume-yoy-panel" style="display:none">
+        <div class="volume-yoy-header">
+          <h3>📊 成交量年同比<span id="volume-yoy-district-label" class="volume-yoy-district-label"></span></h3>
+          <div id="volume-yoy-badge" class="volume-yoy-badge" style="display:none"></div>
+        </div>
+        <p class="volume-yoy-desc">各季度成交量（本年 vs 去年）</p>
+        <div id="volume-yoy-insufficient" class="volume-yoy-insufficient" style="display:none">資料不足</div>
+        <div class="volume-yoy-chart-wrap">
+          <canvas id="volume-yoy-chart" width="260" height="160" aria-label="季度成交量年同比條形圖"></canvas>
+        </div>
+        <div id="volume-yoy-delta-labels" class="volume-yoy-delta-labels"></div>
+      </div>
+
       <!-- ── Completion Wave Panel ── -->
       <div id="completion-wave-panel" class="completion-wave-panel">
         <div class="completion-wave-header">
@@ -3668,6 +3682,79 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
   .ss-alert-close:hover { background: #fef3c7; }
 
+  /* ── Volume YoY Panel (issue #132) ── */
+  .volume-yoy-panel {
+    margin-top: 14px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .volume-yoy-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  .volume-yoy-header h3 {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1e293b;
+    flex: 1;
+  }
+  .volume-yoy-district-label {
+    font-weight: 400;
+    color: #64748b;
+    font-size: 0.8rem;
+  }
+  .volume-yoy-badge {
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: #f1f5f9;
+    color: #334155;
+  }
+  .volume-yoy-badge.badge-down {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+  .volume-yoy-badge.badge-up {
+    background: #dcfce7;
+    color: #15803d;
+  }
+  .volume-yoy-desc {
+    margin: 0 0 6px;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .volume-yoy-insufficient {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    text-align: center;
+    padding: 12px 0;
+  }
+  .volume-yoy-chart-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .volume-yoy-chart-wrap canvas {
+    display: block;
+    max-width: 100%;
+  }
+  .volume-yoy-delta-labels {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .volume-yoy-delta-labels .delta-down { color: #b91c1c; }
+  .volume-yoy-delta-labels .delta-up   { color: #15803d; }
+  .volume-yoy-delta-labels .delta-na   { color: #94a3b8; }
+
   /* ── Completion wave panel ── */
   .completion-wave-panel {
     margin-top: 14px;
@@ -4220,6 +4307,158 @@ const showBuyersMarket = !isStale && dataYear !== null;
       yoyEl.style.display = "none";
     }
   }
+
+  document.addEventListener("district-volume-yoy", async (e: Event) => {
+    const { district, referenceYear, volumeYoY } = (e as CustomEvent).detail as {
+      district: string;
+      referenceYear: number;
+      volumeYoY: Array<{
+        quarter: string;
+        currentYear: number;
+        priorYear: number;
+        yoyPct: number | null;
+        insufficientCurrent: boolean;
+        insufficientPrior: boolean;
+      }>;
+    };
+
+    const panel      = document.getElementById("volume-yoy-panel")       as HTMLDivElement    | null;
+    const distLabel  = document.getElementById("volume-yoy-district-label") as HTMLSpanElement | null;
+    const badge      = document.getElementById("volume-yoy-badge")        as HTMLDivElement    | null;
+    const insuffEl   = document.getElementById("volume-yoy-insufficient") as HTMLDivElement    | null;
+    const canvas     = document.getElementById("volume-yoy-chart")        as HTMLCanvasElement | null;
+    const deltaEl    = document.getElementById("volume-yoy-delta-labels") as HTMLDivElement    | null;
+    if (!panel || !canvas) return;
+
+    if (distLabel) distLabel.textContent = district ? ` — ${district}` : "";
+    panel.style.display = "block";
+
+    const priorYear = referenceYear - 1;
+
+    // ── YTD summary badge ──
+    const ytdCurrent = volumeYoY.reduce((s, v) => s + v.currentYear, 0);
+    const ytdPrior   = volumeYoY.reduce((s, v) => s + v.priorYear,   0);
+    const ytdPct     = ytdPrior > 0 ? ((ytdCurrent - ytdPrior) / ytdPrior) * 100 : null;
+    if (badge) {
+      if (ytdPct !== null) {
+        const arrow = ytdPct >= 0 ? "↑" : "↓";
+        const absStr = Math.abs(ytdPct) < 100
+          ? `${Math.abs(ytdPct).toFixed(1)}%`
+          : `${Math.round(Math.abs(ytdPct))}%`;
+        badge.textContent = `今年成交量 ${arrow} ${absStr} 同期`;
+        badge.className = `volume-yoy-badge ${ytdPct < 0 ? "badge-down" : "badge-up"}`;
+        badge.style.display = "block";
+      } else {
+        badge.style.display = "none";
+      }
+    }
+
+    // Check if all quarters have insufficient data for both years
+    const hasAnyData = volumeYoY.some((v) => v.currentYear > 0 || v.priorYear > 0);
+    if (!hasAnyData) {
+      if (insuffEl) insuffEl.style.display = "block";
+      canvas.style.display = "none";
+      if (deltaEl) deltaEl.innerHTML = "";
+      return;
+    }
+    if (insuffEl) insuffEl.style.display = "none";
+    canvas.style.display = "block";
+
+    await ensureChart();
+
+    // Destroy any previous chart instance
+    const existingChart = (canvas as any)._volumeYoYChart;
+    if (existingChart) { existingChart.destroy(); (canvas as any)._volumeYoYChart = null; }
+
+    const BRAND_COLOR  = "rgba(37,99,235,0.8)";
+    const PRIOR_COLOR  = "rgba(148,163,184,0.65)";
+    const BRAND_BORDER = "rgba(37,99,235,1)";
+    const PRIOR_BORDER = "rgba(148,163,184,1)";
+
+    const isMobile = window.innerWidth <= 480;
+    if (isMobile) {
+      canvas.width  = 240;
+      canvas.height = 140;
+    } else {
+      canvas.width  = 260;
+      canvas.height = 160;
+    }
+
+    const chart = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: volumeYoY.map((v) => v.quarter),
+        datasets: [
+          {
+            label: String(referenceYear),
+            data: volumeYoY.map((v) => v.currentYear),
+            backgroundColor: BRAND_COLOR,
+            borderColor: BRAND_BORDER,
+            borderWidth: 1,
+            borderRadius: 3,
+          },
+          {
+            label: String(priorYear),
+            data: volumeYoY.map((v) => v.priorYear),
+            backgroundColor: PRIOR_COLOR,
+            borderColor: PRIOR_BORDER,
+            borderWidth: 1,
+            borderRadius: 3,
+          },
+        ],
+      },
+      options: {
+        responsive: false,
+        animation: { duration: 200 },
+        plugins: {
+          legend: {
+            display: true,
+            position: "top" as const,
+            labels: { font: { size: 10 }, boxWidth: 10, padding: 8 },
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => {
+                const val = ctx.parsed.y as number;
+                const qData = volumeYoY[ctx.dataIndex];
+                if (!qData) return `${ctx.dataset.label}: ${val} 件`;
+                const isCurrentYear = ctx.datasetIndex === 0;
+                const insuf = isCurrentYear ? qData.insufficientCurrent : qData.insufficientPrior;
+                return `${ctx.dataset.label}: ${val} 件${insuf ? " ⚠資料不足" : ""}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { font: { size: 10 } } },
+          y: {
+            beginAtZero: true,
+            ticks: { font: { size: 10 }, maxTicksLimit: 5, stepSize: 1 },
+          },
+        },
+      },
+    });
+    (canvas as any)._volumeYoYChart = chart;
+
+    // ── Per-quarter delta labels ──
+    if (deltaEl) {
+      deltaEl.innerHTML = volumeYoY.map((v) => {
+        if (v.insufficientCurrent && v.currentYear === 0) {
+          return `<span class="delta-na" title="${v.quarter}: 資料不足">${v.quarter}: 資料不足</span>`;
+        }
+        if (v.yoyPct === null) {
+          return `<span class="delta-na" title="${v.quarter}: 無去年資料">${v.quarter}: —</span>`;
+        }
+        const sign    = v.yoyPct >= 0 ? "+" : "";
+        const absStr  = Number.isInteger(Math.abs(v.yoyPct))
+          ? String(Math.abs(v.yoyPct))
+          : Math.abs(v.yoyPct).toFixed(1);
+        const pctStr  = `${sign}${v.yoyPct < 0 ? "-" : ""}${absStr}%`;
+        const cls     = v.yoyPct < 0 ? "delta-down" : "delta-up";
+        return `<span class="${cls}" title="${v.quarter}: ${pctStr}">${v.quarter}: ${pctStr}</span>`;
+      }).join("");
+    }
+  });
 
   document.addEventListener("district-price-trend", async (e: Event) => {
     const { priceTrend } = (e as CustomEvent).detail as { priceTrend: any };
