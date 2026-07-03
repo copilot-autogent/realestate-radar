@@ -11,8 +11,11 @@ export interface TrendPoint {
   month: string;
   /** Median unit price (NT$/坪) for the month */
   medianPerPing: number;
-  /** Median total transaction price in 萬 NTD (10,000 NTD units) */
-  medianTotalWan: number;
+  /**
+   * Median total transaction price in 萬 NTD (10,000 NTD units).
+   * Null when no valid totalPrice data is available for this month.
+   */
+  medianTotalWan: number | null;
   /** Number of qualifying transactions */
   count: number;
 }
@@ -27,8 +30,15 @@ export interface PriceTrendSeries {
    * Null for the first two entries (insufficient history).
    */
   ma3: (number | null)[];
-  /** YoY % change of the most recent month vs same month one year earlier. Null when unavailable. */
+  /**
+   * 3-month moving average of medianTotalWan aligned to points[].
+   * Null for the first two entries or months lacking total price data.
+   */
+  ma3Total: (number | null)[];
+  /** YoY % change of the most recent month's medianPerPing vs same month one year earlier. Null when unavailable. */
   yoyPercentage: number | null;
+  /** YoY % change of the most recent month's medianTotalWan vs same month one year earlier. Null when unavailable. */
+  yoyTotalPercentage: number | null;
   /** false when fewer than 6 monthly data points exist for the district */
   sufficient: boolean;
 }
@@ -52,21 +62,22 @@ function median(sorted: number[]): number {
 
 /**
  * Parse a "YYYY-MM" transaction month from a raw date string.
- * Accepts YYYY-MM-DD, YYYY/MM/DD, and YYYY-MM formats (with optional full-width digits).
+ * Accepts YYYY-MM-DD, YYYY/MM/DD, YYYY-M-DD, and YYYY-MM formats.
  * Normalises with NFKC before regex to handle full-width CJK digits.
  * Returns null on any parse failure or out-of-range values.
  */
 export function parseDateMonth(raw: unknown): string | null {
   if (!raw || typeof raw !== "string") return null;
   const s = raw.normalize("NFKC");
-  const m = /^(\d{4})[-/](\d{2})/.exec(s);
+  // Accept 1 or 2 digit months (e.g. "2024-3-15" as well as "2024-03-15")
+  const m = /^(\d{4})[-/](\d{1,2})/.exec(s);
   if (!m) return null;
   const year  = parseInt(m[1]!, 10);
   const month = parseInt(m[2]!, 10);
   if (isNaN(year) || isNaN(month) || year < 1900 || year > 2100 || month < 1 || month > 12) {
     return null;
   }
-  return `${m[1]!}-${m[2]!}`;
+  return `${m[1]!}-${String(month).padStart(2, "0")}`;
 }
 
 /**
@@ -100,10 +111,10 @@ export function computeMA3(values: number[]): (number | null)[] {
 
 /**
  * Compute YoY % change: (recent − prior) / prior × 100.
- * Returns null when prior is 0 or unavailable.
+ * Returns null when either value is non-finite, or prior is 0.
  */
 export function computeYoY(recent: number, prior: number): number | null {
-  if (!isFinite(prior) || prior === 0) return null;
+  if (!isFinite(recent) || !isFinite(prior) || prior === 0) return null;
   return ((recent - prior) / prior) * 100;
 }
 
@@ -127,7 +138,9 @@ export function computePriceTrendSeries(
     city,
     points: [],
     ma3: [],
+    ma3Total: [],
     yoyPercentage: null,
+    yoyTotalPercentage: null,
     sufficient: false,
   };
 
@@ -167,6 +180,7 @@ export function computePriceTrendSeries(
 
     const tp = Number(p.totalPrice);
     if (isFinite(tp) && tp > 0) {
+      if (!monthTotalWan.has(monthKey)) monthTotalWan.set(monthKey, []);
       monthTotalWan.get(monthKey)!.push(tp / 10000);
     }
   }
@@ -180,12 +194,13 @@ export function computePriceTrendSeries(
   for (const [month, perPings] of monthPerPing) {
     if (month < windowStart || month > latestMonth) continue;
     const sortedPP  = sortedNums(perPings);
-    const totals    = monthTotalWan.get(month) ?? [];
-    const sortedTot = sortedNums(totals);
+    const totals    = monthTotalWan.get(month);
+    // medianTotalWan is null when no valid totalPrice data exists for this month
+    const medianTotalWan = totals && totals.length > 0 ? median(sortedNums(totals)) : null;
     points.push({
       month,
       medianPerPing:  median(sortedPP),
-      medianTotalWan: median(sortedTot),
+      medianTotalWan,
       count: sortedPP.length,
     });
   }
@@ -197,8 +212,18 @@ export function computePriceTrendSeries(
     return { ...EMPTY, points, sufficient: false };
   }
 
-  // MA3
+  // MA3 for per-ping (via shared helper)
   const ma3 = computeMA3(points.map((pt) => pt.medianPerPing));
+
+  // MA3 for total price — null propagated when month lacks total price data
+  const ma3Total: (number | null)[] = points.map((_, i) => {
+    if (i < 2) return null;
+    const v0 = points[i - 2]!.medianTotalWan;
+    const v1 = points[i - 1]!.medianTotalWan;
+    const v2 = points[i]!.medianTotalWan;
+    if (v0 === null || v1 === null || v2 === null) return null;
+    return (v0 + v1 + v2) / 3;
+  });
 
   // YoY: compare last point to same month one year earlier
   const lastPoint = points[points.length - 1]!;
@@ -207,13 +232,19 @@ export function computePriceTrendSeries(
   const yoyPercentage = priorPoint
     ? computeYoY(lastPoint.medianPerPing, priorPoint.medianPerPing)
     : null;
+  const yoyTotalPercentage =
+    priorPoint && lastPoint.medianTotalWan !== null && priorPoint.medianTotalWan !== null
+      ? computeYoY(lastPoint.medianTotalWan, priorPoint.medianTotalWan)
+      : null;
 
   return {
     district: districtId,
     city,
     points,
     ma3,
+    ma3Total,
     yoyPercentage,
+    yoyTotalPercentage,
     sufficient: true,
   };
 }

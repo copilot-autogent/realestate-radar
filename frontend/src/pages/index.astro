@@ -4067,12 +4067,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
   // Stores latest trend data so the 每坪/總價 toggle can re-render without a new event.
   let _lastPriceTrend: any = null;
   let _priceTrendMode: "perPing" | "total" = "perPing";
+  let _priceTrendSeq = 0; // stale-render guard
 
   async function renderPriceTrendChart(): Promise<void> {
+    const seq = ++_priceTrendSeq;
     const trend = _lastPriceTrend;
     if (!trend) return;
 
     await ensureChart();
+    if (seq !== _priceTrendSeq) return; // superseded by a later call
 
     const canvas      = document.getElementById("trend-chart")      as HTMLCanvasElement | null;
     const insuffEl    = document.getElementById("trend-insufficient") as HTMLElement | null;
@@ -4081,7 +4084,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     if (!canvas) return;
 
-    const { points, ma3, yoyPercentage, sufficient } = trend;
+    const { points, ma3, ma3Total, yoyPercentage, yoyTotalPercentage, sufficient } = trend;
 
     if (!sufficient || points.length < 6) {
       canvas.style.display = "none";
@@ -4098,23 +4101,22 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const isPerPing = _priceTrendMode === "perPing";
     const labels: string[] = points.map((pt: any) => pt.month);
 
-    // Primary series: medianPerPing in 萬/坪 or medianTotalWan in 萬
-    const primaryData: number[] = points.map((pt: any) =>
-      isPerPing
-        ? Math.round(pt.medianPerPing / 10000)
-        : Math.round(pt.medianTotalWan)
-    );
+    // Primary series: medianPerPing in 萬/坪 or medianTotalWan in 萬 (null → skip)
+    const primaryData: (number | null)[] = points.map((pt: any) => {
+      if (isPerPing) return Math.round(pt.medianPerPing / 10000);
+      return pt.medianTotalWan !== null ? Math.round(pt.medianTotalWan) : null;
+    });
 
-    // MA3 series (scaled same as primary)
+    // MA3 series — use pre-computed ma3/ma3Total from priceTrendUtils (no duplicated logic)
     const ma3Data: (number | null)[] = isPerPing
       ? ma3.map((v: number | null) => (v === null ? null : Math.round(v / 10000)))
-      : ma3.map((_: any, i: number) => {
-          if (i < 2) return null;
-          const slice = [points[i - 2]!.medianTotalWan, points[i - 1]!.medianTotalWan, points[i]!.medianTotalWan];
-          return Math.round((slice[0] + slice[1] + slice[2]) / 3);
-        });
+      : (ma3Total as (number | null)[]).map((v: number | null) =>
+          v === null ? null : Math.round(v)
+        );
 
     const unit = isPerPing ? "萬/坪" : "萬";
+    // Active YoY: use the mode-matching field so the annotation is always consistent
+    const activeYoY: number | null = isPerPing ? yoyPercentage : yoyTotalPercentage;
 
     if (trendChartInstance) {
       trendChartInstance.destroy();
@@ -4133,9 +4135,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
       canvas.width        = 260;
     }
 
-    // Highlight last point
-    const pointRadius = primaryData.map((_: any, i: number) => (i === primaryData.length - 1 ? 6 : 3));
-    const pointBgColor = primaryData.map((_: any, i: number) => (i === primaryData.length - 1 ? "#ef4444" : "#2563eb"));
+    // Highlight last non-null point
+    const lastNonNullIdx = primaryData.reduceRight((acc: number, v, i) => (acc === -1 && v !== null ? i : acc), -1);
+    const pointRadius = primaryData.map((_: any, i: number) => (i === lastNonNullIdx ? 6 : 3));
+    const pointBgColor = primaryData.map((_: any, i: number) => (i === lastNonNullIdx ? "#ef4444" : "#2563eb"));
 
     trendChartInstance = new Chart(canvas, {
       type: "line",
@@ -4152,6 +4155,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
             pointBackgroundColor: pointBgColor,
             fill: true,
             order: 1,
+            spanGaps: false,
           },
           {
             label: `MA3 (${unit})`,
@@ -4163,6 +4167,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
             fill: false,
             tension: 0.3,
             order: 0,
+            spanGaps: false,
           },
         ],
       },
@@ -4199,11 +4204,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
       noteEl.textContent = `月均${isPerPing ? "單價" : "總價"}走勢（共 ${points.length} 個月，含 MA3）`;
     }
 
-    // YoY annotation
-    if (yoyEl && yoyPercentage !== null) {
-      const sign = yoyPercentage > 0 ? "+" : "";
-      yoyEl.textContent = `同期比 ${sign}${yoyPercentage.toFixed(1)}%`;
-      yoyEl.className = `trend-yoy ${yoyPercentage > 1 ? "positive" : yoyPercentage < -1 ? "negative" : "neutral"}`;
+    // YoY annotation — always reflects the currently-displayed mode
+    if (yoyEl && activeYoY !== null) {
+      const sign = activeYoY > 0 ? "+" : "";
+      yoyEl.textContent = `同期比 ${sign}${activeYoY.toFixed(1)}%`;
+      yoyEl.className = `trend-yoy ${activeYoY > 1 ? "positive" : activeYoY < -1 ? "negative" : "neutral"}`;
       yoyEl.style.display = "block";
     } else if (yoyEl) {
       yoyEl.style.display = "none";
