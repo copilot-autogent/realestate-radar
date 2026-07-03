@@ -4641,9 +4641,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // ── Building Age Distribution chart (issue #134) ─────────────────────────
   let buildingAgeChartInstance: any = null;
+  let buildingAgeRenderSeq = 0;  // stale-event guard
 
   document.addEventListener("district-building-age", async (e: Event) => {
-    const { district, ageResult } = (e as CustomEvent).detail as {
+    const seq = ++buildingAgeRenderSeq;
+    const { district, city, ageResult } = (e as CustomEvent).detail as {
       district: string;
       city: string;
       ageResult: {
@@ -4714,6 +4716,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (chartWrap) chartWrap.style.display = "block";
 
     await ensureChart();
+    if (seq !== buildingAgeRenderSeq) return; // superseded by a newer district click
 
     // Destroy previous instance
     if (buildingAgeChartInstance) { buildingAgeChartInstance.destroy(); buildingAgeChartInstance = null; }
