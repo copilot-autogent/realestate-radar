@@ -4445,7 +4445,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     // ── Per-quarter delta labels (HTML-escaped, no XSS) ──
     if (deltaEl) {
-      const escHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c as keyof typeof c]!);
+      type EscChar = "&" | "<" | ">" | '"' | "'";
+      const escMap: Record<EscChar, string> = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+      const escHtml = (s: string) => s.replace(/[&<>"']/g, (c) => escMap[c as EscChar]!);
       deltaEl.innerHTML = volumeYoY.map((v) => {
         const qLabel = escHtml(v.quarter);
         // Show "資料不足" for insufficient current-year quarter (< 4 transactions)

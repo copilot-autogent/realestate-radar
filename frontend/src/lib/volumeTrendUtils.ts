@@ -56,11 +56,6 @@ function monthToQuarter(month: number): Quarter {
   return "Q4";
 }
 
-/** Returns the current quarter (1–4) for a given month (1–12) */
-function quarterIndex(month: number): number {
-  return Math.ceil(month / 3);
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -73,7 +68,9 @@ function quarterIndex(month: number): number {
 export function parseTransactionDate(raw: unknown): { year: number; month: number } | null {
   if (raw instanceof Date) {
     if (isNaN(raw.getTime())) return null;
-    return { year: raw.getFullYear(), month: raw.getMonth() + 1 };
+    // Use UTC methods to avoid timezone-induced date shift (e.g. UTC midnight "2024-04-01"
+    // becomes 2024-03-31 in UTC-1 with local getFullYear/getMonth).
+    return { year: raw.getUTCFullYear(), month: raw.getUTCMonth() + 1 };
   }
   if (!raw || typeof raw !== "string") return null;
 
