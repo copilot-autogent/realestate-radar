@@ -1025,6 +1025,7 @@
     TIER_LABEL_ZH as SUPPLY_TIER_LABEL_ZH,
     type SupplyPressureResult,
   } from "../lib/supplyPressureUtils.js";
+  import { computeAffordability } from "../lib/affordabilityUtils.js";
 
   const API_BASE = import.meta.env.DEV ? "/api" : "";
   const BASE_URL = import.meta.env.BASE_URL;
@@ -2327,6 +2328,11 @@
   let affordabilityActive = false;
   let affordabilityThreshold = 0; // TWD per ping
 
+  // ---- First-buyer affordability overlay state (issue #133) ----
+  let firstBuyerActive = false;
+  let firstBuyerMonthlyIncome = 0; // NT$
+  let firstBuyerDownPayment = 0;   // NT$
+
   // ---- Buyer timing score overlay state ----
   let buyerScoreActive = false;
 
@@ -2700,6 +2706,10 @@
           <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
         </div>`;
     } else {
+      if (firstBuyerActive) {
+        updateFirstBuyerLegend(true);
+        return;
+      }
       legend.innerHTML = `
         <div class="legend-title">行政區 中位數單價</div>
         <div class="legend-items">
@@ -2895,6 +2905,74 @@
     return medians;
   }
 
+  /** Compute median TOTAL property price (NT$) per district from transaction features, keyed by "city:district". */
+  function computeDistrictTotalMedians(features: any[]): Record<string, number> {
+    const byKey: Record<string, number[]> = {};
+    for (const f of features) {
+      const d = f.properties?.district as string | undefined;
+      const c = f.properties?.city as string | undefined;
+      const p = f.properties?.totalPrice;
+      if (d && typeof p === "number" && Number.isFinite(p) && p > 0) {
+        const key = `${c ?? ""}:${d}`;
+        if (!byKey[key]) byKey[key] = [];
+        byKey[key].push(p);
+      }
+    }
+    const medians: Record<string, number> = {};
+    for (const [key, prices] of Object.entries(byKey)) {
+      const sorted = [...prices].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      // True median: average two middle values for even-length arrays
+      medians[key] = sorted.length % 2 === 0
+        ? (sorted[mid - 1]! + sorted[mid]!) / 2
+        : sorted[mid]!;
+    }
+    return medians;
+  }
+
+  /**
+   * MapLibre fill-color expression for the first-buyer affordability overlay.
+   * Uses pre-joined `firstBuyerTier` property (-1 = no data, 0 = affordable, 1 = stretch, 2 = outOfRange).
+   */
+  function getFirstBuyerFillColor(): any {
+    return [
+      "case",
+      ["<", ["coalesce", ["get", "firstBuyerTier"], -1], 0], "#d1d5db",
+      ["==", ["get", "firstBuyerTier"], 0], "#22c55e",
+      ["==", ["get", "firstBuyerTier"], 1], "#eab308",
+      "#ef4444",
+    ];
+  }
+
+  function updateFirstBuyerLegend(active: boolean): void {
+    const legend = document.getElementById("choropleth-legend");
+    if (!legend) return;
+    if (active) {
+      legend.innerHTML = `
+        <div class="legend-title">🏠 首購族負擔能力</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="legend-swatch" style="background:#22c55e"></span>🟢 可負擔 (≥90%)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#eab308"></span>🟡 勉強可負擔 (60–90%)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>🔴 超出能力範圍 (&lt;60%)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#d1d5db"></span>資料不足</div>
+        </div>`;
+      legend.style.opacity = "1";
+    } else {
+      // Restore legend for the next active overlay in priority order
+      if (supplyPressureActive) { updateSupplyPressureLegend(true); return; }
+      if (completionActive) {
+        const maxUnits = Math.max(...Object.values(completionByDistrict), 1);
+        updateCompletionLegend(true, maxUnits);
+        return;
+      }
+      if (volatilityActive) { updateVolatilityLegend(true); return; }
+      if (buyerScoreActive) { updateBuyerScoreLegend(true); return; }
+      if (mrtPremiumActive) { updateMrtPremiumLegend(true); return; }
+      if (presaleSpreadActive) { updatePresaleSpreadLegend(true); return; }
+      updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
+    }
+  }
+
   /**
    * Compute building age statistics per district from rawAllFeatures, keyed by "city:district"
    * to handle same-name districts across cities (e.g., 中山區 in 台北市 / 基隆市).
@@ -2944,6 +3022,22 @@
     const src = map.getSource("districts") as maplibregl.GeoJSONSource | undefined;
     if (!src || !districtGeoJSON || !currentTxGeojson) return;
     const medians = computeDistrictMedians(currentTxGeojson.features ?? []);
+
+    // Pre-compute first-buyer affordability tiers (uses currentTxGeojson for total price medians)
+    const firstBuyerTierMap: Record<string, number> = {};
+    const firstBuyerGapWanMap: Record<string, number> = {};
+    if (firstBuyerActive) {
+      const totalMedians = computeDistrictTotalMedians(currentTxGeojson.features ?? []);
+      for (const [key, totalPrice] of Object.entries(totalMedians)) {
+        const result = computeAffordability(totalPrice, firstBuyerMonthlyIncome, firstBuyerDownPayment);
+        if (result) {
+          firstBuyerTierMap[key] = result.tier === "affordable" ? 0 : result.tier === "stretch" ? 1 : 2;
+          firstBuyerGapWanMap[key] = result.gap / 10_000;
+        } else {
+          firstBuyerTierMap[key] = -1;
+        }
+      }
+    }
 
     // Pre-compute buyer scores for all districts (uses rawAllFeatures — unfiltered)
     const buyerScores: Record<string, number> = {};
@@ -3077,6 +3171,9 @@
         if (buyerScoreActive) {
           props.buyerScore = buyerScores[district] ?? -1;
         }
+        // Join first-buyer affordability tier for choropleth fill and hover tooltip
+        props.firstBuyerTier    = firstBuyerTierMap[`${city ?? ""}:${district}`] ?? -1;
+        props.firstBuyerGapWan  = firstBuyerGapWanMap[`${city ?? ""}:${district}`] ?? 0;
         props.volatilityCV  = volatilityCVs[`${city ?? ""}:${district}`] ?? -1;
         props.mrtPremium    = mrtPremiums[`${city ?? ""}:${district}`] ?? -9998;
         props.presaleSpread = presaleSpreads[`${city ?? ""}:${district}`] ?? -9999;
@@ -3092,7 +3189,7 @@
       }),
     };
     src.setData(updated);
-    // Re-apply overlay fill in priority order: supply-pressure > completion > volatility > buyer-score > mrt-premium > presale-spread > affordability > default
+    // Re-apply overlay fill in priority order: supply-pressure > completion > volatility > buyer-score > mrt-premium > presale-spread > first-buyer-affordability > default
     if (supplyPressureActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getSupplyPressureFillColor());
     } else if (completionActive && map.getLayer("districts-fill")) {
@@ -3105,6 +3202,16 @@
       map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
     } else if (presaleSpreadActive && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
+    } else if (firstBuyerActive && map.getLayer("districts-fill")) {
+      map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
+      updateFirstBuyerLegend(true);
+    } else if (affordabilityActive && affordabilityThreshold > 0 && map.getLayer("districts-fill")) {
+      map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
+      updateAffordabilityLegend(true, affordabilityThreshold / 10000);
+    } else if (map.getLayer("districts-fill")) {
+      // No overlay active — restore default price-choropleth fill and legend
+      map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+      updateAffordabilityLegend(false);
     }
 
     // Update pulsing ring markers for qualifying buyer's market districts
@@ -4457,9 +4564,33 @@
         }
       }
     }
+    // First-buyer affordability tier + gap/surplus (pre-joined by updateChoropleth)
+    let firstBuyerHoverHtml = "";
+    if (firstBuyerActive) {
+      const fbTier = props.firstBuyerTier as number | undefined;
+      if (fbTier === undefined || fbTier < 0) {
+        firstBuyerHoverHtml = `<div class="popup-row" style="margin-top:4px"><span class="popup-label">🏠 負擔能力</span><span style="color:#94a3b8;font-size:0.76rem">資料不足</span></div>`;
+      } else {
+        const gapWan = (props.firstBuyerGapWan as number) ?? 0;
+        const gapAbs = Math.abs(gapWan).toFixed(0);
+        const [tlabel, tcolor] =
+          fbTier === 0
+            ? ["🟢 可負擔", "#16a34a"]
+            : fbTier === 1
+              ? ["🟡 勉強可負擔", "#ca8a04"]
+              : ["🔴 超出能力範圍", "#dc2626"];
+        const gapText =
+          gapWan > 0
+            ? `<span style="color:#dc2626">尚差 ${gapAbs} 萬</span>`
+            : gapWan < 0
+              ? `<span style="color:#16a34a">還有 ${gapAbs} 萬空間</span>`
+              : `<span style="color:#64748b">剛好可負擔</span>`;
+        firstBuyerHoverHtml = `<div class="popup-row" style="margin-top:4px;flex-direction:column;align-items:flex-start;gap:2px"><span class="popup-label">🏠 負擔能力</span><span style="font-weight:600;color:${tcolor}">${tlabel}</span><span style="font-size:0.76rem">${gapText}</span></div>`;
+      }
+    }
     districtHover
       .setLngLat(e.lngLat)
-      .setHTML(`<div class="popup-title">${props.district}</div>${bmOpportunityHtml}${priceHtml}${completionHtml}${supplyPressureHoverHtml}${buyerScoreHtml}${volatilityHoverHtml}${ageHtml}`)
+      .setHTML(`<div class="popup-title">${props.district}</div>${bmOpportunityHtml}${priceHtml}${completionHtml}${supplyPressureHoverHtml}${firstBuyerHoverHtml}${buyerScoreHtml}${volatilityHoverHtml}${ageHtml}`)
       .addTo(map);
   });
 
@@ -4572,6 +4703,38 @@
     }
   });
 
+  // ---- First-buyer affordability overlay (issue #133) ----
+  document.addEventListener("first-buyer-overlay-change", (e: Event) => {
+    const detail = (e as CustomEvent).detail as {
+      enabled: boolean;
+      monthlyIncomeNTD?: number;
+      downPaymentNTD?: number;
+    };
+
+    if (!map.getLayer("districts-fill")) return;
+
+    if (detail.enabled && detail.monthlyIncomeNTD && detail.downPaymentNTD &&
+        detail.monthlyIncomeNTD > 0 && detail.downPaymentNTD > 0) {
+      firstBuyerActive = true;
+      firstBuyerMonthlyIncome = detail.monthlyIncomeNTD;
+      firstBuyerDownPayment = detail.downPaymentNTD;
+      // Ensure district layers are visible
+      for (const id of ["districts-fill", "districts-line"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      }
+      const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
+      if (choroplethToggle) choroplethToggle.checked = true;
+      // updateChoropleth re-computes tiers per district and applies fill
+      updateChoropleth();
+    } else {
+      firstBuyerActive = false;
+      firstBuyerMonthlyIncome = 0;
+      firstBuyerDownPayment = 0;
+      // updateChoropleth restores fill and legend via the default else branch
+      updateChoropleth();
+    }
+  });
+
   // ---- Completion overlay ----
   document.addEventListener("completion-mode-change", (e: Event) => {
     const detail = (e as CustomEvent).detail as {
@@ -4619,6 +4782,9 @@
       } else if (mrtPremiumActive) {
         map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
         updateMrtPremiumLegend(true);
+      } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
+        updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
       } else {
@@ -4678,6 +4844,9 @@
         updateMrtPremiumLegend(true);
       } else if (presaleSpreadActive) {
         updatePresaleSpreadLegend(true);
+      } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
+        updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
       } else {
@@ -4908,6 +5077,9 @@
       } else if (presaleSpreadActive) {
         map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
         updatePresaleSpreadLegend(true);
+      } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
+        updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -4918,7 +5090,6 @@
     }
   });
 
-  // ---- Volatility mode change (dispatched from index.astro toggle) ----
   document.addEventListener("volatility-mode-change", (e: Event) => {
     const detail = (e as CustomEvent).detail as { enabled: boolean };
     volatilityActive = detail.enabled;
@@ -4952,6 +5123,9 @@
       } else if (presaleSpreadActive) {
         map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
         updatePresaleSpreadLegend(true);
+      } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
+        updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -4997,6 +5171,9 @@
       } else if (presaleSpreadActive) {
         map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
         updatePresaleSpreadLegend(true);
+      } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
+        updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -5040,6 +5217,9 @@
       } else if (mrtPremiumActive) {
         map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
         updateMrtPremiumLegend(true);
+      } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
+        updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
