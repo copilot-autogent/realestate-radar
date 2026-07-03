@@ -1007,6 +1007,7 @@
   import { computeHeatmapData } from "../lib/heatmapUtils.js";
   import { computeDistrictBoxPlots } from "../lib/boxPlotUtils.js";
   import { computePriceTrendSeries } from "../lib/priceTrendUtils.js";
+  import { computeVolumeYoY } from "../lib/volumeTrendUtils.js";
   import {
     estimateNegotiationMargin,
     type DistrictStats,
@@ -3572,6 +3573,16 @@
           detail: { priceTrend },
         }));
       }
+
+      // ── Volume YoY bar chart (dot click, issue #132) ───────────────────────
+      {
+        const txCity = props.city as string | undefined;
+        const refYear = new Date().getFullYear();
+        const volumeYoY = computeVolumeYoY(rawAllFeatures, txDistrict, refYear, txCity || undefined);
+        document.dispatchEvent(new CustomEvent("district-volume-yoy", {
+          detail: { district: txDistrict, referenceYear: refYear, volumeYoY },
+        }));
+      }
     }
   });
 
@@ -4055,6 +4066,15 @@
       const priceTrend = computePriceTrendSeries(rawAllFeatures, district, clickedCity || undefined);
       document.dispatchEvent(new CustomEvent("district-price-trend", {
         detail: { priceTrend },
+      }));
+    }
+
+    // ── Volume YoY bar chart (district polygon click, issue #132) ──────────────
+    {
+      const refYear = new Date().getFullYear();
+      const volumeYoY = computeVolumeYoY(rawAllFeatures, district, refYear, clickedCity || undefined);
+      document.dispatchEvent(new CustomEvent("district-volume-yoy", {
+        detail: { district, referenceYear: refYear, volumeYoY },
       }));
     }
 
