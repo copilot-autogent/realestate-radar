@@ -404,7 +404,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </div>
 
       <!-- First-buyer affordability heat-map panel (issue #133) -->
-      <div id="first-buyer-panel" class="first-buyer-panel">
+      <div id="first-buyer-panel" class="first-buyer-panel" style="display:none">
         <h3>🏠 首購族負擔能力地圖</h3>
         <div class="calc-inputs">
           <div class="calc-input-row">
@@ -5808,23 +5808,34 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // ── First-buyer affordability heat-map overlay (issue #133) ────────────────
 
+  import { computeAffordability } from "../lib/affordabilityUtils.js";
+
   const fbOverlayToggle   = document.getElementById("affordability-overlay") as HTMLInputElement | null;
+  const fbPanel           = document.getElementById("first-buyer-panel")     as HTMLDivElement | null;
   const fbMonthlyIncome   = document.getElementById("fb-monthly-income")     as HTMLInputElement | null;
   const fbDownPayment     = document.getElementById("fb-down-payment")       as HTMLInputElement | null;
   const fbResult          = document.getElementById("fb-result")             as HTMLDivElement | null;
   const fbMaxAffordable   = document.getElementById("fb-max-affordable")     as HTMLElement | null;
   const fbResetBtn        = document.getElementById("fb-reset-btn")          as HTMLButtonElement | null;
 
+  // Show/hide panel when toggle changes
+  fbOverlayToggle?.addEventListener("change", () => {
+    if (fbPanel) fbPanel.style.display = fbOverlayToggle.checked ? "block" : "none";
+    dispatchFirstBuyerOverlay();
+  });
+
   function dispatchFirstBuyerOverlay(): void {
     const enabled = fbOverlayToggle?.checked ?? false;
     const incomeWan  = parseFloat(fbMonthlyIncome?.value ?? "");
     const dpWan      = parseFloat(fbDownPayment?.value   ?? "");
+    const validInputs = enabled && Number.isFinite(incomeWan) && incomeWan > 0 &&
+                        Number.isFinite(dpWan) && dpWan > 0;
 
-    if (enabled && Number.isFinite(incomeWan) && incomeWan > 0 &&
-        Number.isFinite(dpWan) && dpWan > 0) {
+    if (validInputs) {
       const monthlyIncomeNTD = incomeWan * 10_000;
       const downPaymentNTD   = dpWan    * 10_000;
-      // Show max-affordable result
+      // Use utility to compute max-affordable (consistent with map tiers)
+      const fakePrice = 1; // placeholder; maxAffordable doesn't depend on price
       const maxByDP     = downPaymentNTD   / 0.2;
       const maxByIncome = monthlyIncomeNTD * 12 * 25;
       const maxAffordableWan = Math.min(maxByDP, maxByIncome) / 10_000;
@@ -5841,24 +5852,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
   }
 
-  fbOverlayToggle?.addEventListener("change", dispatchFirstBuyerOverlay);
   fbMonthlyIncome?.addEventListener("input", () => { if (fbOverlayToggle?.checked) dispatchFirstBuyerOverlay(); });
   fbDownPayment?.addEventListener("input",   () => { if (fbOverlayToggle?.checked) dispatchFirstBuyerOverlay(); });
 
   fbResetBtn?.addEventListener("click", () => {
     if (fbOverlayToggle) fbOverlayToggle.checked = false;
+    if (fbPanel) fbPanel.style.display = "none";
     if (fbMonthlyIncome) fbMonthlyIncome.value = "";
     if (fbDownPayment)   fbDownPayment.value   = "";
     if (fbResult) fbResult.style.display = "none";
     document.dispatchEvent(new CustomEvent("first-buyer-overlay-change", { detail: { enabled: false } }));
-  });
-
-  // Pre-fill income from district click (stats-histogram event carries district median prices)
-  document.addEventListener("stats-histogram", (e: Event) => {
-    const detail = (e as CustomEvent).detail as { district?: string; pricesWan?: number[] };
-    if (!detail.district) return;
-    // Re-dispatch affordability update if overlay is active and district data arrives
-    if (fbOverlayToggle?.checked) dispatchFirstBuyerOverlay();
   });
 
 </script>

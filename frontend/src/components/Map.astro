@@ -3208,6 +3208,10 @@
     } else if (affordabilityActive && affordabilityThreshold > 0 && map.getLayer("districts-fill")) {
       map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
       updateAffordabilityLegend(true, affordabilityThreshold / 10000);
+    } else if (map.getLayer("districts-fill")) {
+      // No overlay active — restore default price-choropleth fill and legend
+      map.setPaintProperty("districts-fill", "fill-color", DEFAULT_FILL_COLOR);
+      updateAffordabilityLegend(false);
     }
 
     // Update pulsing ring markers for qualifying buyer's market districts
@@ -4779,7 +4783,7 @@
         map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
         updateMrtPremiumLegend(true);
       } else if (firstBuyerActive) {
-        // fill already correct from updateChoropleth
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
         updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
@@ -4841,6 +4845,7 @@
       } else if (presaleSpreadActive) {
         updatePresaleSpreadLegend(true);
       } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
         updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         updateAffordabilityLegend(true, affordabilityThreshold / 10000);
@@ -5073,6 +5078,7 @@
         map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
         updatePresaleSpreadLegend(true);
       } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
         updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
@@ -5118,6 +5124,7 @@
         map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
         updatePresaleSpreadLegend(true);
       } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
         updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
@@ -5165,6 +5172,7 @@
         map.setPaintProperty("districts-fill", "fill-color", getPresaleSpreadFillColor());
         updatePresaleSpreadLegend(true);
       } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
         updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
@@ -5210,6 +5218,7 @@
         map.setPaintProperty("districts-fill", "fill-color", getMrtPremiumFillColor());
         updateMrtPremiumLegend(true);
       } else if (firstBuyerActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getFirstBuyerFillColor());
         updateFirstBuyerLegend(true);
       } else if (affordabilityActive && affordabilityThreshold > 0) {
         map.setPaintProperty("districts-fill", "fill-color", getAffordabilityFillColor(affordabilityThreshold));
