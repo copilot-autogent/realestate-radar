@@ -1006,6 +1006,7 @@
   import { computeMedianPrice12mo } from "../lib/districtTableUtils.js";
   import { computeHeatmapData } from "../lib/heatmapUtils.js";
   import { computeDistrictBoxPlots } from "../lib/boxPlotUtils.js";
+  import { computePriceTrendSeries } from "../lib/priceTrendUtils.js";
   import {
     estimateNegotiationMargin,
     type DistrictStats,
@@ -3562,6 +3563,15 @@
           detail: { boxPlotData },
         }));
       }
+
+      // ── Monthly price-per-ping trend series (dot click) ───────────────────
+      {
+        const txCity = props.city as string | undefined;
+        const priceTrend = computePriceTrendSeries(rawAllFeatures, txDistrict, txCity || undefined);
+        document.dispatchEvent(new CustomEvent("district-price-trend", {
+          detail: { priceTrend },
+        }));
+      }
     }
   });
 
@@ -4037,6 +4047,14 @@
       const boxPlotData = computeDistrictBoxPlots(rawAllFeatures, district, clickedCity || undefined);
       document.dispatchEvent(new CustomEvent("district-boxplot", {
         detail: { boxPlotData },
+      }));
+    }
+
+    // ── Monthly price-per-ping trend series (district polygon click) ──────────
+    {
+      const priceTrend = computePriceTrendSeries(rawAllFeatures, district, clickedCity || undefined);
+      document.dispatchEvent(new CustomEvent("district-price-trend", {
+        detail: { priceTrend },
       }));
     }
 

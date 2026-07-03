@@ -522,9 +522,18 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <button type="button" id="btn-boxplot" class="chart-toggle-btn" data-chart="boxplot">箱型圖</button>
           <button type="button" id="btn-linechart" class="chart-toggle-btn active" data-chart="line">折線圖</button>
         </div>
-        <!-- Line chart (existing) -->
-        <canvas id="trend-chart" width="260" height="160"></canvas>
-        <p id="trend-note" class="trend-note"></p>
+        <!-- Line chart panel (issue #131: monthly trend with MA3, YoY, toggle) -->
+        <div id="line-chart-panel">
+          <!-- 每坪/總價 toggle (issue #131) -->
+          <div id="price-mode-toggle" class="price-mode-toggle" role="group" aria-label="價格模式">
+            <button type="button" id="btn-per-ping" class="price-mode-btn active" data-mode="perPing">每坪單價</button>
+            <button type="button" id="btn-total" class="price-mode-btn" data-mode="total">總價</button>
+          </div>
+          <canvas id="trend-chart" width="260" height="160" aria-label="每月中位數單價折線趨勢圖"></canvas>
+          <div id="trend-insufficient" class="trend-insufficient" style="display:none">資料不足（需 ≥6 個月歷史交易）</div>
+          <p id="trend-note" class="trend-note"></p>
+          <p id="trend-yoy" class="trend-yoy" style="display:none"></p>
+        </div>
         <!-- Box-plot chart (issue #124) -->
         <div id="boxplot-panel" class="boxplot-inner-panel" style="display:none">
           <canvas id="boxplot-canvas" width="260" height="180" aria-label="歷史成交價位箱型圖"></canvas>
@@ -2438,6 +2447,61 @@ const showBuyersMarket = !isStale && dataYear !== null;
     color: #fff;
     border-color: #2563eb;
   }
+  /* ── Monthly price trend (issue #131) ── */
+  .price-mode-toggle {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .price-mode-btn {
+    flex: 1;
+    padding: 3px 6px;
+    font-size: 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #f8fafc;
+    color: #475569;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .price-mode-btn.active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+  #line-chart-panel {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .trend-insufficient {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-style: italic;
+    padding: 6px 0;
+  }
+  .trend-yoy {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .trend-yoy.positive {
+    color: #dc2626;
+    background: #fef2f2;
+    border-left: 3px solid #dc2626;
+  }
+  .trend-yoy.negative {
+    color: #16a34a;
+    background: #f0fdf4;
+    border-left: 3px solid #16a34a;
+  }
+  .trend-yoy.neutral {
+    color: #475569;
+    background: #f8fafc;
+    border-left: 3px solid #94a3b8;
+  }
   .boxplot-inner-panel {
     margin-top: 4px;
   }
@@ -3999,60 +4063,120 @@ const showBuyersMarket = !isStale && dataYear !== null;
     Chart = mod.default;
   }
 
-  document.addEventListener("district-trend", async (e: Event) => {
-    const { district, quarters, medians, buildingType, source } = (e as CustomEvent).detail as {
-      district: string;
-      quarters: string[];
-      medians: number[];
-      buildingType?: string;
-      source?: string;
-    };
+  // ── Monthly price-per-ping trend chart (issue #131) ───────────────────────
+  // Stores latest trend data so the 每坪/總價 toggle can re-render without a new event.
+  let _lastPriceTrend: any = null;
+  let _priceTrendMode: "perPing" | "total" = "perPing";
+
+  async function renderPriceTrendChart(): Promise<void> {
+    const trend = _lastPriceTrend;
+    if (!trend) return;
 
     await ensureChart();
 
-    const panel = document.getElementById("trend-panel") as HTMLDivElement;
-    const title = document.getElementById("trend-title") as HTMLHeadingElement;
-    const note  = document.getElementById("trend-note")  as HTMLParagraphElement;
+    const canvas      = document.getElementById("trend-chart")      as HTMLCanvasElement | null;
+    const insuffEl    = document.getElementById("trend-insufficient") as HTMLElement | null;
+    const noteEl      = document.getElementById("trend-note")         as HTMLElement | null;
+    const yoyEl       = document.getElementById("trend-yoy")          as HTMLElement | null;
 
-    panel.style.display = "block";
-    const typeLabel = buildingType ? ` ${buildingType}` : '';
-    const sourceNote = source === 'dot' ? '同類型物件歷史走勢' : '行政區季均價走勢';
-    title.textContent = `${district}${typeLabel} — 季均價走勢`;
-    note.textContent  = quarters.length ? `${sourceNote}（共 ${quarters.length} 季）` : '暫無資料';
+    if (!canvas) return;
 
+    const { points, ma3, yoyPercentage, sufficient } = trend;
 
-    const canvas = document.getElementById("trend-chart") as HTMLCanvasElement;
+    if (!sufficient || points.length < 6) {
+      canvas.style.display = "none";
+      if (insuffEl) insuffEl.style.display = "block";
+      if (noteEl)   noteEl.textContent = "";
+      if (yoyEl) { yoyEl.style.display = "none"; yoyEl.textContent = ""; }
+      if (trendChartInstance) { trendChartInstance.destroy(); trendChartInstance = null; }
+      return;
+    }
+
+    if (insuffEl) insuffEl.style.display = "none";
+    canvas.style.display = "block";
+
+    const isPerPing = _priceTrendMode === "perPing";
+    const labels: string[] = points.map((pt: any) => pt.month);
+
+    // Primary series: medianPerPing in 萬/坪 or medianTotalWan in 萬
+    const primaryData: number[] = points.map((pt: any) =>
+      isPerPing
+        ? Math.round(pt.medianPerPing / 10000)
+        : Math.round(pt.medianTotalWan)
+    );
+
+    // MA3 series (scaled same as primary)
+    const ma3Data: (number | null)[] = isPerPing
+      ? ma3.map((v: number | null) => (v === null ? null : Math.round(v / 10000)))
+      : ma3.map((_: any, i: number) => {
+          if (i < 2) return null;
+          const slice = [points[i - 2]!.medianTotalWan, points[i - 1]!.medianTotalWan, points[i]!.medianTotalWan];
+          return Math.round((slice[0] + slice[1] + slice[2]) / 3);
+        });
+
+    const unit = isPerPing ? "萬/坪" : "萬";
 
     if (trendChartInstance) {
       trendChartInstance.destroy();
       trendChartInstance = null;
     }
 
-    if (!quarters.length) return;
+    // On mobile, make chart scrollable by using a wider virtual width
+    const isMobile = window.innerWidth <= 480;
+    if (isMobile) {
+      canvas.style.width  = `${Math.max(260, labels.length * 22)}px`;
+      canvas.width        = Math.max(260, labels.length * 22);
+      canvas.style.height = "140px";
+      canvas.height       = 140;
+    } else {
+      canvas.style.width  = "260px";
+      canvas.width        = 260;
+    }
 
-    const data = medians.map((p: number) => Math.round(p / 10000));
+    // Highlight last point
+    const pointRadius = primaryData.map((_: any, i: number) => (i === primaryData.length - 1 ? 6 : 3));
+    const pointBgColor = primaryData.map((_: any, i: number) => (i === primaryData.length - 1 ? "#ef4444" : "#2563eb"));
 
     trendChartInstance = new Chart(canvas, {
       type: "line",
       data: {
-        labels: quarters,
-        datasets: [{
-          label: "中位數單價 (萬/坪)",
-          data,
-          borderColor: "#2563eb",
-          backgroundColor: "rgba(37,99,235,0.1)",
-          tension: 0.3,
-          pointRadius: 4,
-          fill: true,
-        }],
+        labels,
+        datasets: [
+          {
+            label: `中位數${isPerPing ? "單價" : "總價"} (${unit})`,
+            data: primaryData,
+            borderColor: "#2563eb",
+            backgroundColor: "rgba(37,99,235,0.08)",
+            tension: 0.3,
+            pointRadius,
+            pointBackgroundColor: pointBgColor,
+            fill: true,
+            order: 1,
+          },
+          {
+            label: `MA3 (${unit})`,
+            data: ma3Data,
+            borderColor: "#f59e0b",
+            borderWidth: 2,
+            borderDash: [4, 4],
+            pointRadius: 0,
+            fill: false,
+            tension: 0.3,
+            order: 0,
+          },
+        ],
       },
       options: {
         responsive: false,
         plugins: {
-          legend: { display: false },
+          legend: {
+            display: true,
+            position: "top" as const,
+            labels: { font: { size: 10 }, boxWidth: 20, padding: 6 },
+          },
           tooltip: {
             callbacks: {
-              label: (ctx: any) => `${ctx.parsed.y} 萬/坪`,
+              label: (ctx: any) => `${ctx.dataset.label}: ${ctx.parsed.y} ${unit}`,
             },
           },
         },
@@ -4070,7 +4194,70 @@ const showBuyersMarket = !isStale && dataYear !== null;
         },
       },
     });
+
+    if (noteEl) {
+      noteEl.textContent = `月均${isPerPing ? "單價" : "總價"}走勢（共 ${points.length} 個月，含 MA3）`;
+    }
+
+    // YoY annotation
+    if (yoyEl && yoyPercentage !== null) {
+      const sign = yoyPercentage > 0 ? "+" : "";
+      yoyEl.textContent = `同期比 ${sign}${yoyPercentage.toFixed(1)}%`;
+      yoyEl.className = `trend-yoy ${yoyPercentage > 1 ? "positive" : yoyPercentage < -1 ? "negative" : "neutral"}`;
+      yoyEl.style.display = "block";
+    } else if (yoyEl) {
+      yoyEl.style.display = "none";
+    }
+  }
+
+  document.addEventListener("district-price-trend", async (e: Event) => {
+    const { priceTrend } = (e as CustomEvent).detail as { priceTrend: any };
+    _lastPriceTrend = priceTrend;
+
+    const panel = document.getElementById("trend-panel") as HTMLDivElement | null;
+    const title = document.getElementById("trend-title") as HTMLHeadingElement | null;
+    if (panel) panel.style.display = "block";
+    if (title) title.textContent = `${priceTrend.district} — 每月價格走勢`;
+
+    await renderPriceTrendChart();
   });
+
+  // Legacy quarterly-trend event: show panel + title but defer chart to district-price-trend
+  document.addEventListener("district-trend", async (e: Event) => {
+    const { district, buildingType, source } = (e as CustomEvent).detail as {
+      district: string;
+      quarters: string[];
+      medians: number[];
+      buildingType?: string;
+      source?: string;
+    };
+
+    const panel = document.getElementById("trend-panel") as HTMLDivElement | null;
+    const title = document.getElementById("trend-title") as HTMLHeadingElement | null;
+    if (panel) panel.style.display = "block";
+    const typeLabel = buildingType ? ` ${buildingType}` : "";
+    if (title) title.textContent = `${district}${typeLabel} — 每月價格走勢`;
+    // Actual rendering is handled by district-price-trend listener above
+  });
+
+  // ── 每坪/總價 toggle (issue #131) ──────────────────────────────────────────
+  (function setupPriceModeToggle() {
+    const btnPerPing = document.getElementById("btn-per-ping") as HTMLButtonElement | null;
+    const btnTotal   = document.getElementById("btn-total")    as HTMLButtonElement | null;
+
+    btnPerPing?.addEventListener("click", async () => {
+      _priceTrendMode = "perPing";
+      btnPerPing.classList.add("active");
+      btnTotal?.classList.remove("active");
+      await renderPriceTrendChart();
+    });
+    btnTotal?.addEventListener("click", async () => {
+      _priceTrendMode = "total";
+      btnTotal.classList.add("active");
+      btnPerPing?.classList.remove("active");
+      await renderPriceTrendChart();
+    });
+  })();
 
   // ── Seasonal deal-flow calendar chart ─────────────────────────────────────
   let seasonalChartInstance: any = null;
@@ -4078,24 +4265,21 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // ── Price chart toggle: 箱型圖 | 折線圖 (issue #124) ──────────────────────
   (function setupPriceChartToggle() {
-    const btnBox  = document.getElementById("btn-boxplot")  as HTMLButtonElement | null;
-    const btnLine = document.getElementById("btn-linechart") as HTMLButtonElement | null;
-    const lineCanvas    = document.getElementById("trend-chart")   as HTMLCanvasElement | null;
-    const trendNote     = document.getElementById("trend-note")    as HTMLElement | null;
-    const boxplotPanel  = document.getElementById("boxplot-panel") as HTMLElement | null;
+    const btnBox       = document.getElementById("btn-boxplot")       as HTMLButtonElement | null;
+    const btnLine      = document.getElementById("btn-linechart")     as HTMLButtonElement | null;
+    const linePanel    = document.getElementById("line-chart-panel")  as HTMLElement | null;
+    const boxplotPanel = document.getElementById("boxplot-panel")     as HTMLElement | null;
 
     function showLine() {
-      if (btnBox)  btnBox.classList.remove("active");
-      if (btnLine) btnLine.classList.add("active");
-      if (lineCanvas)   lineCanvas.style.display = "block";
-      if (trendNote)    trendNote.style.display   = "block";
+      if (btnBox)       btnBox.classList.remove("active");
+      if (btnLine)      btnLine.classList.add("active");
+      if (linePanel)    linePanel.style.display = "block";
       if (boxplotPanel) boxplotPanel.style.display = "none";
     }
     function showBox() {
-      if (btnBox)  btnBox.classList.add("active");
-      if (btnLine) btnLine.classList.remove("active");
-      if (lineCanvas)   lineCanvas.style.display = "none";
-      if (trendNote)    trendNote.style.display   = "none";
+      if (btnBox)       btnBox.classList.add("active");
+      if (btnLine)      btnLine.classList.remove("active");
+      if (linePanel)    linePanel.style.display = "none";
       if (boxplotPanel) boxplotPanel.style.display = "block";
     }
 
