@@ -106,6 +106,17 @@ describe("parseBuildYear", () => {
     expect(parseBuildYear(1800)).toBe(null);
   });
 
+  it("respects custom maxYear parameter — rejects year > maxYear", () => {
+    expect(parseBuildYear(2026, 2025)).toBe(null);  // year 2026 > maxYear 2025
+    expect(parseBuildYear(2026, 2026)).toBe(2026);  // exact boundary allowed
+    expect(parseBuildYear(2026, 2100)).toBe(2026);  // within range
+  });
+
+  it("rejects non-integer numeric inputs (e.g. 74.5, 741024.1)", () => {
+    expect(parseBuildYear(74.5)).toBe(null);
+    expect(parseBuildYear(741024.1)).toBe(null);
+  });
+
   it("returns null for negative numbers", () => {
     expect(parseBuildYear(-1)).toBe(null);
   });

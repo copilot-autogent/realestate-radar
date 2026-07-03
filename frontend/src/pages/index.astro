@@ -4672,7 +4672,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (!panel || !canvas) return;
 
     panel.style.display = "block";
-    if (distLabel) distLabel.textContent = district ? ` — ${district}` : "";
+    if (distLabel) {
+      // Show city when available to disambiguate same-name districts across cities
+      const cityPrefix = city ? `${city} ` : "";
+      distLabel.textContent = district ? ` — ${cityPrefix}${district}` : "";
+    }
 
     // Completeness note
     if (completenessEl) {
@@ -4725,8 +4729,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const labels = ageResult.buckets.map((b) => b.label);
     const counts = ageResult.buckets.map((b) => b.count);
     const pcts   = ageResult.buckets.map((b) => b.pct);
-    const barColors = ageResult.buckets.map((b) =>
-      b.count === maxCount && maxCount > 0 ? "rgba(239,68,68,0.80)" : "rgba(37,99,235,0.65)",
+    const DOMINANT_COLOR  = "rgba(239,68,68,0.80)";
+    const DEFAULT_COLOR   = "rgba(37,99,235,0.65)";
+    const DOMINANT_BORDER = "rgba(239,68,68,1)";
+    const DEFAULT_BORDER  = "rgba(37,99,235,0.9)";
+    const barColors       = ageResult.buckets.map((b) =>
+      b.count === maxCount && maxCount > 0 ? DOMINANT_COLOR : DEFAULT_COLOR,
+    );
+    const borderColors    = ageResult.buckets.map((b) =>
+      b.count === maxCount && maxCount > 0 ? DOMINANT_BORDER : DEFAULT_BORDER,
     );
 
     buildingAgeChartInstance = new Chart(canvas, {
@@ -4737,7 +4748,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
           label: "成交數",
           data: counts,
           backgroundColor: barColors,
-          borderColor: barColors.map((c) => c.replace("0.80", "1").replace("0.65", "0.9")),
+          borderColor: borderColors,
           borderWidth: 1,
           borderRadius: 3,
         }],

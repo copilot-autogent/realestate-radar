@@ -72,9 +72,13 @@ const BUCKET_DEFS: ReadonlyArray<{
  *  - 1–3-digit integers (plain ROC year, e.g. 74): add 1911
  *  - 4-digit integers ≥ 1900 (Western year): use as-is
  *
+ * @param maxYear  Upper bound for plausibility check (default 2200). Pass the
+ *                 referenceYear + 1 from computeBuildingAgeDistribution for
+ *                 deterministic, clock-independent parsing.
+ *
  * Returns null on any parse failure or implausible result.
  */
-export function parseBuildYear(raw: unknown): number | null {
+export function parseBuildYear(raw: unknown, maxYear = 2200): number | null {
   if (raw === null || raw === undefined || raw === "" || raw === false) return null;
 
   let n: number;
@@ -87,12 +91,14 @@ export function parseBuildYear(raw: unknown): number | null {
     if (!/^\d+$/.test(s)) return null;
     n = parseInt(s, 10);
   } else if (typeof raw === "number") {
+    // Reject non-integers (e.g. 74.5, 741024.1) which indicate malformed data
+    if (!isFinite(raw) || isNaN(raw) || Math.floor(raw) !== raw) return null;
     n = raw;
   } else {
     return null;
   }
 
-  if (!isFinite(n) || isNaN(n) || n <= 0) return null;
+  if (n <= 0) return null;
 
   let year: number;
 
@@ -110,10 +116,8 @@ export function parseBuildYear(raw: unknown): number | null {
     return null;
   }
 
-  // Sanity: building years between 1900 and current year + 1 are plausible.
-  // Using new Date().getFullYear() is intentional: parseBuildYear is a wall-clock-aware
-  // helper; callers that need reproducibility should clamp the result themselves.
-  if (year < 1900 || year > new Date().getFullYear() + 1) return null;
+  // Sanity: plausible building year range 1900..maxYear
+  if (year < 1900 || year > maxYear) return null;
   return year;
 }
 
@@ -165,7 +169,7 @@ export function computeBuildingAgeDistribution(
   for (const f of districtFeatures) {
     const p = f?.properties ?? f;
     const rawBy = p.buildYear ?? p.buildingCompletionYear ?? null;
-    const buildYear = parseBuildYear(rawBy);
+    const buildYear = parseBuildYear(rawBy, refYear + 1);
     const age = buildYearToAge(buildYear, refYear);
     if (age !== null) ages.push(age);
   }
