@@ -4139,10 +4139,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
 </style>
 
 <script>
+  import { computeYTDSummary, formatYoYPct } from "../lib/volumeTrendUtils.js";
+
   // Dynamically load Chart.js when first needed (CDN, no npm dep)
   // jsDelivr +esm transforms the auto entry to a valid ESM module
   let Chart: any = null;
   let trendChartInstance: any = null;
+  let volumeYoYRenderSeq = 0;  // stale-event guard for volume-yoy panel
   async function ensureChart() {
     if (Chart) return;
     // @ts-ignore — CDN ESM import, no type declarations needed
@@ -4309,6 +4312,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   document.addEventListener("district-volume-yoy", async (e: Event) => {
+    const seq = ++volumeYoYRenderSeq;
     const { district, referenceYear, volumeYoY } = (e as CustomEvent).detail as {
       district: string;
       referenceYear: number;
@@ -4337,19 +4341,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     // ── YTD summary badge (only quarters up to current month to avoid mid-year bias) ──
     const currentMonth = new Date().getMonth() + 1; // 1–12
-    const activeMaxQuarter = Math.ceil(currentMonth / 3); // 1–4
-    const activeVolumes = volumeYoY.filter((_, i) => i + 1 <= activeMaxQuarter);
-    const ytdCurrent = activeVolumes.reduce((s, v) => s + v.currentYear, 0);
-    const ytdPrior   = activeVolumes.reduce((s, v) => s + v.priorYear,   0);
-    const ytdPct     = ytdPrior > 0 ? ((ytdCurrent - ytdPrior) / ytdPrior) * 100 : null;
+    const ytd = computeYTDSummary(volumeYoY, currentMonth);
     if (badge) {
-      if (ytdPct !== null) {
-        const arrow = ytdPct >= 0 ? "↑" : "↓";
-        const absStr = Math.abs(ytdPct) < 100
-          ? `${Math.abs(ytdPct).toFixed(1)}%`
-          : `${Math.round(Math.abs(ytdPct))}%`;
+      if (ytd.ytdYoYPct !== null) {
+        const arrow = ytd.ytdYoYPct >= 0 ? "↑" : "↓";
+        const absStr = formatYoYPct(Math.abs(ytd.ytdYoYPct)).replace("+", "").replace("-", "");
         badge.textContent = `今年成交量 ${arrow} ${absStr} 同期`;
-        badge.className = `volume-yoy-badge ${ytdPct < 0 ? "badge-down" : "badge-up"}`;
+        badge.className = `volume-yoy-badge ${ytd.ytdYoYPct < 0 ? "badge-down" : "badge-up"}`;
         badge.style.display = "block";
       } else {
         badge.style.display = "none";
@@ -4368,6 +4366,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     canvas.style.display = "block";
 
     await ensureChart();
+    if (seq !== volumeYoYRenderSeq) return; // stale — newer district click already in progress
 
     // Destroy any previous chart instance
     const existingChart = (canvas as any)._volumeYoYChart;
@@ -4462,7 +4461,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
         const absStr  = Number.isInteger(abs) ? String(abs) : abs.toFixed(1);
         const pctStr  = escHtml(`${sign}${absStr}%`);
         const cls     = v.yoyPct < 0 ? "delta-down" : "delta-up";
-        return `<span class="${cls}" title="${qLabel}: ${pctStr}">${qLabel}: ${pctStr}</span>`;
+        // Append * indicator when prior-year data is also insufficient
+        const insuffSuffix = v.insufficientPrior ? " *" : "";
+        return `<span class="${cls}" title="${qLabel}: ${pctStr}${v.insufficientPrior ? " (去年資料不足)" : ""}">${qLabel}: ${pctStr}${insuffSuffix}</span>`;
       }).join("");
     }
   });
