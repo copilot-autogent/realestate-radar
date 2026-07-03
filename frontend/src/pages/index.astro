@@ -5808,7 +5808,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // ── First-buyer affordability heat-map overlay (issue #133) ────────────────
 
-  import { computeAffordability } from "../lib/affordabilityUtils.js";
+  import { DOWN_PAYMENT_RATIO, INCOME_MULTIPLIER } from "../lib/affordabilityUtils.js";
 
   const fbOverlayToggle   = document.getElementById("affordability-overlay") as HTMLInputElement | null;
   const fbPanel           = document.getElementById("first-buyer-panel")     as HTMLDivElement | null;
@@ -5834,10 +5834,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (validInputs) {
       const monthlyIncomeNTD = incomeWan * 10_000;
       const downPaymentNTD   = dpWan    * 10_000;
-      // Use utility to compute max-affordable (consistent with map tiers)
-      const fakePrice = 1; // placeholder; maxAffordable doesn't depend on price
-      const maxByDP     = downPaymentNTD   / 0.2;
-      const maxByIncome = monthlyIncomeNTD * 12 * 25;
+      // Compute max-affordable using shared constants (consistent with map tiers)
+      const maxByDP          = downPaymentNTD   / DOWN_PAYMENT_RATIO;
+      const maxByIncome      = monthlyIncomeNTD * 12 * INCOME_MULTIPLIER;
       const maxAffordableWan = Math.min(maxByDP, maxByIncome) / 10_000;
       if (fbMaxAffordable) fbMaxAffordable.textContent = maxAffordableWan.toFixed(0);
       if (fbResult) fbResult.style.display = "block";

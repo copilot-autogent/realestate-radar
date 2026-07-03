@@ -2911,8 +2911,8 @@
     for (const f of features) {
       const d = f.properties?.district as string | undefined;
       const c = f.properties?.city as string | undefined;
-      const p = f.properties?.totalPrice as number | undefined;
-      if (d && p && p > 0) {
+      const p = f.properties?.totalPrice;
+      if (d && typeof p === "number" && Number.isFinite(p) && p > 0) {
         const key = `${c ?? ""}:${d}`;
         if (!byKey[key]) byKey[key] = [];
         byKey[key].push(p);
@@ -4730,8 +4730,8 @@
       firstBuyerActive = false;
       firstBuyerMonthlyIncome = 0;
       firstBuyerDownPayment = 0;
+      // updateChoropleth restores fill and legend via the default else branch
       updateChoropleth();
-      updateFirstBuyerLegend(false);
     }
   });
 
