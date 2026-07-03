@@ -1005,6 +1005,7 @@
   import maplibregl from "maplibre-gl";
   import { computeMedianPrice12mo } from "../lib/districtTableUtils.js";
   import { computeHeatmapData } from "../lib/heatmapUtils.js";
+  import { computeDistrictBoxPlots } from "../lib/boxPlotUtils.js";
   import {
     estimateNegotiationMargin,
     type DistrictStats,
@@ -3552,6 +3553,15 @@
           detail: { heatmap, isInitialGlobal: false },
         }));
       }
+
+      // ── Historical price box-plot (dot click) ─────────────────────────────
+      {
+        const txCity = props.city as string | undefined;
+        const boxPlotData = computeDistrictBoxPlots(rawAllFeatures, txDistrict, txCity || undefined);
+        document.dispatchEvent(new CustomEvent("district-boxplot", {
+          detail: { boxPlotData },
+        }));
+      }
     }
   });
 
@@ -4019,6 +4029,14 @@
       const heatmap = computeHeatmapData(rawAllFeatures, district, clickedCity || undefined);
       document.dispatchEvent(new CustomEvent("district-heatmap", {
         detail: { heatmap, isInitialGlobal: false },
+      }));
+    }
+
+    // ── Historical price box-plot (district polygon click) ────────────────────
+    {
+      const boxPlotData = computeDistrictBoxPlots(rawAllFeatures, district, clickedCity || undefined);
+      document.dispatchEvent(new CustomEvent("district-boxplot", {
+        detail: { boxPlotData },
       }));
     }
 
