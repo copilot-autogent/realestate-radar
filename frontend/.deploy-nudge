@@ -1,0 +1,12 @@
+Deploy re-trigger marker.
+
+Created 2026-07-03 to re-fire the GitHub Pages deploy after a GitHub-side
+Pages backend outage fast-failed the #124 (box-plot) and #125 (loan comparator)
+deploys with "Deployment failed, try again later." (build job was green).
+
+This file lives outside frontend/src/ and frontend/public/, so it is never
+bundled by Astro nor served — it exists only to match the deploy.yml
+`paths: frontend/**` trigger. Safe to delete once deploys are confirmed healthy.
+
+See CONTEXT.md "GitHub Pages actions/deploy-pages ... GitHub-side backend
+degradation" gotcha for why the workflow itself must NOT be edited.
