@@ -261,17 +261,30 @@ describe("computeYTDSummary", () => {
   ];
 
   it("sums currentYear across all quarters", () => {
-    expect(computeYTDSummary(sampleVolumes).ytdCurrent).toBe(16);
+    expect(computeYTDSummary(sampleVolumes, 12).ytdCurrent).toBe(16);
   });
 
   it("sums priorYear across all quarters", () => {
-    expect(computeYTDSummary(sampleVolumes).ytdPrior).toBe(27);
+    expect(computeYTDSummary(sampleVolumes, 12).ytdPrior).toBe(27);
   });
 
   it("computes ytdYoYPct correctly", () => {
     // (16 - 27) / 27 * 100 = -40.74... → rounded to -40.7
-    const { ytdYoYPct } = computeYTDSummary(sampleVolumes);
+    const { ytdYoYPct } = computeYTDSummary(sampleVolumes, 12);
     expect(ytdYoYPct).toBeCloseTo(-40.7, 0);
+  });
+
+  it("excludes future quarters when currentMonth is in Q2 (month 5)", () => {
+    // Only Q1 and Q2 should be included (max quarter = ceil(5/3) = 2)
+    const { ytdCurrent, ytdPrior } = computeYTDSummary(sampleVolumes, 5);
+    expect(ytdCurrent).toBe(16); // Q1(10) + Q2(6)
+    expect(ytdPrior).toBe(18);   // Q1(8) + Q2(10)
+  });
+
+  it("only includes Q1 when currentMonth is in Q1 (month 2)", () => {
+    const { ytdCurrent, ytdPrior } = computeYTDSummary(sampleVolumes, 2);
+    expect(ytdCurrent).toBe(10);
+    expect(ytdPrior).toBe(8);
   });
 
   it("returns null ytdYoYPct when ytdPrior is 0", () => {
@@ -281,7 +294,7 @@ describe("computeYTDSummary", () => {
       { quarter: "Q3", currentYear: 0, priorYear: 0, yoyPct: null, insufficientCurrent: true, insufficientPrior: true },
       { quarter: "Q4", currentYear: 0, priorYear: 0, yoyPct: null, insufficientCurrent: true, insufficientPrior: true },
     ];
-    expect(computeYTDSummary(zeroPrior).ytdYoYPct).toBeNull();
+    expect(computeYTDSummary(zeroPrior, 12).ytdYoYPct).toBeNull();
   });
 
   it("handles all-zero input gracefully", () => {
@@ -290,7 +303,7 @@ describe("computeYTDSummary", () => {
       currentYear: 0, priorYear: 0, yoyPct: null,
       insufficientCurrent: true, insufficientPrior: true,
     }));
-    const summary = computeYTDSummary(zeros);
+    const summary = computeYTDSummary(zeros, 12);
     expect(summary.ytdCurrent).toBe(0);
     expect(summary.ytdPrior).toBe(0);
     expect(summary.ytdYoYPct).toBeNull();
@@ -318,5 +331,9 @@ describe("formatYoYPct", () => {
 
   it("returns — for null", () => {
     expect(formatYoYPct(null)).toBe("—");
+  });
+
+  it("formats negative decimal pct", () => {
+    expect(formatYoYPct(-5.5)).toBe("-5.5%");
   });
 });

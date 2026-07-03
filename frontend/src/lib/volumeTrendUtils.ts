@@ -45,12 +45,20 @@ const QUARTER_MONTHS: Record<Quarter, number[]> = {
   Q4: [10, 11, 12],
 };
 
+/** Quarter ordinal (1-based) for month ordering */
+const QUARTER_INDEX: Record<Quarter, number> = { Q1: 1, Q2: 2, Q3: 3, Q4: 4 };
+
 /** Map month (1–12) → quarter label */
 function monthToQuarter(month: number): Quarter {
   if (month <= 3) return "Q1";
   if (month <= 6) return "Q2";
   if (month <= 9) return "Q3";
   return "Q4";
+}
+
+/** Returns the current quarter (1–4) for a given month (1–12) */
+function quarterIndex(month: number): number {
+  return Math.ceil(month / 3);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -72,8 +80,8 @@ export function parseTransactionDate(raw: unknown): { year: number; month: numbe
   // NFKC normalisation converts full-width digits to ASCII
   const s = raw.normalize("NFKC");
 
-  // YYYY-MM-DD or YYYY/MM/DD or YYYY-M-D
-  const m = /^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?/.exec(s);
+  // YYYY-MM-DD or YYYY/MM/DD or YYYY-M-D (end-anchored to reject garbage after date)
+  const m = /^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?(?:[T\s]|$)/.exec(s);
   if (m) {
     const year = parseInt(m[1]!, 10);
     const month = parseInt(m[2]!, 10);
@@ -167,14 +175,25 @@ export function computeVolumeYoY(
 
 /**
  * Compute YTD (year-to-date) totals from a QuarterlyVolume array.
- * Only quarters present in the current year (currentYear > 0 OR priorYear > 0) are summed.
- * If a quarter has not started yet (both 0) it may still be counted — callers can filter
- * using `referenceYear` logic if needed. This function sums all 4 quarters unconditionally.
+ *
+ * For an in-progress year, only quarters up to the current calendar quarter are
+ * included in the YTD comparison. This avoids inflating `ytdPrior` with future
+ * prior-year quarters whose current-year equivalents haven't happened yet.
+ *
+ * Pass `currentMonth` (1–12) to enable the mid-year cutoff. Defaults to all
+ * 4 quarters (useful for completed years or when comparing full-year figures).
  */
-export function computeYTDSummary(volumes: QuarterlyVolume[]): YTDSummary {
+export function computeYTDSummary(
+  volumes: QuarterlyVolume[],
+  currentMonth = 12,
+): YTDSummary {
+  // Include only quarters that have started (Q1 starts in month 1, Q2 in month 4, etc.)
+  const activeMaxQuarter = Math.ceil(currentMonth / 3); // 1–4
   let ytdCurrent = 0;
   let ytdPrior   = 0;
   for (const v of volumes) {
+    const qi = QUARTER_INDEX[v.quarter];
+    if (qi > activeMaxQuarter) continue; // future quarter — exclude
     ytdCurrent += v.currentYear;
     ytdPrior   += v.priorYear;
   }
@@ -189,8 +208,11 @@ export function computeYTDSummary(volumes: QuarterlyVolume[]): YTDSummary {
  */
 export function formatYoYPct(pct: number | null): string {
   if (pct === null) return "—";
-  const sign = pct >= 0 ? "+" : "";
+  const sign = pct >= 0 ? "+" : "-";
   const abs  = Math.abs(pct);
   const str  = Number.isInteger(abs) ? String(abs) : abs.toFixed(1);
-  return `${sign}${pct < 0 ? "-" : ""}${str}%`;
+  return `${sign}${str}%`;
 }
+
+// Export QUARTER_MONTHS for consumers that need the month membership mapping
+export { QUARTER_MONTHS };
