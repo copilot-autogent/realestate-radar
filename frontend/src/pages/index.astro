@@ -4133,6 +4133,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     } else {
       canvas.style.width  = "260px";
       canvas.width        = 260;
+      canvas.style.height = "160px";
+      canvas.height       = 160;
     }
 
     // Highlight last non-null point
@@ -4227,22 +4229,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
     await renderPriceTrendChart();
   });
 
-  // Legacy quarterly-trend event: show panel + title but defer chart to district-price-trend
-  document.addEventListener("district-trend", async (e: Event) => {
-    const { district, buildingType, source } = (e as CustomEvent).detail as {
-      district: string;
-      quarters: string[];
-      medians: number[];
-      buildingType?: string;
-      source?: string;
-    };
-
+  // Legacy quarterly-trend event: just show the panel — title and chart are set by district-price-trend
+  document.addEventListener("district-trend", (e: Event) => {
     const panel = document.getElementById("trend-panel") as HTMLDivElement | null;
-    const title = document.getElementById("trend-title") as HTMLHeadingElement | null;
     if (panel) panel.style.display = "block";
-    const typeLabel = buildingType ? ` ${buildingType}` : "";
-    if (title) title.textContent = `${district}${typeLabel} — 每月價格走勢`;
-    // Actual rendering is handled by district-price-trend listener above
+    // Note: actual rendering is handled by district-price-trend listener above.
+    // We do NOT update the title here to avoid races with district-price-trend's title.
   });
 
   // ── 每坪/總價 toggle (issue #131) ──────────────────────────────────────────

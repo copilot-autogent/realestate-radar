@@ -70,7 +70,8 @@ export function parseDateMonth(raw: unknown): string | null {
   if (!raw || typeof raw !== "string") return null;
   const s = raw.normalize("NFKC");
   // Accept 1 or 2 digit months (e.g. "2024-3-15" as well as "2024-03-15")
-  const m = /^(\d{4})[-/](\d{1,2})/.exec(s);
+  // The trailing [-/\s]|\d{0,2}$ ensures we don't accept "2024-03foo" as valid
+  const m = /^(\d{4})[-/](\d{1,2})(?:[-/\s]|$)/.exec(s);
   if (!m) return null;
   const year  = parseInt(m[1]!, 10);
   const month = parseInt(m[2]!, 10);
@@ -180,7 +181,6 @@ export function computePriceTrendSeries(
 
     const tp = Number(p.totalPrice);
     if (isFinite(tp) && tp > 0) {
-      if (!monthTotalWan.has(monthKey)) monthTotalWan.set(monthKey, []);
       monthTotalWan.get(monthKey)!.push(tp / 10000);
     }
   }

@@ -89,6 +89,8 @@ describe("parseDateMonth", () => {
   it("returns null for malformed date", () => {
     expect(parseDateMonth("not-a-date")).toBeNull();
     expect(parseDateMonth("24-03-15")).toBeNull();
+    expect(parseDateMonth("2024-03foo")).toBeNull();
+    expect(parseDateMonth("2024-3xyz")).toBeNull();
   });
 
   it("returns null for out-of-range month", () => {
@@ -314,22 +316,21 @@ describe("computePriceTrendSeries", () => {
   });
 
   it("YoY reflects actual price change between years", () => {
-    // Build features where anchor price (500000) differs from prior-year price (400000)
-    // anchor = 2025-06 (last), prior = 2024-06 (12 months back)
+    // Build 13 months: 2025-06 → 2024-06 so the prior-year month is included
     const features: any[] = [];
-    // months 1-12: 2024-07 through 2025-06
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 13; i++) {
       let year = 2025, month = 6 - i;
       while (month <= 0) { month += 12; year -= 1; }
       const date = `${year}-${String(month).padStart(2, "0")}-15`;
+      // last (most recent): 2025-06 → 500000; prior-year 2024-06 → 400000; others → 450000
       const price = (year === 2025 && month === 6) ? 500000 : (year === 2024 && month === 6) ? 400000 : 450000;
       features.push(makeFeature("大安區", "台北市", date, price));
     }
     const result = computePriceTrendSeries(features, "大安區");
-    if (result.yoyPercentage !== null) {
-      // 500000 vs 400000 → +25%
-      expect(result.yoyPercentage).toBeCloseTo(25, 0);
-    }
+    // 13 months includes both 2025-06 and 2024-06
+    expect(result.yoyPercentage).not.toBeNull();
+    // 500000 vs 400000 → +25%
+    expect(result.yoyPercentage).toBeCloseTo(25, 0);
   });
 
   it("NFKC: handles full-width digit district names in features", () => {
@@ -424,18 +425,18 @@ describe("computePriceTrendSeries", () => {
     expect(result.ma3Total[1]).toBeNull();
   });
 
-  it("yoyTotalPercentage is null when medianTotalWan is null for last point", () => {
-    // Create features without totalPrice for the last month
+  it("yoyTotalPercentage is null when last point has no totalPrice", () => {
+    // Build 13 months where the last month (2024-12) has no valid totalPrice
     const features: any[] = [
       ...makeFeaturesSeries("大安區", "台北市", "2024-11", 12, 500000),
-      // Override last month with no totalPrice
+      // Last month: valid unitPrice, null totalPrice → medianTotalWan = null
       { type: "Feature", geometry: null, properties: { district: "大安區", city: "台北市", date: "2024-12-15", unitPrice: 500000, totalPrice: null } },
     ];
     const result = computePriceTrendSeries(features, "大安區");
-    // yoyTotalPercentage should be null if last point has no totalPrice
-    // (can't compute YoY without a last point total)
-    // We just verify the field exists
-    expect(result).toHaveProperty("yoyTotalPercentage");
+    // Since 2024-12 is the last month and medianTotalWan is null, yoyTotalPercentage must be null
+    const lastPt = result.points[result.points.length - 1];
+    expect(lastPt?.medianTotalWan).toBeNull();
+    expect(result.yoyTotalPercentage).toBeNull();
   });
 
   it("district and city are reflected in the returned series", () => {
