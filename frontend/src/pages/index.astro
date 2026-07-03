@@ -519,8 +519,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <h3 id="trend-title">價格走勢</h3>
         <!-- ── Box-plot / Line toggle (issue #124) ── -->
         <div id="price-chart-toggle" class="price-chart-toggle" role="group" aria-label="圖表類型">
-          <button id="btn-boxplot" class="chart-toggle-btn" data-chart="boxplot">箱型圖</button>
-          <button id="btn-linechart" class="chart-toggle-btn active" data-chart="line">折線圖</button>
+          <button type="button" id="btn-boxplot" class="chart-toggle-btn" data-chart="boxplot">箱型圖</button>
+          <button type="button" id="btn-linechart" class="chart-toggle-btn active" data-chart="line">折線圖</button>
         </div>
         <!-- Line chart (existing) -->
         <canvas id="trend-chart" width="260" height="160"></canvas>
@@ -4222,6 +4222,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     if (!sufficient || plots.length < 2) {
       canvas.style.display = "none";
+      // Clear stale pixels so a prior successful render doesn't reappear
+      const ctx2 = canvas.getContext("2d");
+      if (ctx2) ctx2.clearRect(0, 0, canvas.width, canvas.height);
       if (insuffEl) insuffEl.style.display = "block";
       if (percentileEl) percentileEl.style.display = "none";
       return;
@@ -4235,8 +4238,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const plotsToShow = isMobile ? plots.slice(-1) : plots;
     renderBoxPlotCanvas(canvas, plotsToShow);
 
-    if (percentileEl && percentileRank !== null) {
-      // historicalBoxPlots = plots.slice(0,-1), so the comparison window is (plots.length-1) years
+    // Percentile label: hide on mobile (single-box view lacks historical context)
+    if (percentileEl && percentileRank !== null && !isMobile) {
       const histYears = plots.length - 1;
       percentileEl.style.display = "block";
       percentileEl.textContent   = `現今中位價在近${histYears * 12}月第 ${percentileRank} 百分位`;

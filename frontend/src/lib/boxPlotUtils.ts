@@ -117,7 +117,9 @@ export function computePercentileRank(
     const lo = medians[i]!;
     const hi = medians[i + 1]!;
     if (currentMedian >= lo && currentMedian <= hi) {
-      const rank = (i + (currentMedian - lo) / (hi - lo)) / (medians.length - 1);
+      // Guard against duplicate adjacent medians (hi - lo === 0)
+      const fraction = hi > lo ? (currentMedian - lo) / (hi - lo) : 0;
+      const rank = (i + fraction) / (medians.length - 1);
       return Math.round(rank * 100);
     }
   }
@@ -151,14 +153,18 @@ export function computeDistrictBoxPlots(
 
   if (!features.length) return EMPTY;
 
+  // Normalise filter strings so full-width variants in gov data match correctly
+  const normDistrict = district.normalize("NFKC");
+  const normCity     = city?.normalize("NFKC");
+
   // Determine anchor year from the latest transaction date in this district
   // (only count rows that will actually contribute valid price data)
   let latestYear = 0;
   for (const f of features) {
     const p = f?.properties;
     if (!p) continue;
-    if (p.district !== district) continue;
-    if (city && p.city !== city) continue;
+    if ((p.district as string | undefined)?.normalize("NFKC") !== normDistrict) continue;
+    if (normCity && (p.city as string | undefined)?.normalize("NFKC") !== normCity) continue;
     const up = Number(p.unitPrice);
     if (!isFinite(up) || up <= 0) continue;
     const yr = parseDateYear(p.date);
@@ -175,9 +181,9 @@ export function computeDistrictBoxPlots(
   for (const f of features) {
     const p = f?.properties;
     if (!p) continue;
-    if (p.district !== district) continue;
+    if ((p.district as string | undefined)?.normalize("NFKC") !== normDistrict) continue;
     // City filter: rows with missing city are excluded when city filter is set
-    if (city && p.city !== city) continue;
+    if (normCity && (p.city as string | undefined)?.normalize("NFKC") !== normCity) continue;
     const yr = parseDateYear(p.date);
     if (!yr || !(yr in yearPrices)) continue;
     const up = Number(p.unitPrice);
