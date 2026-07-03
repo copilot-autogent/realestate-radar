@@ -209,7 +209,13 @@ export function computePriceTrendSeries(
   points.sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
 
   if (points.length < 6) {
-    return { ...EMPTY, points, sufficient: false };
+    return {
+      ...EMPTY,
+      points,
+      ma3: points.map(() => null),
+      ma3Total: points.map(() => null),
+      sufficient: false,
+    };
   }
 
   // MA3 for per-ping (via shared helper)
