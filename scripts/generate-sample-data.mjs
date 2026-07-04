@@ -98,6 +98,6 @@ for (const dist of districts) {
 }
 
 const geojson = { type: "FeatureCollection", features };
-const outPath = resolve(__dirname, "../frontend/public/data/sample-transactions.json");
+const outPath = resolve(__dirname, "../frontend/public/data/transactions.json");
 writeFileSync(outPath, JSON.stringify(geojson));
 console.log(`Generated ${features.length} sample transactions → ${outPath}`);
