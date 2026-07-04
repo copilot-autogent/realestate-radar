@@ -470,6 +470,8 @@ describe("computeNegotiationMarginTrend", () => {
 
     const fallingPt = resultFalling[resultFalling.length - 1];
     const risingPt  = resultRising[resultRising.length - 1];
+    expect(fallingPt).toBeDefined();
+    expect(risingPt).toBeDefined();
     if (fallingPt && risingPt) {
       expect(fallingPt.marginCenter).toBeGreaterThan(risingPt.marginCenter);
     }

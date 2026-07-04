@@ -279,8 +279,8 @@ function medianOf(nums: number[]): number | null {
  *   1. Slices the transaction array to the 12-month window ending at the target month.
  *   2. Derives `DistrictStats` from that slice (velocity, peak recency, assessed ratio, median price).
  *   3. Runs `estimateNegotiationMargin` to get the margin estimate.
- *   4. Includes a `MarginDataPoint` only when the estimate is `sufficient` (txCount12mo ≥ MIN_TX=20)
- *      AND the 12-month window contains at least `MIN_TREND_TX=5` transactions.
+ *   4. Includes a `MarginDataPoint` only when the target month itself has ≥ `MIN_TREND_TX=5`
+ *      transactions AND the 12-month window has ≥ `MIN_TX=20` (estimator's `sufficient` guard).
  *
  * Returns a **sparse** array of `(MarginDataPoint | undefined)[]` of length `months`.
  * Index 0 = oldest month; last index = most recent. `undefined` entries are data gaps.
@@ -380,10 +380,11 @@ export function computeNegotiationMarginTrend(
 
   for (let idx = 0; idx < months; idx++) {
     const targetMonth = monthLabels[idx]!;
-    const windowStart = addMonths(targetMonth, -11); // 12-month window [windowStart, targetMonth]
-    const priorStart  = addMonths(targetMonth, -23); // prior 12-month window [priorStart, windowStart-1)
+    const windowStart = addMonths(targetMonth, -11); // current 12-month window: [M-11, M]
+    const priorEnd    = addMonths(targetMonth, -12); // prior window ends at M-12 (exclusive of current)
+    const priorStart  = addMonths(targetMonth, -23); // prior 12-month window: [M-23, M-12]
 
-    // Collect tx in each window
+    // Collect tx in each window (windows are non-overlapping: current [M-11,M], prior [M-23,M-12])
     const windowTx: ParsedTx[] = [];
     const priorTx:  ParsedTx[] = [];
 
@@ -391,7 +392,7 @@ export function computeNegotiationMarginTrend(
       if (cmpMonth(m, windowStart) >= 0 && cmpMonth(m, targetMonth) <= 0) {
         windowTx.push(...txArr);
       }
-      if (cmpMonth(m, priorStart) >= 0 && cmpMonth(m, addMonths(targetMonth, -12)) <= 0) {
+      if (cmpMonth(m, priorStart) >= 0 && cmpMonth(m, priorEnd) <= 0) {
         priorTx.push(...txArr);
       }
     }
