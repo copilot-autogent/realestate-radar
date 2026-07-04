@@ -218,6 +218,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <label for="mrt-premium-toggle">🚇 捷運溢價熱力圖</label>
       </div>
 
+      <!-- MRT proximity tier overlay toggle (issue #144) -->
+      <div class="toggle-row">
+        <input type="checkbox" id="mrt-tier-toggle" />
+        <label for="mrt-tier-toggle">🚇 捷運距離評分地圖</label>
+      </div>
+
       <!-- Pre-sale spread overlay toggle -->
       <div class="toggle-row">
         <input type="checkbox" id="presale-spread-toggle" />
@@ -678,6 +684,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         </label>
       </div>
 
+      <!-- ── Transit Panel (MRT Proximity Score, issue #144) ── -->
+      <div id="transit-panel" class="transit-panel" style="display:none" aria-label="捷運距離評分面板">
+        <h3 class="transit-panel-title">🚇 捷運距離評分<span id="transit-panel-label" class="transit-panel-label"></span></h3>
+        <div id="transit-panel-body" class="transit-panel-body" aria-live="polite"></div>
+      </div>
+
       <!-- ── Completion Wave Panel ── -->
       <div id="completion-wave-panel" class="completion-wave-panel">
         <div class="completion-wave-header">
@@ -942,6 +954,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const buyerScore    = (document.getElementById("buyer-score-toggle")       as HTMLInputElement)?.checked;
     const volatility    = (document.getElementById("volatility-toggle")        as HTMLInputElement)?.checked;
     const mrtPremium    = (document.getElementById("mrt-premium-toggle")       as HTMLInputElement)?.checked;
+    const mrtTier       = (document.getElementById("mrt-tier-toggle")          as HTMLInputElement)?.checked;
     const presaleSpread = (document.getElementById("presale-spread-toggle")    as HTMLInputElement)?.checked;
     const completion    = (document.getElementById("completion-overlay-toggle") as HTMLInputElement)?.checked;
 
@@ -965,6 +978,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (buyerScore)    params.buyerScore = "1";
     if (volatility)    params.volatility = "1";
     if (mrtPremium)    params.mrtPremium = "1";
+    if (mrtTier)       params.mrtTier = "1";
     if (presaleSpread) params.presaleSpread = "1";
     if (completion)    params.completion = "1";
     return params;
@@ -990,7 +1004,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       // Guard: at least one recognized key must be present
       const KNOWN_KEYS = ["city","district","minPrice","maxPrice","totalPriceMin","totalPriceMax",
         "areaMin","areaMax","buildingType","address","dateFrom","dateTo","mrtWalkMin",
-        "buildAgeRange","post921","choropleth","buyerScore","volatility","mrtPremium","presaleSpread","completion"];
+        "buildAgeRange","post921","choropleth","buyerScore","volatility","mrtPremium","mrtTier","presaleSpread","completion"];
       if (!KNOWN_KEYS.some(k => sp.has(k))) return false;
 
       const set = (id: string, key: string) => {
@@ -1051,6 +1065,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         ["buyer-score-toggle",       "buyerScore"],
         ["volatility-toggle",        "volatility"],
         ["mrt-premium-toggle",       "mrtPremium"],
+        ["mrt-tier-toggle",          "mrtTier"],
         ["presale-spread-toggle",    "presaleSpread"],
         ["completion-overlay-toggle","completion"],
       ];
@@ -1287,7 +1302,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     document.getElementById(_id)?.addEventListener("change", updateHash);
   }
   // Checkboxes: update hash immediately
-  for (const _id of ["post921-toggle", "choropleth-toggle", "buyer-score-toggle", "volatility-toggle", "mrt-premium-toggle", "completion-overlay-toggle"]) {
+  for (const _id of ["post921-toggle", "choropleth-toggle", "buyer-score-toggle", "volatility-toggle", "mrt-premium-toggle", "mrt-tier-toggle", "completion-overlay-toggle"]) {
     document.getElementById(_id)?.addEventListener("change", updateHash);
   }
 
@@ -4052,6 +4067,70 @@ const showBuyersMarket = !isStale && dataYear !== null;
     cursor: pointer;
   }
 
+  /* ── Transit panel (issue #144) ── */
+  .transit-panel {
+    margin-top: 14px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .transit-panel-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #334155;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .transit-panel-label {
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: #64748b;
+    margin-left: 4px;
+  }
+  .transit-panel-body {
+    font-size: 0.82rem;
+    color: #334155;
+  }
+  .transit-tier-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .transit-tier-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    gap: 4px;
+  }
+  .transit-tier-walking { color: #14532d; background: #dcfce7; border: 1px solid #86efac; }
+  .transit-tier-nearby  { color: #713f12; background: #fef9c3; border: 1px solid #fde047; }
+  .transit-tier-driving { color: #7c2d12; background: #fff7ed; border: 1px solid #fdba74; }
+  .transit-tier-remote  { color: #7f1d1d; background: #fef2f2; border: 1px solid #fca5a5; }
+  .transit-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 0;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.79rem;
+  }
+  .transit-detail-row:last-child { border-bottom: none; }
+  .transit-detail-label { color: #64748b; }
+  .transit-detail-value { color: #1e293b; font-weight: 600; }
+  .transit-no-mrt {
+    color: #64748b;
+    font-size: 0.8rem;
+    font-style: italic;
+    padding: 4px 0;
+  }
+
   /* ── Completion wave panel ── */
   .completion-wave-panel {
     margin-top: 14px;
@@ -5046,6 +5125,82 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const result = csd(district, city, allProfiles, { sameCityOnly });
       renderSimilarDistrictsPanel({ district, city, result });
     } catch { /* import failure: leave panel as-is */ }
+  });
+
+  // ── Transit panel (MRT Proximity Score, issue #144) ─────────────────────────
+
+  document.addEventListener("district-transit", (e: Event) => {
+    const { district, city, proximity } = (e as CustomEvent).detail as {
+      district: string;
+      city: string;
+      proximity: {
+        nearestStation: { name: string; lineZh: string } | null;
+        distanceKm: number;
+        tier: string;
+        walkMinutes: number | null;
+        noMrt: boolean;
+      } | null;
+    };
+
+    const panel = document.getElementById("transit-panel") as HTMLDivElement | null;
+    const labelEl = document.getElementById("transit-panel-label") as HTMLSpanElement | null;
+    const bodyEl = document.getElementById("transit-panel-body") as HTMLDivElement | null;
+    if (!panel || !bodyEl) return;
+
+    panel.style.display = "block";
+    if (labelEl) {
+      const prefix = city ? `${city} ` : "";
+      labelEl.textContent = district ? ` — ${prefix}${district}` : "";
+    }
+
+    if (!proximity || proximity.noMrt) {
+      bodyEl.innerHTML = `<p class="transit-no-mrt">此地區無捷運站資料（或資料尚未載入）。</p>`;
+      return;
+    }
+
+    const tierLabels: Record<string, string> = {
+      walking: "步行圈",
+      nearby:  "生活圈",
+      driving: "需搭車",
+      remote:  "偏遠",
+    };
+    const tierEmojis: Record<string, string> = {
+      walking: "🟢",
+      nearby:  "🟡",
+      driving: "🟠",
+      remote:  "🔴",
+    };
+
+    const tier = proximity.tier;
+    const emoji = tierEmojis[tier] ?? "";
+    const tierLabel = tierLabels[tier] ?? tier;
+    const tierCls = `transit-tier-${tier}`;
+    const distM = Math.round(proximity.distanceKm * 1000);
+    const distStr = distM >= 1000 ? `${(distM / 1000).toFixed(2)} km` : `${distM} m`;
+    const stationName = proximity.nearestStation?.name ?? "—";
+    const lineName = proximity.nearestStation?.lineZh ?? "—";
+    const walkText = proximity.walkMinutes !== null ? `走路約 ${proximity.walkMinutes} 分鐘` : "—";
+
+    bodyEl.innerHTML = `
+      <div class="transit-tier-row">
+        <span class="transit-tier-badge ${tierCls}">${emoji} ${tierLabel}</span>
+      </div>
+      <div class="transit-detail-row">
+        <span class="transit-detail-label">最近捷運站</span>
+        <span class="transit-detail-value">${stationName}</span>
+      </div>
+      <div class="transit-detail-row">
+        <span class="transit-detail-label">路線</span>
+        <span class="transit-detail-value">${lineName}</span>
+      </div>
+      <div class="transit-detail-row">
+        <span class="transit-detail-label">直線距離</span>
+        <span class="transit-detail-value">${distStr}</span>
+      </div>
+      <div class="transit-detail-row">
+        <span class="transit-detail-label">步行時間</span>
+        <span class="transit-detail-value">${walkText}</span>
+      </div>`;
   });
 
   document.addEventListener("district-price-trend", async (e: Event) => {
@@ -6278,6 +6433,21 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   mrtPremiumToggle?.addEventListener("change", updateMrtPremiumOverlay);
+
+  // ── MRT tier overlay toggle → dispatch to Map.astro (issue #144) ────────────
+  const mrtTierToggle = document.getElementById("mrt-tier-toggle") as HTMLInputElement | null;
+
+  function updateMrtTierOverlay(): void {
+    const enabled = mrtTierToggle?.checked ?? false;
+    document.dispatchEvent(new CustomEvent("mrt-tier-mode-change", {
+      detail: { enabled },
+    }));
+    // Show/hide transit panel based on toggle state (panel also shown on district click)
+    const transitPanel = document.getElementById("transit-panel") as HTMLDivElement | null;
+    if (!enabled && transitPanel) transitPanel.style.display = "none";
+  }
+
+  mrtTierToggle?.addEventListener("change", updateMrtTierOverlay);
 
   // ── Pre-sale spread overlay toggle → dispatch to Map.astro ─────────────────────
   const presaleSpreadToggle = document.getElementById("presale-spread-toggle") as HTMLInputElement | null;
