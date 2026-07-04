@@ -877,6 +877,35 @@
     cursor: not-allowed;
   }
 
+  /* Shortlist (加入比較清單) button inside district popup */
+  .popup-shortlist-btn {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 5px 0;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 6px;
+    color: #15803d;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s;
+  }
+  .popup-shortlist-btn:hover { background: #dcfce7; }
+  .popup-shortlist-btn.shortlisted {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #dc2626;
+  }
+  .popup-shortlist-btn:disabled {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #94a3b8;
+    cursor: not-allowed;
+  }
+
   /* Watchlist toast notification */
   .wl-toast {
     position: fixed;
@@ -1065,6 +1094,57 @@
     type MrtStation as MrtStationType,
     type MrtTierValue,
   } from "../lib/mrtProximityUtils.js";
+  import {
+    SHORTLIST_KEY,
+    SHORTLIST_MAX,
+    parseShortlist,
+    addToShortlist as slAdd,
+    removeFromShortlist as slRemove,
+    type ShortlistEntry,
+  } from "../lib/shortlistUtils.js";
+
+  // ── Shortlist helpers (localStorage-backed, issue #145) ──────────────────────
+  function slGetAll(): ShortlistEntry[] {
+    try { return parseShortlist(localStorage.getItem(SHORTLIST_KEY)); } catch { return []; }
+  }
+  function slSaveAll(entries: ShortlistEntry[]): void {
+    try { localStorage.setItem(SHORTLIST_KEY, JSON.stringify(entries)); } catch { /* storage unavailable */ }
+  }
+  function slIsShortlisted(city: string, district: string): boolean {
+    const id = `${city}:${district}`;
+    return slGetAll().some((e) => e.districtId === id);
+  }
+  function slToggle(city: string, district: string): void {
+    const id = `${city}:${district}`;
+    let entries = slGetAll();
+    if (entries.some((e) => e.districtId === id)) {
+      entries = slRemove(entries, id);
+    } else {
+      entries = slAdd(entries, {
+        districtId: id,
+        city,
+        label: district,
+        addedAt: new Date().toISOString(),
+      });
+    }
+    slSaveAll(entries);
+    document.dispatchEvent(new CustomEvent("shortlist-changed", { detail: { entries } }));
+  }
+  function syncOpenPopupShortlistButton(): void {
+    const btn = districtClickPopup?.getElement()?.querySelector<HTMLButtonElement>(".popup-shortlist-btn");
+    if (!btn) return;
+    const d = btn.dataset.district ?? "";
+    const c = btn.dataset.city    ?? "";
+    const isShortlisted = slIsShortlisted(c, d);
+    const atCap = !isShortlisted && slGetAll().length >= SHORTLIST_MAX;
+    btn.className = `popup-shortlist-btn${isShortlisted ? " shortlisted" : ""}`;
+    btn.textContent = isShortlisted
+      ? "✕ 移出比較清單"
+      : atCap
+        ? `🔖 已達上限 (最多${SHORTLIST_MAX}個)`
+        : "🔖 加入比較清單";
+    btn.disabled = atCap;
+  }
 
   const API_BASE = import.meta.env.DEV ? "/api" : "";
   const BASE_URL = import.meta.env.BASE_URL;
@@ -4522,6 +4602,14 @@
     const currentMedianWan = computeMedianPrice12mo(rawAllFeatures, district, watchCity || undefined);
     const medianAttr = currentMedianWan !== null ? String(currentMedianWan) : "";
 
+    // Shortlist button state (issue #145)
+    const slCity = (e.features[0].properties.city as string | undefined) || activeCity || "";
+    const isShortlisted = slIsShortlisted(slCity, district);
+    const slAtCap = !isShortlisted && slGetAll().length >= SHORTLIST_MAX;
+    const slBtnLabel = isShortlisted ? "✕ 移出比較清單" : slAtCap ? `🔖 已達上限 (最多${SHORTLIST_MAX}個)` : "🔖 加入比較清單";
+    const slBtnClass = `popup-shortlist-btn${isShortlisted ? " shortlisted" : ""}`;
+    const slBtnDisabled = slAtCap ? "disabled" : "";
+
     // Buyer score badge — always shown in click popup (badge row only shown when mode active)
     const buyerScoreClickHtml = buyerScoreActive
       ? renderBuyerScoreBadgeHtml(district, activeCity)
@@ -4641,7 +4729,8 @@
            <span class="popup-value">${sixMonthCount} 筆</span>
          </div>
          <button class="${pinBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(pinCity)}" ${pinBtnDisabled}>${pinBtnLabel}</button>
-         <button class="${watchBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(watchCity)}" data-median="${escHtml(medianAttr)}" ${watchBtnDisabled}>${watchBtnLabel}</button>`
+         <button class="${watchBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(watchCity)}" data-median="${escHtml(medianAttr)}" ${watchBtnDisabled}>${watchBtnLabel}</button>
+         <button class="${slBtnClass}" data-district="${escHtml(district)}" data-city="${escHtml(slCity)}" ${slBtnDisabled}>${slBtnLabel}</button>`
       )
       .addTo(map);
 
@@ -4687,6 +4776,20 @@
         openBuyersMarketTooltip();
       });
     });
+
+    // Wire shortlist button inside popup (issue #145)
+    const slBtn = districtClickPopup.getElement()?.querySelector<HTMLButtonElement>(".popup-shortlist-btn");
+    if (slBtn) {
+      slBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const d = slBtn.dataset.district ?? district;
+        const c = slBtn.dataset.city     ?? slCity;
+        slToggle(c, d);
+        syncOpenPopupShortlistButton();
+        syncOpenPopupWatchButton();
+        syncOpenPopupPinButton();
+      });
+    }
 
     // Null the reference when the popup is dismissed via its own ✕ button
     districtClickPopup.on("close", () => { districtClickPopup = null; });
