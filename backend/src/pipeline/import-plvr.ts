@@ -9,7 +9,7 @@
  * Environment variables:
  *   DATA_SOURCE=live  — enable live pipeline mode (required for production).
  *                       When absent, warns and exits early (sample data fallback
- *                       remains in frontend/public/data/sample-transactions.json).
+ *                       remains in frontend/public/data/transactions.json).
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -320,7 +320,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.error(
       "[error] DATA_SOURCE is not 'live' — live 內政部 ingestion requires DATA_SOURCE=live.\n" +
       "        For local dev without PostGIS, use the sample-data fallback in\n" +
-      "        frontend/public/data/sample-transactions.json directly."
+      "        frontend/public/data/transactions.json directly."
     );
     process.exit(1);
   }

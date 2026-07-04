@@ -1,7 +1,7 @@
 /**
  * Export live PostGIS transaction data to GeoJSON for the static (GitHub Pages) site.
  *
- * Produces frontend/public/data/sample-transactions.json in the same format
+ * Produces frontend/public/data/transactions.json in the same format
  * as the synthetic sample so the Astro/MapLibre frontend works without changes.
  *
  * Only exports geocoded records (lat/lon NOT NULL).
@@ -38,7 +38,7 @@ const EXPORT_DAYS = EXPORT_DAYS_RAW;
 
 const OUT_PATH = path.resolve(
   import.meta.dirname,
-  "../../../frontend/public/data/sample-transactions.json"
+  "../../../frontend/public/data/transactions.json"
 );
 
 interface ExportRow {

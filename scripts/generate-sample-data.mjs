@@ -98,6 +98,9 @@ for (const dist of districts) {
 }
 
 const geojson = { type: "FeatureCollection", features };
+// NOTE: This script writes to sample-transactions.json (dev seed data), NOT to
+// transactions.json (live data written by scripts/fetch-plvr.ts). Running this
+// script does not overwrite live PLVR pipeline output.
 const outPath = resolve(__dirname, "../frontend/public/data/sample-transactions.json");
 writeFileSync(outPath, JSON.stringify(geojson));
 console.log(`Generated ${features.length} sample transactions → ${outPath}`);
