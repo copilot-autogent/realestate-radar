@@ -7486,15 +7486,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
       chip.querySelector<HTMLButtonElement>(".scp-chip-remove")?.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const id = (ev.currentTarget as HTMLButtonElement).dataset.id ?? "";
-        scpSelected.delete(id);
         const all = scpGetAll();
         const updated = slRemove(all, id);
         scpSaveAll(updated);
-        // Notify Map.astro popup to refresh its shortlist button state
+        // Dispatch shortlist-changed; the listener handles scpSelected cleanup + scpRender
         document.dispatchEvent(new CustomEvent("shortlist-changed", {
           detail: { entries: updated, addedId: null, removedId: id },
         }));
-        scpRender();
       });
       chipList.appendChild(chip);
     }
@@ -7595,12 +7593,17 @@ const showBuyersMarket = !isStale && dataYear !== null;
       addedId?: string | null;
       removedId?: string | null;
     }>).detail;
-    // Use addedId/removedId from event detail (avoids re-reading localStorage which already has new state)
+    // Auto-select newly added entry if there is room
     if (addedId && scpSelected.size < COMPARISON_MAX) {
       scpSelected.add(addedId);
     }
     if (removedId) {
       scpSelected.delete(removedId);
+    }
+    // Reconcile scpSelected against current entries (handles eviction on max-5 add)
+    const currentIds = new Set(entries.map((x) => x.districtId));
+    for (const id of [...scpSelected]) {
+      if (!currentIds.has(id)) scpSelected.delete(id);
     }
     // If shortlist is empty (clear-all), also clear scpSelected
     if (entries.length === 0) scpSelected.clear();
@@ -7631,8 +7634,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (pruned.length > 0) {
       scpSaveAll(kept);
       pruned.forEach((prunedEntry) => scpSelected.delete(prunedEntry.districtId));
-      scpRender(); // badge + panel need refresh after pruning
     }
+    // Always re-render: panel may have been opened before data arrived (showing all "—")
+    scpRender();
   });
 
   // Initial badge render

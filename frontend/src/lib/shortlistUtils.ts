@@ -294,5 +294,6 @@ export function buildComparisonRows(
     },
   ];
 
-  return rows;
+  // Filter out rows where every value is "—" (data not available for any district)
+  return rows.filter((row) => Object.values(row.values).some((v) => v !== "—"));
 }
