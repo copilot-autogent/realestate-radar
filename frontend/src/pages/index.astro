@@ -5129,27 +5129,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // ── Transit panel (MRT Proximity Score, issue #144) ─────────────────────────
 
-  document.addEventListener("district-transit", (e: Event) => {
-    const { district, city, proximity } = (e as CustomEvent).detail as {
-      district: string;
-      city: string;
-      proximity: {
-        nearestStation: { name: string; lineZh: string } | null;
-        distanceKm: number;
-        tier: string;
-        walkMinutes: number | null;
-        noMrt: boolean;
-      } | null;
-    };
+  /** Cached last transit detail — used to re-render when toggle is enabled after a click. */
+  let _lastTransitDetail: { district: string; city: string; proximity: any } | null = null;
 
+  function renderTransitPanel(district: string, city: string, proximity: any): void {
     const panel = document.getElementById("transit-panel") as HTMLDivElement | null;
     const labelEl = document.getElementById("transit-panel-label") as HTMLSpanElement | null;
     const bodyEl = document.getElementById("transit-panel-body") as HTMLDivElement | null;
     if (!panel || !bodyEl) return;
-
-    // Only show panel when the MRT tier overlay toggle is active
-    const tierToggle = document.getElementById("mrt-tier-toggle") as HTMLInputElement | null;
-    if (!tierToggle?.checked) return;
 
     panel.style.display = "block";
     if (labelEl) {
@@ -5205,6 +5192,29 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <span class="transit-detail-label">步行時間</span>
         <span class="transit-detail-value">${walkText}</span>
       </div>`;
+  }
+
+  document.addEventListener("district-transit", (e: Event) => {
+    const { district, city, proximity } = (e as CustomEvent).detail as {
+      district: string;
+      city: string;
+      proximity: {
+        nearestStation: { name: string; lineZh: string } | null;
+        distanceKm: number;
+        tier: string;
+        walkMinutes: number | null;
+        noMrt: boolean;
+      } | null;
+    };
+
+    // Cache for re-render when toggle is enabled after a click
+    _lastTransitDetail = { district, city, proximity };
+
+    // Only show panel when the MRT tier overlay toggle is active
+    const tierToggle = document.getElementById("mrt-tier-toggle") as HTMLInputElement | null;
+    if (!tierToggle?.checked) return;
+
+    renderTransitPanel(district, city, proximity);
   });
 
   document.addEventListener("district-price-trend", async (e: Event) => {
@@ -6446,9 +6456,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
     document.dispatchEvent(new CustomEvent("mrt-tier-mode-change", {
       detail: { enabled },
     }));
-    // Show/hide transit panel based on toggle state (panel also shown on district click)
     const transitPanel = document.getElementById("transit-panel") as HTMLDivElement | null;
-    if (!enabled && transitPanel) transitPanel.style.display = "none";
+    if (!enabled) {
+      // Hide transit panel when overlay is disabled
+      if (transitPanel) transitPanel.style.display = "none";
+    } else if (_lastTransitDetail) {
+      // Re-render with cached data when overlay is re-enabled after a previous click
+      renderTransitPanel(_lastTransitDetail.district, _lastTransitDetail.city, _lastTransitDetail.proximity);
+    }
   }
 
   mrtTierToggle?.addEventListener("change", updateMrtTierOverlay);

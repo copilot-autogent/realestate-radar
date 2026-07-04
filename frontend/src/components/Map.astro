@@ -2084,14 +2084,14 @@
    * Uses the polygonCentroid utility from mrtProximityUtils.
    */
   function districtCentroidFromGeometry(geometry: any): [number, number] | null {
-    if (!geometry) return null;
+    if (!geometry || !Array.isArray(geometry.coordinates)) return null;
     const coords: [number, number][] = [];
     if (geometry.type === "Polygon" && Array.isArray(geometry.coordinates[0])) {
       (geometry.coordinates[0] as number[][]).forEach((c) => coords.push([c[0]!, c[1]!]));
     } else if (geometry.type === "MultiPolygon") {
       // Use the largest polygon (most coordinates) for a better centroid estimate
       let bestRing: number[][] = [];
-      for (const poly of geometry.coordinates as number[][][]) {
+      for (const poly of geometry.coordinates as number[][][][]) {
         if ((poly[0]?.length ?? 0) > bestRing.length) bestRing = poly[0] ?? [];
       }
       bestRing.forEach((c) => coords.push([c[0]!, c[1]!]));
@@ -5493,12 +5493,10 @@
       const choroplethToggle = document.getElementById("choropleth-toggle") as HTMLInputElement | null;
       if (choroplethToggle) choroplethToggle.checked = true;
 
+      // updateChoropleth() already applies fill-color via the priority chain (includes mrtTierActive).
+      // No redundant setPaintProperty call needed — just update data and legend.
       updateChoropleth();
-      const higherActive = supplyPressureActive || completionActive || volatilityActive || buyerScoreActive || mrtPremiumActive;
-      if (!higherActive) {
-        map.setPaintProperty("districts-fill", "fill-color", getMrtTierFillColor());
-        updateMrtTierLegend(true);
-      }
+      updateMrtTierLegend(true);
       const legend = document.getElementById("choropleth-legend");
       if (legend) legend.style.opacity = "1";
     } else {
