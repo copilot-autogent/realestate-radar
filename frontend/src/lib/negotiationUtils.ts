@@ -206,7 +206,7 @@ export interface MarginDataPoint {
   marginHigh: number;
 }
 
-/** Minimum number of transactions required within a target month's 12-month window to compute a trend data point. */
+/** Minimum number of transactions required within a target month itself to compute a trend data point. */
 export const MIN_TREND_TX = 5;
 
 /** Minimum number of computable months required to show the trend chart (vs. "資料不足"). */
@@ -295,7 +295,7 @@ function medianOf(nums: number[]): number | null {
  * @returns              Sparse series of length `months`; undefined = insufficient data
  */
 export function computeNegotiationMarginTrend(
-  transactions: Array<{ district: string; city?: string; transactionDate: Date; unitPrice?: number | null; assessedToMarketRatio?: number | null; [key: string]: unknown }>,
+  transactions: Array<{ district: string; transactionDate: Date; unitPrice?: number | null; assessedToMarketRatio?: number | null; [key: string]: unknown }>,
   districtId: string,
   months: number,
   referenceMonth?: string,
@@ -381,7 +381,7 @@ export function computeNegotiationMarginTrend(
   for (let idx = 0; idx < months; idx++) {
     const targetMonth = monthLabels[idx]!;
     const windowStart = addMonths(targetMonth, -11); // current 12-month window: [M-11, M]
-    const priorEnd    = addMonths(targetMonth, -12); // prior window ends at M-12 (exclusive of current)
+    const priorEnd    = addMonths(targetMonth, -12); // prior window ends here (inclusive, non-overlapping: M-12 < M-11)
     const priorStart  = addMonths(targetMonth, -23); // prior 12-month window: [M-23, M-12]
 
     // Collect tx in each window (windows are non-overlapping: current [M-11,M], prior [M-23,M-12])
