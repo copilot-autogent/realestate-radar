@@ -5147,6 +5147,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const bodyEl = document.getElementById("transit-panel-body") as HTMLDivElement | null;
     if (!panel || !bodyEl) return;
 
+    // Only show panel when the MRT tier overlay toggle is active
+    const tierToggle = document.getElementById("mrt-tier-toggle") as HTMLInputElement | null;
+    if (!tierToggle?.checked) return;
+
     panel.style.display = "block";
     if (labelEl) {
       const prefix = city ? `${city} ` : "";

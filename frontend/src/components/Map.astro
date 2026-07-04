@@ -2130,7 +2130,7 @@
   function updateMrtTierLegend(active: boolean): void {
     const legend = document.getElementById("choropleth-legend");
     if (!legend) return;
-    const higherActive = completionActive || volatilityActive || buyerScoreActive || mrtPremiumActive;
+    const higherActive = supplyPressureActive || completionActive || volatilityActive || buyerScoreActive || mrtPremiumActive;
     if (active && !higherActive) {
       legend.innerHTML = `
         <div class="legend-title">🚇 捷運距離評分</div>
@@ -2144,6 +2144,7 @@
     } else if (!active) {
       if (higherActive) return;
       if (presaleSpreadActive) { updatePresaleSpreadLegend(true); return; }
+      if (firstBuyerActive) { updateFirstBuyerLegend(true); return; }
       updateAffordabilityLegend(affordabilityActive, affordabilityActive ? affordabilityThreshold / 10000 : undefined);
     }
   }
@@ -5493,7 +5494,7 @@
       if (choroplethToggle) choroplethToggle.checked = true;
 
       updateChoropleth();
-      const higherActive = completionActive || volatilityActive || buyerScoreActive || mrtPremiumActive;
+      const higherActive = supplyPressureActive || completionActive || volatilityActive || buyerScoreActive || mrtPremiumActive;
       if (!higherActive) {
         map.setPaintProperty("districts-fill", "fill-color", getMrtTierFillColor());
         updateMrtTierLegend(true);
@@ -5502,7 +5503,9 @@
       if (legend) legend.style.opacity = "1";
     } else {
       updateChoropleth();
-      if (completionActive) {
+      if (supplyPressureActive) {
+        map.setPaintProperty("districts-fill", "fill-color", getSupplyPressureFillColor());
+      } else if (completionActive) {
         map.setPaintProperty("districts-fill", "fill-color", getCompletionFillColor());
       } else if (volatilityActive) {
         map.setPaintProperty("districts-fill", "fill-color", getVolatilityFillColor());
