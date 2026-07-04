@@ -19,7 +19,8 @@ permissions:
   actions: write    # trigger deploy.yml after data commit
 
 concurrency:
-  group: plvr-fetch
+  # Shared group with pipeline.yml — prevents concurrent writes to transactions.json
+  group: plvr-data-write
   cancel-in-progress: false  # never cancel a running data fetch
 
 jobs:

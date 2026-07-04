@@ -150,9 +150,9 @@ function polygonCentroid(coords: number[][]): { lon: number; lat: number } {
   return { lon: lonSum / coords.length, lat: latSum / coords.length };
 }
 
-/** Parse sqm area → 坪 (rounded to 1 decimal) */
+/** Parse sqm area → 坪 (1 坪 = 3.30579 m², so divide; rounded to 1 decimal) */
 function sqmToPing(sqm: number): number {
-  return Math.round(sqm * 3.30579 * 10) / 10;
+  return Math.round((sqm / 3.30579) * 10) / 10;
 }
 
 // ── District centroid lookup ──────────────────────────────────────────────────
@@ -270,6 +270,26 @@ function parseCsv(
   const headerLine = (lines[0] ?? "").replace(/^\ufeff/, ""); // strip BOM char if present
   const format = detectCsvFormat(headerLine);
   const columns = format === "new28" ? CSV_COLUMNS_NEW : CSV_COLUMNS_LEGACY;
+  const minExpectedCols = format === "new28" ? PLVR_COL_COUNT_NEW : PLVR_COL_COUNT_LEGACY;
+
+  // Column-count validation: inspect the raw header row BEFORE csv-parse forces
+  // our column names, so schema drift (upstream adding/removing columns at unexpected
+  // positions) is caught accurately. csv-parse would silently mis-map fields otherwise.
+  const rawHeaderCols = headerLine.split(",").length;
+  if (rawHeaderCols < minExpectedCols) {
+    console.warn(
+      `[parse] ${filename}: raw header has ${rawHeaderCols} columns, expected ≥${minExpectedCols} ` +
+      `(format: ${format}). Upstream schema may have shifted. Skipping file.`,
+    );
+    return { features: [], skipped: 0 };
+  }
+  if (rawHeaderCols > minExpectedCols + 5) {
+    // Extra columns beyond expectation — log a warning but continue (relax_column_count handles them)
+    console.warn(
+      `[parse] ${filename}: unexpected extra columns (got ${rawHeaderCols}, expected ~${minExpectedCols}). ` +
+      `Trailing columns will be ignored; consider updating CSV_COLUMNS_NEW.`,
+    );
+  }
 
   const dataContent = lines.slice(2).join("\n");
 
@@ -285,22 +305,10 @@ function parseCsv(
     return { features: [], skipped: 0 };
   }
 
-  // Validate column count on first non-empty row as an upstream schema guard
-  const firstRow = records[0];
-  if (firstRow) {
-    const colCount = Object.keys(firstRow).length;
-    const minExpected = format === "new28" ? PLVR_COL_COUNT_NEW : PLVR_COL_COUNT_LEGACY;
-    if (colCount < minExpected) {
-      console.warn(
-        `[parse] ${filename}: column count mismatch — got ${colCount}, expected ≥${minExpected}. ` +
-        `Upstream schema may have changed. Skipping file.`,
-      );
-      return { features: [], skipped: records.length };
-    }
-  }
-
   const features: TransactionFeature[] = [];
   let skipped = 0;
+
+  const currentYear = new Date().getFullYear();
 
   for (const rec of records) {
     // Only process residential sales with building component
@@ -308,12 +316,18 @@ function parseCsv(
     // Filter to "房地" or "建物" transactions only (skip land-only)
     const txType = normalizeFullWidth(rec.交易標的 ?? "");
     if (!txType.includes("建物") && !txType.includes("房地")) { skipped++; continue; }
+    // Filter to residential use only (住家用); skip commercial/office/industrial
+    const mainUse = normalizeFullWidth(rec.主要用途 ?? "");
+    if (mainUse && !mainUse.includes("住") && mainUse !== "") { skipped++; continue; }
 
     const totalPrice = parseInt(normalizeFullWidth(rec.總價元), 10);
     if (isNaN(totalPrice) || totalPrice <= 0) { skipped++; continue; }
 
     const dateStr = parseRocDate(normalizeFullWidth(rec.交易年月日));
     if (!dateStr) { skipped++; continue; }
+    // Reject obviously-future dates (more than 1 year ahead — likely bad upstream data)
+    const txYear = parseInt(dateStr.slice(0, 4), 10);
+    if (txYear > currentYear + 1) { skipped++; continue; }
 
     const district = normalizeFullWidth(rec.鄉鎮市區 ?? "").trim();
     if (!district) { skipped++; continue; }
@@ -417,7 +431,8 @@ async function downloadAndExtract(): Promise<ExtractedFile[]> {
       chunks.push(chunk);
     }
     extracted.push({ filename, buffer: Buffer.concat(chunks) });
-    console.log(`[download] Extracted ${filename} (${(Buffer.byteLength(Buffer.concat([])) / 1024).toFixed(0)} KB)`);
+    const sizeKb = (Buffer.byteLength(Buffer.concat(chunks)) / 1024).toFixed(0);
+    console.log(`[download] Extracted ${filename} (${sizeKb} KB)`);
   }
 
   console.log(`[download] Extracted ${extracted.length} sales CSV file(s)`);
