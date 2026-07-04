@@ -7488,7 +7488,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         const id = (ev.currentTarget as HTMLButtonElement).dataset.id ?? "";
         scpSelected.delete(id);
         const all = scpGetAll();
-        scpSaveAll(slRemove(all, id));
+        const updated = slRemove(all, id);
+        scpSaveAll(updated);
+        // Notify Map.astro popup to refresh its shortlist button state
+        document.dispatchEvent(new CustomEvent("shortlist-changed", {
+          detail: { entries: updated, addedId: null, removedId: id },
+        }));
         scpRender();
       });
       chipList.appendChild(chip);
@@ -7577,27 +7582,33 @@ const showBuyersMarket = !isStale && dataYear !== null;
     scpSaveAll(slClear());
     scpSelected.clear();
     // Notify Map.astro popup to refresh its shortlist button state
-    document.dispatchEvent(new CustomEvent("shortlist-changed", { detail: { entries: [] } }));
+    document.dispatchEvent(new CustomEvent("shortlist-changed", { detail: { entries: [], addedId: null, removedId: null } }));
     scpRender();
     const panel = document.getElementById("shortlist-comparison-panel") as HTMLElement | null;
     if (panel) panel.style.display = "none";
   });
 
-  // Listen for shortlist changes dispatched by Map.astro
+  // Listen for shortlist changes dispatched by Map.astro or panel
   document.addEventListener("shortlist-changed", (e: Event) => {
-    const { entries } = (e as CustomEvent<{ entries: ShortlistEntry[] }>).detail;
-    // Auto-select newly added entry only when the shortlist grew (addition, not removal)
-    const prevIds = new Set(scpGetAll().map((x) => x.districtId));
-    const newest = entries.find((x) => !prevIds.has(x.districtId));
-    if (newest && scpSelected.size < COMPARISON_MAX) {
-      scpSelected.add(newest.districtId);
+    const { entries, addedId, removedId } = (e as CustomEvent<{
+      entries: ShortlistEntry[];
+      addedId?: string | null;
+      removedId?: string | null;
+    }>).detail;
+    // Use addedId/removedId from event detail (avoids re-reading localStorage which already has new state)
+    if (addedId && scpSelected.size < COMPARISON_MAX) {
+      scpSelected.add(addedId);
     }
+    if (removedId) {
+      scpSelected.delete(removedId);
+    }
+    // If shortlist is empty (clear-all), also clear scpSelected
+    if (entries.length === 0) scpSelected.clear();
     // If panel is open, refresh; otherwise just update badge
     const panel = document.getElementById("shortlist-comparison-panel") as HTMLElement | null;
     if (panel && panel.style.display !== "none") {
       scpRender();
     } else {
-      // Just update badge count
       const badge     = document.getElementById("shortlist-badge")       as HTMLButtonElement | null;
       const badgeCount = document.getElementById("shortlist-badge-count") as HTMLSpanElement | null;
       if (badge && badgeCount) {

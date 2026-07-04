@@ -1117,7 +1117,8 @@
   function slToggle(city: string, district: string): void {
     const id = `${city}:${district}`;
     let entries = slGetAll();
-    if (entries.some((e) => e.districtId === id)) {
+    const wasIn = entries.some((e) => e.districtId === id);
+    if (wasIn) {
       entries = slRemove(entries, id);
     } else {
       entries = slAdd(entries, {
@@ -1128,8 +1129,17 @@
       });
     }
     slSaveAll(entries);
-    document.dispatchEvent(new CustomEvent("shortlist-changed", { detail: { entries } }));
+    // Include addedId/removedId so index.astro can detect direction without re-reading localStorage
+    document.dispatchEvent(new CustomEvent("shortlist-changed", {
+      detail: { entries, addedId: wasIn ? null : id, removedId: wasIn ? id : null },
+    }));
   }
+
+  // Listen for shortlist-changed dispatched by panel (clear-all or chip remove)
+  // to refresh an already-open popup button state.
+  document.addEventListener("shortlist-changed", () => {
+    syncOpenPopupShortlistButton();
+  });
   function syncOpenPopupShortlistButton(): void {
     const btn = districtClickPopup?.getElement()?.querySelector<HTMLButtonElement>(".popup-shortlist-btn");
     if (!btn) return;
