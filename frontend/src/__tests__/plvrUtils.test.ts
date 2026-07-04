@@ -89,6 +89,12 @@ describe("parseRocDate", () => {
     // ROC year 1 → 1912-xx-xx, within reject range
     expect(parseRocDate("10101")).toBe(null);
   });
+
+  it("returns null for impossible calendar dates (e.g. Feb 31)", () => {
+    // Month 02, day 31 → would roll over in JS Date; parseRocDate should reject
+    expect(parseRocDate("1130231")).toBe(null); // 2024-02-31 is invalid
+    expect(parseRocDate("1130431")).toBe(null); // 2024-04-31 is invalid
+  });
 });
 
 // ── parseRocBuildYear ─────────────────────────────────────────────────────────

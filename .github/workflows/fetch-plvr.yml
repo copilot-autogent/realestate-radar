@@ -63,8 +63,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B main origin/main
+          # Stage the generated file BEFORE any branch manipulation to ensure
+          # the generated file isn't discarded by the branch reset below.
           git add frontend/public/data/transactions.json
+          # Reset local branch to track origin/main so the push target is correct;
+          # the staged file is preserved because `git checkout -B` only updates the
+          # branch pointer, not the working tree or index.
+          git checkout -B main origin/main
           if git diff --cached --quiet; then
             echo "No changes to commit — data is already up-to-date"
             echo "pushed=false" >> "$GITHUB_OUTPUT"

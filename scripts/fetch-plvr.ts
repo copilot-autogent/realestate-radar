@@ -19,7 +19,7 @@
  *   MIN_FEATURES  Minimum required features for smoke test (default: 100)
  */
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
@@ -189,9 +189,15 @@ function buildCentroidMap(): CentroidMap {
     for (const feature of data.features ?? []) {
       const { district, city } = feature.properties ?? {};
       if (!district || !city) continue;
-      if (feature.geometry?.type !== "Polygon") continue;
 
-      const outerRing = (feature.geometry.coordinates as number[][][])[0];
+      let outerRing: number[][] | undefined;
+      if (feature.geometry?.type === "Polygon") {
+        outerRing = (feature.geometry.coordinates as number[][][])[0];
+      } else if (feature.geometry?.type === "MultiPolygon") {
+        // Use the outer ring of the largest polygon (by vertex count) as the representative
+        const rings = (feature.geometry.coordinates as number[][][][]).map(p => p[0]);
+        outerRing = rings.reduce((best, r) => (r.length > best.length ? r : best), rings[0] ?? []);
+      }
       if (!outerRing?.length) continue;
 
       const centroid = polygonCentroid(outerRing);
@@ -533,8 +539,6 @@ async function main(): Promise<void> {
     console.log(`[parse] ${filename}: ${features.length} features, ${skipped} skipped`);
     allFeatures.push(...features);
     totalSkipped += skipped;
-
-    if (allFeatures.length >= EXPORT_LIMIT) break;
   }
 
   // Trim to export limit and sort newest-first
@@ -554,9 +558,11 @@ async function main(): Promise<void> {
   // Validate before writing
   validateOutput(geojson);
 
-  // Write output
+  // Atomic write: write to .tmp first, then rename to avoid partial-write corruption
+  const tmpPath = OUT_PATH + ".tmp";
   mkdirSync(dirname(OUT_PATH), { recursive: true });
-  writeFileSync(OUT_PATH, JSON.stringify(geojson));
+  writeFileSync(tmpPath, JSON.stringify(geojson));
+  renameSync(tmpPath, OUT_PATH);
   console.log(`[output] Written to ${OUT_PATH}`);
 }
 

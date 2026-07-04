@@ -70,6 +70,10 @@ export function parseRocDate(rocDateStr: string | null | undefined): string | nu
   const year = rocYear + 1911;
   if (year < 1945 || year > 2100) return null; // sanity bounds
 
+  // Validate the date is real (e.g. reject Feb 31 → would silently roll over to Mar 2)
+  const d = new Date(year, month - 1, day);
+  if (d.getFullYear() !== year || d.getMonth() + 1 !== month || d.getDate() !== day) return null;
+
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
