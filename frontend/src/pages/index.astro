@@ -871,6 +871,50 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </div>
     </div>
   </div>
+  <!-- ── 地區比較清單浮動按鈕 (issue #145) ── -->
+  <button
+    id="shortlist-badge"
+    class="shortlist-badge"
+    aria-label="比較清單"
+    style="display:none"
+  >
+    比較清單 <span id="shortlist-badge-count">0</span>/5
+  </button>
+
+  <!-- ── 地區比較表面板 (issue #145) ── -->
+  <div
+    id="shortlist-comparison-panel"
+    class="shortlist-comparison-panel"
+    role="dialog"
+    aria-modal="true"
+    aria-label="地區比較表"
+    style="display:none"
+  >
+    <div class="scp-header">
+      <span class="scp-title">📊 地區比較清單</span>
+      <div class="scp-actions">
+        <button id="scp-clear-btn" class="scp-clear-btn">清除全部</button>
+        <button id="scp-close-btn" class="scp-close-btn" aria-label="關閉比較表">✕</button>
+      </div>
+    </div>
+    <div class="scp-body">
+      <!-- Shortlist cards (up to 5 entries) -->
+      <div id="scp-shortlist-list" class="scp-shortlist-list" aria-label="比較清單"></div>
+      <!-- Side-by-side comparison table (up to 3 selected) -->
+      <div id="scp-table-wrapper" class="scp-table-wrapper" style="display:none">
+        <div id="scp-table-scroll" class="scp-table-scroll">
+          <table id="scp-table" class="scp-table" role="table">
+            <thead><tr id="scp-thead-row"></tr></thead>
+            <tbody id="scp-tbody"></tbody>
+          </table>
+        </div>
+        <p class="scp-table-hint">✅ 綠底為最優選項</p>
+      </div>
+      <p id="scp-empty-hint" class="scp-empty-hint">
+        點擊地圖行政區，按「🔖 加入比較清單」可加入（最多 5 個），選取最多 3 個以並排比較。
+      </p>
+    </div>
+  </div>
 </Layout>
 
 <script>
@@ -4270,6 +4314,192 @@ const showBuyersMarket = !isStale && dataYear !== null;
     min-height: 0;
   }
 
+  /* ── Shortlist Badge + Comparison Panel (issue #145) ── */
+  .shortlist-badge {
+    position: fixed;
+    bottom: 72px;
+    right: 16px;
+    z-index: 1200;
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 18px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+    transition: background 0.15s, transform 0.1s;
+  }
+  .shortlist-badge:hover { background: #15803d; transform: scale(1.04); }
+
+  .shortlist-comparison-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1100;
+    background: #fff;
+    border-top: 2px solid #bbf7d0;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.12);
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .scp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid #d1fae5;
+    flex-shrink: 0;
+  }
+  .scp-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #065f46;
+  }
+  .scp-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .scp-clear-btn {
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #dc2626;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .scp-clear-btn:hover { background: #fee2e2; }
+  .scp-close-btn {
+    background: none;
+    border: 1px solid #d1d5db;
+    color: #6b7280;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .scp-close-btn:hover { background: #f9fafb; }
+  .scp-body {
+    overflow-y: auto;
+    padding: 12px 16px;
+    flex: 1;
+    min-height: 0;
+  }
+  .scp-shortlist-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .scp-entry-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 20px;
+    border: 2px solid #d1d5db;
+    background: #f9fafb;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    user-select: none;
+  }
+  .scp-entry-chip.selected {
+    border-color: #16a34a;
+    background: #f0fdf4;
+    color: #15803d;
+  }
+  .scp-entry-chip.selected:hover { background: #dcfce7; }
+  .scp-entry-chip:not(.selected):hover { border-color: #86efac; background: #f0fdf4; }
+  .scp-chip-remove {
+    margin-left: 2px;
+    font-size: 0.75rem;
+    color: #ef4444;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .scp-chip-remove:hover { color: #b91c1c; }
+  .scp-table-wrapper {
+    overflow: hidden;
+  }
+  .scp-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scp-table {
+    width: 100%;
+    min-width: 340px;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+  .scp-table th, .scp-table td {
+    padding: 6px 10px;
+    border: 1px solid #e5e7eb;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .scp-table th {
+    background: #f0fdf4;
+    font-weight: 700;
+    color: #065f46;
+  }
+  .scp-table th.scp-metric-col {
+    text-align: left;
+    color: #374151;
+    background: #f8fafc;
+    min-width: 120px;
+  }
+  .scp-table td.scp-metric-col {
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    background: #f8fafc;
+  }
+  .scp-table td.scp-best {
+    background: #dcfce7;
+    font-weight: 700;
+    color: #166534;
+  }
+  .scp-table-hint {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 6px;
+    text-align: right;
+  }
+  .scp-empty-hint {
+    font-size: 0.82rem;
+    color: #6b7280;
+    text-align: center;
+    padding: 8px 0;
+    margin: 0;
+  }
+  .scp-map-focus-btn {
+    margin-top: 4px;
+    font-size: 0.72rem;
+    background: none;
+    border: 1px solid #86efac;
+    color: #15803d;
+    border-radius: 5px;
+    padding: 2px 7px;
+    cursor: pointer;
+  }
+  .scp-map-focus-btn:hover { background: #f0fdf4; }
+
+  @media (max-width: 768px) {
+    .shortlist-badge { bottom: 120px; right: 12px; padding: 9px 14px; font-size: 0.8rem; }
+    .shortlist-comparison-panel { max-height: 60vh; }
+  }
+
   @media (max-width: 768px) {
     .view-mode-toggle {
       bottom: 80px; /* above filter btn */
@@ -7095,4 +7325,320 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // Initial render from localStorage on page load
   wlRenderPanel();
+</script>
+
+<script>
+  // ── 地區比較清單 Shortlist + Comparison Panel (issue #145) ──────────────────
+  import {
+    SHORTLIST_KEY,
+    COMPARISON_MAX,
+    parseShortlist,
+    removeFromShortlist as slRemove,
+    clearShortlist as slClear,
+    pruneStaleIds,
+    buildComparisonRows,
+    type ShortlistEntry,
+    type DistrictStatsForComparison,
+  } from "../lib/shortlistUtils.js";
+
+  import {
+    computeMedianPrice12mo,
+  } from "../lib/districtTableUtils.js";
+
+  import {
+    estimateNegotiationMargin,
+    type DistrictStats as NegDistrictStats,
+  } from "../lib/negotiationUtils.js";
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let scpRawFeatures: any[] = [];
+  /** Districts selected for side-by-side table (subset of shortlist, max 3). */
+  let scpSelected = new Set<string>();
+
+  function scpGetAll(): ShortlistEntry[] {
+    try { return parseShortlist(localStorage.getItem(SHORTLIST_KEY)); } catch { return []; }
+  }
+  function scpSaveAll(entries: ShortlistEntry[]): void {
+    try { localStorage.setItem(SHORTLIST_KEY, JSON.stringify(entries)); } catch { /* unavailable */ }
+  }
+
+  function escHtmlScp(s: string): string {
+    return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
+  }
+
+  // ── Stats computation ──────────────────────────────────────────────────────
+  function computeStatsForEntry(entry: ShortlistEntry): DistrictStatsForComparison {
+    const { city, label: district } = entry;
+    const medianPriceWan = computeMedianPrice12mo(scpRawFeatures, district, city || undefined);
+
+    const features = scpRawFeatures.filter(
+      (f) => f.properties?.district === district && (!city || f.properties?.city === city)
+    );
+
+    // buyerTimingScore: not computed here — the canonical formula lives in Map.astro and
+    // requires district-wide context unavailable in this script. Rendering null shows "—",
+    // which is correct rather than showing a value inconsistent with the map badge.
+    const buyerTimingScore: number | null = null;
+
+    // Negotiation margin (reuse negotiationUtils.estimateNegotiationMargin)
+    let negotiationMarginPct: number | null = null;
+    if (features.length > 0) {
+      const validTimes = features.map((f) => new Date((f.properties?.date as string) ?? "").getTime()).filter((t) => !isNaN(t));
+      if (validTimes.length > 0) {
+        const maxTime = validTimes.reduce((a, b) => (a > b ? a : b), -Infinity);
+        const cut12 = new Date(maxTime); cut12.setFullYear(cut12.getFullYear() - 1);
+        const recent12 = features.filter((f) => {
+          const t = new Date((f.properties?.date as string) ?? "").getTime();
+          return !isNaN(t) && t > cut12.getTime() && t <= maxTime;
+        });
+        const txCount12mo = recent12.length;
+        let medianUnitPriceWan: number | null = null;
+        if (recent12.length > 0) {
+          // Filter non-finite values before sorting to avoid NaN poisoning the median
+          const p = recent12
+            .map((f) => Number(f.properties.unitPrice))
+            .filter((v) => Number.isFinite(v) && v > 0)
+            .sort((a, b) => a - b);
+          if (p.length > 0) medianUnitPriceWan = p[Math.floor(p.length / 2)]! / 10_000;
+        }
+        const stats: NegDistrictStats = {
+          txCount12mo,
+          velocityYoYPct: null,
+          monthsSincePeak: null,
+          assessedToMarketRatio: null,
+          medianUnitPriceWan,
+        };
+        const est = estimateNegotiationMargin(stats);
+        if (est.sufficient && est.marginCenter !== null) negotiationMarginPct = est.marginCenter;
+      }
+    }
+
+    // Median building age
+    let medianBuildingAge: number | null = null;
+    const currentYear = new Date().getFullYear();
+    const ages = features
+      .map((f) => {
+        const rawBY = f.properties?.buildYear ? Number(f.properties.buildYear) : null;
+        if (!rawBY || rawBY <= 0) return null;
+        const by = rawBY < 200 ? rawBY + 1911 : rawBY;
+        const age = currentYear - by;
+        return age >= 0 && age < 200 ? age : null;
+      })
+      .filter((a): a is number => a !== null)
+      .sort((a, b) => a - b);
+    if (ages.length > 0) medianBuildingAge = ages[Math.floor(ages.length / 2)]!;
+
+    return {
+      districtId: entry.districtId,
+      medianPriceWan,
+      buyerTimingScore,
+      negotiationMarginPct,
+      medianBuildingAge,
+      firstBuyerAffordabilityRatio: null, // requires user budget input — shown as "—"
+      nearestMrt: null,  // requires MRT proximity data from issue #144 events
+      seasonalIndex: null, // requires seasonal computation from issue #142 events
+    };
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function scpRender(): void {
+    const badge       = document.getElementById("shortlist-badge")           as HTMLButtonElement | null;
+    const badgeCount  = document.getElementById("shortlist-badge-count")     as HTMLSpanElement | null;
+    const panel       = document.getElementById("shortlist-comparison-panel") as HTMLElement | null;
+    const chipList    = document.getElementById("scp-shortlist-list")         as HTMLElement | null;
+    const tableWrap   = document.getElementById("scp-table-wrapper")          as HTMLElement | null;
+    const emptyHint   = document.getElementById("scp-empty-hint")             as HTMLElement | null;
+    if (!badge || !panel || !chipList) return;
+
+    const entries = scpGetAll();
+
+    // Update badge
+    if (badgeCount) badgeCount.textContent = String(entries.length);
+    badge.style.display = entries.length > 0 ? "block" : "none";
+
+    // Render chips
+    chipList.innerHTML = "";
+    for (const entry of entries) {
+      const isSelected = scpSelected.has(entry.districtId);
+      const chip = document.createElement("div");
+      chip.className = `scp-entry-chip${isSelected ? " selected" : ""}`;
+      chip.setAttribute("role", "checkbox");
+      chip.setAttribute("aria-checked", String(isSelected));
+      chip.setAttribute("tabindex", "0");
+      chip.innerHTML = `
+        <span class="scp-chip-label">${escHtmlScp(entry.city ? `${entry.city} ` : "")}${escHtmlScp(entry.label)}</span>
+        <button class="scp-chip-remove" data-id="${escHtmlScp(entry.districtId)}" aria-label="移除 ${escHtmlScp(entry.label)}">✕</button>
+      `;
+      // Toggle selection
+      chip.addEventListener("click", (ev) => {
+        if ((ev.target as HTMLElement).classList.contains("scp-chip-remove")) return;
+        if (isSelected) {
+          scpSelected.delete(entry.districtId);
+        } else if (scpSelected.size < COMPARISON_MAX) {
+          scpSelected.add(entry.districtId);
+        }
+        scpRender();
+      });
+      chip.addEventListener("keydown", (ev) => {
+        if (ev.key === " " || ev.key === "Enter") { ev.preventDefault(); chip.click(); }
+      });
+      // Remove button
+      chip.querySelector<HTMLButtonElement>(".scp-chip-remove")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const id = (ev.currentTarget as HTMLButtonElement).dataset.id ?? "";
+        const all = scpGetAll();
+        const updated = slRemove(all, id);
+        scpSaveAll(updated);
+        // Dispatch shortlist-changed; the listener handles scpSelected cleanup + scpRender
+        document.dispatchEvent(new CustomEvent("shortlist-changed", {
+          detail: { entries: updated, addedId: null, removedId: id },
+        }));
+      });
+      chipList.appendChild(chip);
+    }
+
+    // Build comparison table for selected entries
+    const selectedEntries = entries.filter((e) => scpSelected.has(e.districtId));
+    if (selectedEntries.length >= 2) {
+      const statsMap = new Map<string, DistrictStatsForComparison>();
+      for (const e of selectedEntries) {
+        statsMap.set(e.districtId, computeStatsForEntry(e));
+      }
+      const rows = buildComparisonRows(selectedEntries, statsMap);
+      renderComparisonTable(selectedEntries, rows);
+      if (tableWrap) tableWrap.style.display = "block";
+      if (emptyHint) emptyHint.textContent = selectedEntries.length < COMPARISON_MAX
+        ? `💡 最多可選 ${COMPARISON_MAX} 個地區並排比較（已選 ${selectedEntries.length} 個）`
+        : `✅ 比較表顯示最多 ${COMPARISON_MAX} 個地區`;
+    } else {
+      if (tableWrap) tableWrap.style.display = "none";
+      if (emptyHint) emptyHint.textContent = entries.length === 0
+        ? "點擊地圖行政區，按「🔖 加入比較清單」可加入（最多 5 個），選取最多 3 個以並排比較。"
+        : `✅ 已收藏 ${entries.length} 個地區。勾選至少 2 個以顯示並排比較表。`;
+    }
+  }
+
+  function renderComparisonTable(
+    entries: ShortlistEntry[],
+    rows: import("../lib/shortlistUtils.js").ComparisonRow[]
+  ): void {
+    const thead = document.getElementById("scp-thead-row") as HTMLTableRowElement | null;
+    const tbody = document.getElementById("scp-tbody")     as HTMLTableSectionElement | null;
+    if (!thead || !tbody) return;
+
+    // Header row
+    thead.innerHTML = `<th class="scp-metric-col" scope="col">指標</th>`;
+    for (const e of entries.slice(0, COMPARISON_MAX)) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      const label = escHtmlScp(`${e.city ? e.city + " " : ""}${e.label}`);
+      th.innerHTML = `${label}<br/><button class="scp-map-focus-btn" data-district="${escHtmlScp(e.label)}" data-city="${escHtmlScp(e.city)}" aria-label="在地圖查看 ${escHtmlScp(e.label)}">🗺 查看</button>`;
+      th.querySelector<HTMLButtonElement>(".scp-map-focus-btn")?.addEventListener("click", () => {
+        document.dispatchEvent(new CustomEvent("district-focus", {
+          detail: { district: e.label, city: e.city },
+        }));
+      });
+      thead.appendChild(th);
+    }
+
+    // Data rows
+    tbody.innerHTML = "";
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+      const metricCell = document.createElement("td");
+      metricCell.className = "scp-metric-col";
+      metricCell.textContent = row.label;
+      tr.appendChild(metricCell);
+      for (const e of entries.slice(0, COMPARISON_MAX)) {
+        const td = document.createElement("td");
+        const val = row.values[e.districtId] ?? "—";
+        td.textContent = val;
+        if (row.bestDistrictId === e.districtId) td.className = "scp-best";
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  // ── Event wiring ────────────────────────────────────────────────────────────
+  // Open/close badge ↔ panel
+  document.getElementById("shortlist-badge")?.addEventListener("click", () => {
+    const panel = document.getElementById("shortlist-comparison-panel") as HTMLElement | null;
+    if (panel) {
+      const isHidden = panel.style.display === "none";
+      panel.style.display = isHidden ? "flex" : "none";
+      if (isHidden) scpRender();
+    }
+  });
+
+  document.getElementById("scp-close-btn")?.addEventListener("click", () => {
+    const panel = document.getElementById("shortlist-comparison-panel") as HTMLElement | null;
+    if (panel) panel.style.display = "none";
+  });
+
+  document.getElementById("scp-clear-btn")?.addEventListener("click", () => {
+    scpSaveAll(slClear());
+    scpSelected.clear();
+    // Notify Map.astro popup to refresh its shortlist button state
+    document.dispatchEvent(new CustomEvent("shortlist-changed", { detail: { entries: [], addedId: null, removedId: null } }));
+    scpRender();
+    const panel = document.getElementById("shortlist-comparison-panel") as HTMLElement | null;
+    if (panel) panel.style.display = "none";
+  });
+
+  // Listen for shortlist changes dispatched by Map.astro or panel
+  document.addEventListener("shortlist-changed", (e: Event) => {
+    const { entries, addedId, removedId } = (e as CustomEvent<{
+      entries: ShortlistEntry[];
+      addedId?: string | null;
+      removedId?: string | null;
+    }>).detail;
+    // Auto-select newly added entry if there is room
+    if (addedId && scpSelected.size < COMPARISON_MAX) {
+      scpSelected.add(addedId);
+    }
+    if (removedId) {
+      scpSelected.delete(removedId);
+    }
+    // Reconcile scpSelected against current entries (handles eviction on max-5 add)
+    const currentIds = new Set(entries.map((x) => x.districtId));
+    for (const id of [...scpSelected]) {
+      if (!currentIds.has(id)) scpSelected.delete(id);
+    }
+    // If shortlist is empty (clear-all), also clear scpSelected
+    if (entries.length === 0) scpSelected.clear();
+    // If panel is open, refresh; otherwise just update badge
+    const panel = document.getElementById("shortlist-comparison-panel") as HTMLElement | null;
+    if (panel && panel.style.display !== "none") {
+      scpRender();
+    } else {
+      const badge     = document.getElementById("shortlist-badge")       as HTMLButtonElement | null;
+      const badgeCount = document.getElementById("shortlist-badge-count") as HTMLSpanElement | null;
+      if (badge && badgeCount) {
+        badgeCount.textContent = String(entries.length);
+        badge.style.display = entries.length > 0 ? "block" : "none";
+      }
+    }
+  });
+
+  // Get raw features for stats computation
+  document.addEventListener("rawdata-loaded", (e: Event) => {
+    const { features } = (e as CustomEvent<{ features: any[] }>).detail;
+    scpRawFeatures = features;
+    // Prune stale district IDs from shortlist
+    const validIds = new Set(
+      features.map((f) => `${f.properties?.city ?? ""}:${f.properties?.district ?? ""}`)
+    );
+    const entries = scpGetAll();
+    const { kept, pruned } = pruneStaleIds(entries, validIds);
+    if (pruned.length > 0) {
+      scpSaveAll(kept);
+      pruned.forEach((prunedEntry) => scpSelected.delete(prunedEntry.districtId));
+    }
+    // Always re-render: panel may have been opened before data arrived (showing all "—")
+    scpRender();
+  });
+
+  // Initial badge render
+  scpRender();
 </script>
