@@ -337,7 +337,8 @@ export function computeNegotiationMarginTrend(
   // ── Step 2: Determine reference month ─────────────────────────────────────
   let refMonth: string;
   if (referenceMonth) {
-    refMonth = referenceMonth;
+    // NFKC-normalize to handle full-width digit input
+    refMonth = referenceMonth.normalize("NFKC");
   } else if (districtTx.length > 0) {
     refMonth = districtTx.reduce(
       (max, tx) => (cmpMonth(tx.month, max) > 0 ? tx.month : max),
@@ -397,8 +398,11 @@ export function computeNegotiationMarginTrend(
 
     const txCount12mo = windowTx.length;
 
-    // Gap check: need at least MIN_TREND_TX in the 12-month window
-    if (txCount12mo < MIN_TREND_TX) continue;
+    // Gap check: the target month itself must have at least MIN_TREND_TX transactions.
+    // This ensures months with no recent activity produce a chart gap even when
+    // older transactions remain in the 12-month window.
+    const monthTxCount = txByMonth.get(targetMonth)?.length ?? 0;
+    if (monthTxCount < MIN_TREND_TX) continue;
 
     // Velocity YoY %
     const velocityYoYPct: number | null =

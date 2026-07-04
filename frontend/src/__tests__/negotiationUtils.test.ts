@@ -5,10 +5,17 @@ import {
   velocityMultiplier,
   peakFactor,
   assessedRatioFactor,
+  computeNegotiationMarginTrend,
+  computeTrendMA3,
+  computeTrendBadge,
+  trendSufficiencyLabel,
   MIN_TX,
   MAX_MARGIN,
+  MIN_TREND_TX,
+  MIN_TREND_MONTHS,
   type DistrictStats,
   type NegotiationEstimate,
+  type MarginDataPoint,
 } from "../lib/negotiationUtils.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -268,17 +275,7 @@ describe("computeNegotiationPercentile", () => {
   });
 });
 
-computeNegotiationMarginTrend // ── ─────────────────────────────
-
-import {
-  computeNegotiationMarginTrend,
-  computeTrendMA3,
-  computeTrendBadge,
-  trendSufficiencyLabel,
-  MIN_TREND_TX,
-  MIN_TREND_MONTHS,
-  type MarginDataPoint,
-} from "../lib/negotiationUtils.js";
+// ── computeNegotiationMarginTrend ─────────────────────────────────────────────
 
 /** Build a synthetic Transaction-like object */
 function makeTx(
@@ -573,7 +570,7 @@ describe("computeTrendBadge", () => {
   });
 });
 
-trendSufficiencyLabel // ── ─────────────────────────────────────
+// ── trendSufficiencyLabel ─────────────────────────────────────────────────────
 
 describe("trendSufficiencyLabel", () => {
   function makePoint(month: string): MarginDataPoint {
