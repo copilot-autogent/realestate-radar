@@ -228,8 +228,11 @@ export function computeSimilarDistricts(
     });
   }
 
-  // Rank by discount descending (largest discount first)
-  qualifying.sort((a, b) => b.discountPct - a.discountPct);
+  // Rank by discount descending (largest discount first); break ties by district name for stability
+  qualifying.sort((a, b) => {
+    if (b.discountPct !== a.discountPct) return b.discountPct - a.discountPct;
+    return a.district.localeCompare(b.district);
+  });
 
   const insufficient = qualifying.length < 3;
   const candidates = qualifying.slice(0, maxResults);

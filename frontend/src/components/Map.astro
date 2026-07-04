@@ -1163,8 +1163,15 @@
    * across the polygon-click and dot-click handlers.
    */
   function buildDistrictProfiles(): DistrictProfile[] {
+    const seen = new Set<string>();
     return (districtGeoJSON?.features ?? [])
-      .filter((f: any) => typeof f?.properties?.district === "string" && f.properties.district !== "")
+      .filter((f: any) => {
+        if (typeof f?.properties?.district !== "string" || f.properties.district === "") return false;
+        const key = `${f.properties.city ?? ""}:${f.properties.district}`;
+        if (seen.has(key)) return false; // deduplicate multi-polygon districts
+        seen.add(key);
+        return true;
+      })
       .map((f: any) => {
         const p = f.properties;
         const medAge: number = typeof p.medianAge === "number" ? p.medianAge : -1;

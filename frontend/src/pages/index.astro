@@ -5023,9 +5023,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
         if (seq !== _similarRenderSeq) return; // superseded by newer click
         const result = csd(raw.district, raw.city, raw.allProfiles, { sameCityOnly: true });
         renderSimilarDistrictsPanel({ district: raw.district, city: raw.city, result });
-      } catch { renderSimilarDistrictsPanel(raw); }
+      } catch {
+        // Dynamic import failed — render pre-computed cross-city result rather than nothing,
+        // but only if this event is still current (seq guard).
+        if (seq === _similarRenderSeq) renderSimilarDistrictsPanel(raw);
+      }
     } else {
-      renderSimilarDistrictsPanel(raw);
+      if (seq === _similarRenderSeq) renderSimilarDistrictsPanel(raw);
     }
   });
 
