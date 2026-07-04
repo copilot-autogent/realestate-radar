@@ -4933,6 +4933,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
   // ── Similar district recommender panel (issue #141) ─────────────────────────────────────
   let _lastSimilarEventDetail: { district: string; city: string; allProfiles: any[] } | null = null;
 
+  /** HTML-escape helper to prevent XSS when interpolating district/city names into innerHTML. */
+  function escSimilar(s: string): string {
+    return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
+  }
+
   function renderSimilarDistrictsPanel(detail: { district: string; city: string; result: { candidates: any[]; insufficient: boolean } }) {
     const panel       = document.getElementById("similar-districts-panel")  as HTMLDivElement  | null;
     const labelEl     = document.getElementById("similar-districts-label")  as HTMLSpanElement | null;
@@ -4947,12 +4952,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
 
     const { candidates, insufficient } = detail.result;
+
+    // Show 資料不足 whenever < 3 qualifying candidates were found
+    if (insuffEl) insuffEl.style.display = insufficient ? "block" : "none";
+
     if (!candidates || candidates.length === 0) {
-      if (insuffEl) insuffEl.style.display = "block";
       listEl.innerHTML = "";
       return;
     }
-    if (insuffEl) insuffEl.style.display = "none";
 
     const tierEmoji = (tier: number) => {
       if (tier === 0) return "🟢";
@@ -4967,11 +4974,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
         ? `<span class="similar-district-score">買時 ${c.buyerTimingScore}</span>`
         : "";
       const tierHtml = c.firstBuyerTier >= 0 ? `<span title="首購族負擔等級">${tierEmoji(c.firstBuyerTier)}</span>` : "";
+      const safeDist = escSimilar(c.district);
+      const safeCity = escSimilar(c.city);
       return `<li class="similar-district-item">
         <div class="similar-district-header">
           <span>
-            <span class="similar-district-name">${c.district}</span>
-            <span class="similar-district-city">${c.city}</span>
+            <span class="similar-district-name">${safeDist}</span>
+            <span class="similar-district-city">${safeCity}</span>
           </span>
           <span class="similar-district-discount">省 ${c.discountPct}%</span>
         </div>
@@ -4979,7 +4988,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <span class="similar-district-price">${priceWan} 萬/坪</span>
           ${scoreHtml}
           ${tierHtml}
-          <button class="similar-district-focus-btn" data-district="${c.district}" data-city="${c.city}" aria-label="在地圖上查看 ${c.district}">查看</button>
+          <button class="similar-district-focus-btn" data-district="${safeDist}" data-city="${safeCity}" aria-label="在地圖上查看 ${safeDist}">查看</button>
         </div>
       </li>`;
     }).join("");
@@ -4994,16 +5003,25 @@ const showBuyersMarket = !isStale && dataYear !== null;
     });
   }
 
-  document.addEventListener("district-similar", (e: Event) => {
-    const detail = (e as CustomEvent).detail as {
+  document.addEventListener("district-similar", async (e: Event) => {
+    const raw = (e as CustomEvent).detail as {
       district: string;
       city: string;
       result: { candidates: any[]; insufficient: boolean };
       allProfiles: any[];
     };
     // Store profiles so the city-toggle can re-compute without a new click
-    _lastSimilarEventDetail = { district: detail.district, city: detail.city, allProfiles: detail.allProfiles };
-    renderSimilarDistrictsPanel(detail);
+    _lastSimilarEventDetail = { district: raw.district, city: raw.city, allProfiles: raw.allProfiles };
+    // Honour the current sameCityOnly toggle state when re-rendering
+    const toggle = document.getElementById("similar-districts-same-city") as HTMLInputElement | null;
+    const sameCityOnly = toggle?.checked ?? false;
+    if (sameCityOnly && raw.allProfiles?.length) {
+      const { computeSimilarDistricts: csd } = await import("../lib/similarDistrictUtils.js");
+      const result = csd(raw.district, raw.city, raw.allProfiles, { sameCityOnly: true });
+      renderSimilarDistrictsPanel({ district: raw.district, city: raw.city, result });
+    } else {
+      renderSimilarDistrictsPanel(raw);
+    }
   });
 
   // Re-render panel when same-city toggle changes (re-compute from stored profiles)

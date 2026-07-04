@@ -149,10 +149,14 @@ export function computeSimilarDistricts(
   const maxResults = options?.maxResults ?? DEFAULT_MAX_RESULTS;
   const sameCityOnly = options?.sameCityOnly ?? false;
 
-  // Find the target profile
-  const target = allProfiles.find(
-    (p) => p.district === targetDistrict && p.city === targetCity,
-  );
+  // Find the target profile (city-aware; fall back to district-only when city is empty)
+  const target =
+    allProfiles.find(
+      (p) => p.district === targetDistrict && p.city === targetCity,
+    ) ??
+    (targetCity === ""
+      ? allProfiles.find((p) => p.district === targetDistrict)
+      : undefined);
 
   // Can't compute without a valid target with price data
   if (!target || target.medianPricePing <= 0) {
@@ -162,8 +166,11 @@ export function computeSimilarDistricts(
   const qualifying: SimilarDistrictCandidate[] = [];
 
   for (const candidate of allProfiles) {
-    // Exclude the target itself
-    if (candidate.district === targetDistrict && candidate.city === targetCity) continue;
+    // Exclude the target itself (match on district+city; when city is "", exclude all same-district rows)
+    const isTarget =
+      candidate.district === targetDistrict &&
+      (targetCity === "" ? true : candidate.city === targetCity);
+    if (isTarget) continue;
 
     // Exclude entries with no price data
     if (candidate.medianPricePing <= 0) continue;

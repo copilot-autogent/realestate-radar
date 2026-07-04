@@ -1027,7 +1027,7 @@
   } from "../lib/supplyPressureUtils.js";
   import { computeAffordability } from "../lib/affordabilityUtils.js";
   import { computeBuildingAgeDistribution } from "../lib/buildingAgeUtils.js";
-  import { computeSimilarDistricts, ageBucketFromMedianAge, type DistrictProfile } from "../lib/similarDistrictUtils.js";
+  import { computeSimilarDistricts, ageBucketFromMedianAge, type DistrictProfile, type FirstBuyerTierValue } from "../lib/similarDistrictUtils.js";
 
   const API_BASE = import.meta.env.DEV ? "/api" : "";
   const BASE_URL = import.meta.env.BASE_URL;
@@ -1156,6 +1156,35 @@
 
   // ---- Full unfiltered transaction features (cached once on first static load) ----
   let rawAllFeatures: any[] = [];
+
+  /**
+   * Builds a DistrictProfile array from districtGeoJSON features for use in
+   * `computeSimilarDistricts`. Centralised to avoid duplicate construction logic
+   * across the polygon-click and dot-click handlers.
+   */
+  function buildDistrictProfiles(): DistrictProfile[] {
+    return (districtGeoJSON?.features ?? []).map((f: any) => {
+      const p = f.properties ?? {};
+      const medAge: number = typeof p.medianAge === "number" ? p.medianAge : -1;
+      const dominantAgeBucket = medAge >= 0 ? ageBucketFromMedianAge(medAge) : null;
+      const rawTier = typeof p.firstBuyerTier === "number" ? p.firstBuyerTier : -1;
+      // Clamp to valid FirstBuyerTierValue — reject anything outside {-1, 0, 1, 2}
+      const firstBuyerTier: FirstBuyerTierValue =
+        rawTier === 0 || rawTier === 1 || rawTier === 2 ? rawTier : -1;
+      return {
+        district: p.district as string,
+        city: (p.city as string | undefined) ?? "",
+        medianPricePing:
+          typeof p.medianPrice === "number" && p.medianPrice > 0 ? p.medianPrice : -1,
+        buyerTimingScore: computeBuyerTimingScore(
+          p.district as string,
+          p.city as string | undefined,
+        ),
+        firstBuyerTier,
+        dominantAgeBucket,
+      };
+    });
+  }
 
   // ---- Cross-district comparison panel state ----
   const MAX_PINS = 3;
@@ -3703,23 +3732,7 @@
       // ── Similar district recommender (dot click, issue #141) ───────────────
       {
         const txCity = props.city as string | undefined;
-        const allProfiles: DistrictProfile[] = (districtGeoJSON?.features ?? []).map((f: any) => {
-          const fp = f.properties ?? {};
-          const medAge: number = typeof fp.medianAge === "number" ? fp.medianAge : -1;
-          const dominantAgeBucket = medAge >= 0 ? ageBucketFromMedianAge(medAge) : null;
-          const timingScore = computeBuyerTimingScore(
-            fp.district as string,
-            fp.city as string | undefined,
-          );
-          return {
-            district: fp.district as string,
-            city: (fp.city as string | undefined) ?? "",
-            medianPricePing: typeof fp.medianPrice === "number" && fp.medianPrice > 0 ? fp.medianPrice : -1,
-            buyerTimingScore: timingScore,
-            firstBuyerTier: (typeof fp.firstBuyerTier === "number" ? fp.firstBuyerTier : -1) as import("../lib/similarDistrictUtils.js").FirstBuyerTierValue,
-            dominantAgeBucket,
-          };
-        });
+        const allProfiles = buildDistrictProfiles();
         const similarResult = computeSimilarDistricts(txDistrict, txCity || "", allProfiles);
         document.dispatchEvent(new CustomEvent("district-similar", {
           detail: { district: txDistrict, city: txCity || "", result: similarResult, allProfiles },
@@ -4235,23 +4248,7 @@
 
     // ── Similar district recommender (issue #141) ─────────────────────────
     {
-      const allProfiles: DistrictProfile[] = (districtGeoJSON?.features ?? []).map((f: any) => {
-        const p = f.properties ?? {};
-        const medAge: number = typeof p.medianAge === "number" ? p.medianAge : -1;
-        const dominantAgeBucket = medAge >= 0 ? ageBucketFromMedianAge(medAge) : null;
-        const timingScore = computeBuyerTimingScore(
-          p.district as string,
-          p.city as string | undefined,
-        );
-        return {
-          district: p.district as string,
-          city: (p.city as string | undefined) ?? "",
-          medianPricePing: typeof p.medianPrice === "number" && p.medianPrice > 0 ? p.medianPrice : -1,
-          buyerTimingScore: timingScore,
-          firstBuyerTier: (typeof p.firstBuyerTier === "number" ? p.firstBuyerTier : -1) as import("../lib/similarDistrictUtils.js").FirstBuyerTierValue,
-          dominantAgeBucket,
-        };
-      });
+      const allProfiles = buildDistrictProfiles();
       const similarResult = computeSimilarDistricts(district, clickedCity || "", allProfiles);
       document.dispatchEvent(new CustomEvent("district-similar", {
         detail: { district, city: clickedCity || "", result: similarResult, allProfiles },
