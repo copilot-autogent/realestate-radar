@@ -7333,7 +7333,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
     SHORTLIST_KEY,
     COMPARISON_MAX,
     parseShortlist,
-    addToShortlist as slAdd,
     removeFromShortlist as slRemove,
     clearShortlist as slClear,
     pruneStaleIds,
@@ -7350,10 +7349,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
     estimateNegotiationMargin,
     type DistrictStats as NegDistrictStats,
   } from "../lib/negotiationUtils.js";
-
-  import {
-    computeBuildingAgeDistribution,
-  } from "../lib/buildingAgeUtils.js";
 
   // ── State ──────────────────────────────────────────────────────────────────
   let scpRawFeatures: any[] = [];
@@ -7376,24 +7371,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const { city, label: district } = entry;
     const medianPriceWan = computeMedianPrice12mo(scpRawFeatures, district, city || undefined);
 
-    // Buyer timing score: reproduce the same logic used in Map.astro (quick port)
     const features = scpRawFeatures.filter(
       (f) => f.properties?.district === district && (!city || f.properties?.city === city)
     );
-    let buyerTimingScore: number | null = null;
-    if (features.length >= 10) {
-      const prices = features
-        .map((f) => Number(f.properties?.unitPrice))
-        .filter((p) => Number.isFinite(p) && p > 0);
-      if (prices.length >= 10) {
-        const sorted = [...prices].sort((a, b) => a - b);
-        const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
-        // Simple timing score: lower median relative to city = higher score (0–100)
-        // Use raw median 0→100k = 100 score, 1500k = 0 — rough scoring
-        const score = Math.max(0, Math.min(100, Math.round(100 - (median / 15000))));
-        buyerTimingScore = score;
-      }
-    }
+
+    // buyerTimingScore: not computed here — the canonical formula lives in Map.astro and
+    // requires district-wide context unavailable in this script. Rendering null shows "—",
+    // which is correct rather than showing a value inconsistent with the map badge.
+    const buyerTimingScore: number | null = null;
 
     // Negotiation margin (reuse negotiationUtils.estimateNegotiationMargin)
     let negotiationMarginPct: number | null = null;
@@ -7409,8 +7394,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
         const txCount12mo = recent12.length;
         let medianUnitPriceWan: number | null = null;
         if (recent12.length > 0) {
-          const p = recent12.map((f) => Number(f.properties.unitPrice)).sort((a, b) => a - b);
-          medianUnitPriceWan = p[Math.floor(p.length / 2)]! / 10_000;
+          // Filter non-finite values before sorting to avoid NaN poisoning the median
+          const p = recent12
+            .map((f) => Number(f.properties.unitPrice))
+            .filter((v) => Number.isFinite(v) && v > 0)
+            .sort((a, b) => a - b);
+          if (p.length > 0) medianUnitPriceWan = p[Math.floor(p.length / 2)]! / 10_000;
         }
         const stats: NegDistrictStats = {
           txCount12mo,
@@ -7445,9 +7434,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
       buyerTimingScore,
       negotiationMarginPct,
       medianBuildingAge,
-      firstBuyerAffordabilityRatio: null, // omitted (requires user budget input)
-      nearestMrt: null,  // populated by MRT proximity if available via rawdata
-      seasonalIndex: null, // omitted (requires seasonal computation)
+      firstBuyerAffordabilityRatio: null, // requires user budget input — shown as "—"
+      nearestMrt: null,  // requires MRT proximity data from issue #144 events
+      seasonalIndex: null, // requires seasonal computation from issue #142 events
     };
   }
 
@@ -7587,6 +7576,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
   document.getElementById("scp-clear-btn")?.addEventListener("click", () => {
     scpSaveAll(slClear());
     scpSelected.clear();
+    // Notify Map.astro popup to refresh its shortlist button state
+    document.dispatchEvent(new CustomEvent("shortlist-changed", { detail: { entries: [] } }));
     scpRender();
     const panel = document.getElementById("shortlist-comparison-panel") as HTMLElement | null;
     if (panel) panel.style.display = "none";
@@ -7595,10 +7586,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
   // Listen for shortlist changes dispatched by Map.astro
   document.addEventListener("shortlist-changed", (e: Event) => {
     const { entries } = (e as CustomEvent<{ entries: ShortlistEntry[] }>).detail;
-    // Auto-select newly added entry if there's room
-    const latest = entries[entries.length - 1];
-    if (latest && scpSelected.size < COMPARISON_MAX) {
-      scpSelected.add(latest.districtId);
+    // Auto-select newly added entry only when the shortlist grew (addition, not removal)
+    const prevIds = new Set(scpGetAll().map((x) => x.districtId));
+    const newest = entries.find((x) => !prevIds.has(x.districtId));
+    if (newest && scpSelected.size < COMPARISON_MAX) {
+      scpSelected.add(newest.districtId);
     }
     // If panel is open, refresh; otherwise just update badge
     const panel = document.getElementById("shortlist-comparison-panel") as HTMLElement | null;
@@ -7627,7 +7619,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const { kept, pruned } = pruneStaleIds(entries, validIds);
     if (pruned.length > 0) {
       scpSaveAll(kept);
-      pruned.forEach((e) => scpSelected.delete(e.districtId));
+      pruned.forEach((prunedEntry) => scpSelected.delete(prunedEntry.districtId));
+      scpRender(); // badge + panel need refresh after pruning
     }
   });
 
