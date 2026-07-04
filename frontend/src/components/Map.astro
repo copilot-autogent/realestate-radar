@@ -1163,27 +1163,33 @@
    * across the polygon-click and dot-click handlers.
    */
   function buildDistrictProfiles(): DistrictProfile[] {
-    return (districtGeoJSON?.features ?? []).map((f: any) => {
-      const p = f.properties ?? {};
-      const medAge: number = typeof p.medianAge === "number" ? p.medianAge : -1;
-      const dominantAgeBucket = medAge >= 0 ? ageBucketFromMedianAge(medAge) : null;
-      const rawTier = typeof p.firstBuyerTier === "number" ? p.firstBuyerTier : -1;
-      // Clamp to valid FirstBuyerTierValue — reject anything outside {-1, 0, 1, 2}
-      const firstBuyerTier: FirstBuyerTierValue =
-        rawTier === 0 || rawTier === 1 || rawTier === 2 ? rawTier : -1;
-      return {
-        district: p.district as string,
-        city: (p.city as string | undefined) ?? "",
-        medianPricePing:
-          typeof p.medianPrice === "number" && p.medianPrice > 0 ? p.medianPrice : -1,
-        buyerTimingScore: computeBuyerTimingScore(
-          p.district as string,
-          p.city as string | undefined,
-        ),
-        firstBuyerTier,
-        dominantAgeBucket,
-      };
-    });
+    return (districtGeoJSON?.features ?? [])
+      .filter((f: any) => typeof f?.properties?.district === "string" && f.properties.district !== "")
+      .map((f: any) => {
+        const p = f.properties;
+        const medAge: number = typeof p.medianAge === "number" ? p.medianAge : -1;
+        // NOTE: dominantAgeBucket is approximated from medianAge (a proxy for the most
+        // common age range). True mode-bucket computation would require scanning all
+        // transactions per district on every click; the median-based proxy is sufficient
+        // for the similarity filter's coarse age-profile matching.
+        const dominantAgeBucket = medAge >= 0 ? ageBucketFromMedianAge(medAge) : null;
+        const rawTier = typeof p.firstBuyerTier === "number" ? p.firstBuyerTier : -1;
+        // Clamp to valid FirstBuyerTierValue — reject anything outside {-1, 0, 1, 2}
+        const firstBuyerTier: FirstBuyerTierValue =
+          rawTier === 0 || rawTier === 1 || rawTier === 2 ? rawTier : -1;
+        return {
+          district: p.district as string,
+          city: (p.city as string | undefined) ?? "",
+          medianPricePing:
+            typeof p.medianPrice === "number" && p.medianPrice > 0 ? p.medianPrice : -1,
+          buyerTimingScore: computeBuyerTimingScore(
+            p.district as string,
+            p.city as string | undefined,
+          ),
+          firstBuyerTier,
+          dominantAgeBucket,
+        };
+      });
   }
 
   // ---- Cross-district comparison panel state ----

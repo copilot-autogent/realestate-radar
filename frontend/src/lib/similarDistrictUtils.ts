@@ -71,7 +71,9 @@ export interface SimilarDistrictResult {
   /** Top similar-district candidates (up to `options.maxResults`, default 3). */
   candidates: SimilarDistrictCandidate[];
   /**
-   * True when fewer than 3 qualifying candidates were found across all districts.
+   * True when fewer than 3 qualifying candidates were found across all districts
+   * (threshold is fixed at the default `DEFAULT_MAX_RESULTS = 3`, regardless of
+   * the `maxResults` option).
    * The UI should display a 資料不足 fallback message in this case.
    */
   insufficient: boolean;
@@ -209,13 +211,12 @@ export function computeSimilarDistricts(
       continue;
     }
 
-    // Compute discount percentage
-    const discountPct = parseFloat(
-      (
-        ((target.medianPricePing - candidate.medianPricePing) / target.medianPricePing) *
-        100
-      ).toFixed(1),
-    );
+    // Compute discount percentage; skip near-zero discounts (< 0.05%) to avoid
+    // "省 0.0%" entries caused by floating-point rounding.
+    const rawDiscount =
+      ((target.medianPricePing - candidate.medianPricePing) / target.medianPricePing) * 100;
+    if (rawDiscount < 0.05) continue;
+    const discountPct = parseFloat(rawDiscount.toFixed(1));
 
     qualifying.push({
       district: candidate.district,

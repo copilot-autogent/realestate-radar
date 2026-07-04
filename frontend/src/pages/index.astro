@@ -4932,6 +4932,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // ── Similar district recommender panel (issue #141) ─────────────────────────────────────
   let _lastSimilarEventDetail: { district: string; city: string; allProfiles: any[] } | null = null;
+  let _similarRenderSeq = 0; // stale-event guard for async re-computes
 
   /** HTML-escape helper to prevent XSS when interpolating district/city names into innerHTML. */
   function escSimilar(s: string): string {
@@ -5004,6 +5005,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   document.addEventListener("district-similar", async (e: Event) => {
+    const seq = ++_similarRenderSeq;
     const raw = (e as CustomEvent).detail as {
       district: string;
       city: string;
@@ -5016,9 +5018,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const toggle = document.getElementById("similar-districts-same-city") as HTMLInputElement | null;
     const sameCityOnly = toggle?.checked ?? false;
     if (sameCityOnly && raw.allProfiles?.length) {
-      const { computeSimilarDistricts: csd } = await import("../lib/similarDistrictUtils.js");
-      const result = csd(raw.district, raw.city, raw.allProfiles, { sameCityOnly: true });
-      renderSimilarDistrictsPanel({ district: raw.district, city: raw.city, result });
+      try {
+        const { computeSimilarDistricts: csd } = await import("../lib/similarDistrictUtils.js");
+        if (seq !== _similarRenderSeq) return; // superseded by newer click
+        const result = csd(raw.district, raw.city, raw.allProfiles, { sameCityOnly: true });
+        renderSimilarDistrictsPanel({ district: raw.district, city: raw.city, result });
+      } catch { renderSimilarDistrictsPanel(raw); }
     } else {
       renderSimilarDistrictsPanel(raw);
     }
@@ -5027,12 +5032,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
   // Re-render panel when same-city toggle changes (re-compute from stored profiles)
   document.getElementById("similar-districts-same-city")?.addEventListener("change", async () => {
     if (!_lastSimilarEventDetail) return;
+    const seq = ++_similarRenderSeq;
     const { district, city, allProfiles } = _lastSimilarEventDetail;
     const toggle = document.getElementById("similar-districts-same-city") as HTMLInputElement | null;
     const sameCityOnly = toggle?.checked ?? false;
-    const { computeSimilarDistricts: csd } = await import("../lib/similarDistrictUtils.js");
-    const result = csd(district, city, allProfiles, { sameCityOnly });
-    renderSimilarDistrictsPanel({ district, city, result });
+    try {
+      const { computeSimilarDistricts: csd } = await import("../lib/similarDistrictUtils.js");
+      if (seq !== _similarRenderSeq) return; // superseded by rapid toggle
+      const result = csd(district, city, allProfiles, { sameCityOnly });
+      renderSimilarDistrictsPanel({ district, city, result });
+    } catch { /* import failure: leave panel as-is */ }
   });
 
   document.addEventListener("district-price-trend", async (e: Event) => {

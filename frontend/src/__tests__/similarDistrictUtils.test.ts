@@ -165,7 +165,7 @@ describe("computeSimilarDistricts — happy path", () => {
 
   it("respects maxResults option", () => {
     const result = computeSimilarDistricts("信義區", "台北市", makeBaseProfiles(), { maxResults: 2 });
-    expect(result.candidates.length).toBeLessThanOrEqual(2);
+    expect(result.candidates).toHaveLength(2);
   });
 });
 
@@ -350,6 +350,17 @@ describe("computeSimilarDistricts — ties and precision", () => {
     ];
     const result = computeSimilarDistricts("信義區", "台北市", profiles);
     expect(result.candidates.some((c) => c.district === "A區")).toBe(false);
+  });
+
+  it("excludes near-zero discount candidates (< 0.05%) to avoid '省 0.0%' display", () => {
+    const profiles = [
+      TARGET, // price 1_000_000
+      makeProfile({ district: "A區", city: "台北市", medianPricePing: 999_999 }), // diff = 1 → 0.0001% → excluded
+      makeProfile({ district: "B區", city: "台北市", medianPricePing: 999_000 }), // diff = 1000 → 0.1% → included
+    ];
+    const result = computeSimilarDistricts("信義區", "台北市", profiles);
+    expect(result.candidates.some((c) => c.district === "A區")).toBe(false);
+    expect(result.candidates.some((c) => c.district === "B區")).toBe(true);
   });
 
   it("handles candidates with equal discounts (stable ordering — top 3 all included)", () => {
