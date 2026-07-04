@@ -665,6 +665,19 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <div id="building-age-completeness" class="building-age-completeness" style="display:none"></div>
       </div>
 
+      <!-- ── Similar Districts Panel (issue #141) ── -->
+      <div id="similar-districts-panel" class="similar-districts-panel" style="display:none" aria-label="相似地區推薦">
+        <h3 class="similar-districts-title">🔍 相似地區推薦<span id="similar-districts-label" class="similar-districts-label"></span></h3>
+        <div id="similar-districts-insufficient" class="similar-districts-insufficient" style="display:none">
+          資料不足（找不到足夠的相似替代地區）
+        </div>
+        <ul id="similar-districts-list" class="similar-districts-list" aria-label="相似地區清單"></ul>
+        <label class="similar-districts-city-toggle">
+          <input type="checkbox" id="similar-districts-same-city" />
+          <span>僅顯示同縣市</span>
+        </label>
+      </div>
+
       <!-- ── Completion Wave Panel ── -->
       <div id="completion-wave-panel" class="completion-wave-panel">
         <div class="completion-wave-header">
@@ -3926,6 +3939,119 @@ const showBuyersMarket = !isStale && dataYear !== null;
     margin-top: 4px;
   }
 
+  /* ── Similar Districts panel (issue #141) ── */
+  .similar-districts-panel {
+    margin-top: 14px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .similar-districts-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 8px;
+  }
+  .similar-districts-label {
+    font-weight: 400;
+    color: #64748b;
+    margin-left: 6px;
+    font-size: 0.82rem;
+  }
+  .similar-districts-insufficient {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    font-style: italic;
+    padding: 6px 0;
+  }
+  .similar-districts-list {
+    list-style: none;
+    margin: 0 0 8px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .similar-district-item {
+    border: 1px solid #f1f5f9;
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: #f8fafc;
+  }
+  .similar-district-item:hover {
+    background: #f0f4ff;
+    border-color: #c7d2fe;
+  }
+  .similar-district-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .similar-district-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #1e293b;
+  }
+  .similar-district-city {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-left: 4px;
+  }
+  .similar-district-discount {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #16a34a;
+    background: #dcfce7;
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+  .similar-district-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #475569;
+  }
+  .similar-district-price {
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .similar-district-score {
+    background: #eff6ff;
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #2563eb;
+  }
+  .similar-district-focus-btn {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .similar-district-focus-btn:hover {
+    background: #1d4ed8;
+  }
+  .similar-districts-city-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    color: #64748b;
+    cursor: pointer;
+    user-select: none;
+  }
+  .similar-districts-city-toggle input {
+    margin: 0;
+    cursor: pointer;
+  }
+
   /* ── Completion wave panel ── */
   .completion-wave-panel {
     margin-top: 14px;
@@ -4802,6 +4928,124 @@ const showBuyersMarket = !isStale && dataYear !== null;
         },
       },
     });
+  });
+
+  // ── Similar district recommender panel (issue #141) ─────────────────────────────────────
+  let _lastSimilarEventDetail: { district: string; city: string; allProfiles: any[] } | null = null;
+  let _similarRenderSeq = 0; // stale-event guard for async re-computes
+
+  /** HTML-escape helper to prevent XSS when interpolating district/city names into innerHTML. */
+  function escSimilar(s: string): string {
+    return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
+  }
+
+  function renderSimilarDistrictsPanel(detail: { district: string; city: string; result: { candidates: any[]; insufficient: boolean } }) {
+    const panel       = document.getElementById("similar-districts-panel")  as HTMLDivElement  | null;
+    const labelEl     = document.getElementById("similar-districts-label")  as HTMLSpanElement | null;
+    const insuffEl    = document.getElementById("similar-districts-insufficient") as HTMLDivElement | null;
+    const listEl      = document.getElementById("similar-districts-list")   as HTMLUListElement | null;
+    if (!panel || !listEl) return;
+
+    panel.style.display = "block";
+    if (labelEl) {
+      const cityPrefix = detail.city ? `${detail.city} ` : "";
+      labelEl.textContent = detail.district ? ` — ${cityPrefix}${detail.district}` : "";
+    }
+
+    const { candidates, insufficient } = detail.result;
+
+    // Show 資料不足 whenever < 3 qualifying candidates were found
+    if (insuffEl) insuffEl.style.display = insufficient ? "block" : "none";
+
+    if (!candidates || candidates.length === 0) {
+      listEl.innerHTML = "";
+      return;
+    }
+
+    const tierEmoji = (tier: number) => {
+      if (tier === 0) return "🟢";
+      if (tier === 1) return "🟡";
+      if (tier === 2) return "🔴";
+      return "";
+    };
+
+    listEl.innerHTML = candidates.map((c: any) => {
+      const priceWan = (c.medianPricePing / 10_000).toFixed(1);
+      const scoreHtml = c.buyerTimingScore !== null
+        ? `<span class="similar-district-score">買時 ${c.buyerTimingScore}</span>`
+        : "";
+      const tierHtml = c.firstBuyerTier >= 0 ? `<span title="首購族負擔等級">${tierEmoji(c.firstBuyerTier)}</span>` : "";
+      const safeDist = escSimilar(c.district);
+      const safeCity = escSimilar(c.city);
+      return `<li class="similar-district-item">
+        <div class="similar-district-header">
+          <span>
+            <span class="similar-district-name">${safeDist}</span>
+            <span class="similar-district-city">${safeCity}</span>
+          </span>
+          <span class="similar-district-discount">省 ${c.discountPct}%</span>
+        </div>
+        <div class="similar-district-meta">
+          <span class="similar-district-price">${priceWan} 萬/坪</span>
+          ${scoreHtml}
+          ${tierHtml}
+          <button class="similar-district-focus-btn" data-district="${safeDist}" data-city="${safeCity}" aria-label="在地圖上查看 ${safeDist}">查看</button>
+        </div>
+      </li>`;
+    }).join("");
+
+    // Wire "查看" buttons to highlight the alternative district on the map
+    listEl.querySelectorAll(".similar-district-focus-btn").forEach((btn) => {
+      (btn as HTMLButtonElement).addEventListener("click", () => {
+        const d = (btn as HTMLButtonElement).dataset.district ?? "";
+        const c = (btn as HTMLButtonElement).dataset.city ?? "";
+        document.dispatchEvent(new CustomEvent("district-focus", { detail: { district: d, city: c } }));
+      });
+    });
+  }
+
+  document.addEventListener("district-similar", async (e: Event) => {
+    const seq = ++_similarRenderSeq;
+    const raw = (e as CustomEvent).detail as {
+      district: string;
+      city: string;
+      result: { candidates: any[]; insufficient: boolean };
+      allProfiles: any[];
+    };
+    // Store profiles so the city-toggle can re-compute without a new click
+    _lastSimilarEventDetail = { district: raw.district, city: raw.city, allProfiles: raw.allProfiles };
+    // Honour the current sameCityOnly toggle state when re-rendering
+    const toggle = document.getElementById("similar-districts-same-city") as HTMLInputElement | null;
+    const sameCityOnly = toggle?.checked ?? false;
+    if (sameCityOnly && raw.allProfiles?.length) {
+      try {
+        const { computeSimilarDistricts: csd } = await import("../lib/similarDistrictUtils.js");
+        if (seq !== _similarRenderSeq) return; // superseded by newer click
+        const result = csd(raw.district, raw.city, raw.allProfiles, { sameCityOnly: true });
+        renderSimilarDistrictsPanel({ district: raw.district, city: raw.city, result });
+      } catch {
+        // Dynamic import failed — render pre-computed cross-city result rather than nothing,
+        // but only if this event is still current (seq guard).
+        if (seq === _similarRenderSeq) renderSimilarDistrictsPanel(raw);
+      }
+    } else {
+      if (seq === _similarRenderSeq) renderSimilarDistrictsPanel(raw);
+    }
+  });
+
+  // Re-render panel when same-city toggle changes (re-compute from stored profiles)
+  document.getElementById("similar-districts-same-city")?.addEventListener("change", async () => {
+    if (!_lastSimilarEventDetail) return;
+    const seq = ++_similarRenderSeq;
+    const { district, city, allProfiles } = _lastSimilarEventDetail;
+    const toggle = document.getElementById("similar-districts-same-city") as HTMLInputElement | null;
+    const sameCityOnly = toggle?.checked ?? false;
+    try {
+      const { computeSimilarDistricts: csd } = await import("../lib/similarDistrictUtils.js");
+      if (seq !== _similarRenderSeq) return; // superseded by rapid toggle
+      const result = csd(district, city, allProfiles, { sameCityOnly });
+      renderSimilarDistrictsPanel({ district, city, result });
+    } catch { /* import failure: leave panel as-is */ }
   });
 
   document.addEventListener("district-price-trend", async (e: Event) => {

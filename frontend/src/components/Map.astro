@@ -1027,6 +1027,7 @@
   } from "../lib/supplyPressureUtils.js";
   import { computeAffordability } from "../lib/affordabilityUtils.js";
   import { computeBuildingAgeDistribution } from "../lib/buildingAgeUtils.js";
+  import { computeSimilarDistricts, ageBucketFromMedianAge, type DistrictProfile, type FirstBuyerTierValue } from "../lib/similarDistrictUtils.js";
 
   const API_BASE = import.meta.env.DEV ? "/api" : "";
   const BASE_URL = import.meta.env.BASE_URL;
@@ -1155,6 +1156,48 @@
 
   // ---- Full unfiltered transaction features (cached once on first static load) ----
   let rawAllFeatures: any[] = [];
+
+  /**
+   * Builds a DistrictProfile array from districtGeoJSON features for use in
+   * `computeSimilarDistricts`. Centralised to avoid duplicate construction logic
+   * across the polygon-click and dot-click handlers.
+   */
+  function buildDistrictProfiles(): DistrictProfile[] {
+    const seen = new Set<string>();
+    return (districtGeoJSON?.features ?? [])
+      .filter((f: any) => {
+        if (typeof f?.properties?.district !== "string" || f.properties.district === "") return false;
+        const key = `${f.properties.city ?? ""}:${f.properties.district}`;
+        if (seen.has(key)) return false; // deduplicate multi-polygon districts
+        seen.add(key);
+        return true;
+      })
+      .map((f: any) => {
+        const p = f.properties;
+        const medAge: number = typeof p.medianAge === "number" ? p.medianAge : -1;
+        // NOTE: dominantAgeBucket is approximated from medianAge (a proxy for the most
+        // common age range). True mode-bucket computation would require scanning all
+        // transactions per district on every click; the median-based proxy is sufficient
+        // for the similarity filter's coarse age-profile matching.
+        const dominantAgeBucket = medAge >= 0 ? ageBucketFromMedianAge(medAge) : null;
+        const rawTier = typeof p.firstBuyerTier === "number" ? p.firstBuyerTier : -1;
+        // Clamp to valid FirstBuyerTierValue — reject anything outside {-1, 0, 1, 2}
+        const firstBuyerTier: FirstBuyerTierValue =
+          rawTier === 0 || rawTier === 1 || rawTier === 2 ? rawTier : -1;
+        return {
+          district: p.district as string,
+          city: (p.city as string | undefined) ?? "",
+          medianPricePing:
+            typeof p.medianPrice === "number" && p.medianPrice > 0 ? p.medianPrice : -1,
+          buyerTimingScore: computeBuyerTimingScore(
+            p.district as string,
+            p.city as string | undefined,
+          ),
+          firstBuyerTier,
+          dominantAgeBucket,
+        };
+      });
+  }
 
   // ---- Cross-district comparison panel state ----
   const MAX_PINS = 3;
@@ -3699,6 +3742,15 @@
           detail: { district: txDistrict, city: txCity || "", ageResult },
         }));
       }
+      // ── Similar district recommender (dot click, issue #141) ───────────────
+      {
+        const txCity = props.city as string | undefined;
+        const allProfiles = buildDistrictProfiles();
+        const similarResult = computeSimilarDistricts(txDistrict, txCity || "", allProfiles);
+        document.dispatchEvent(new CustomEvent("district-similar", {
+          detail: { district: txDistrict, city: txCity || "", result: similarResult, allProfiles },
+        }));
+      }
     }
   });
 
@@ -4204,6 +4256,15 @@
       );
       document.dispatchEvent(new CustomEvent("district-building-age", {
         detail: { district, city: clickedCity || "", ageResult },
+      }));
+    }
+
+    // ── Similar district recommender (issue #141) ─────────────────────────
+    {
+      const allProfiles = buildDistrictProfiles();
+      const similarResult = computeSimilarDistricts(district, clickedCity || "", allProfiles);
+      document.dispatchEvent(new CustomEvent("district-similar", {
+        detail: { district, city: clickedCity || "", result: similarResult, allProfiles },
       }));
     }
 
