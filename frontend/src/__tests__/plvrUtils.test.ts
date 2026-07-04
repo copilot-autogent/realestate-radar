@@ -186,12 +186,18 @@ describe("detectCsvFormat", () => {
   });
 
   it("NFKC: detects new format even with full-width marker", () => {
-    // Full-width version of "非都市土地使用分區" should normalize to same
-    const fullWidthMarker = normalizeFullWidth(PLVR_NEW_FORMAT_MARKER);
-    expect(fullWidthMarker).toBe(PLVR_NEW_FORMAT_MARKER); // CJK chars are unchanged by NFKC
-    // Just verify the function works on a full-width augmented header
-    const header = `header,${PLVR_NEW_FORMAT_MARKER},other`;
+    // Build a header that contains the new-format marker using actual full-width
+    // Unicode characters (U+FF21–FF3A range for letters, U+FF10–FF19 for digits).
+    // normalizeFullWidth() converts these to ASCII/CJK equivalents. Since
+    // PLVR_NEW_FORMAT_MARKER is pure CJK (unchanged by NFKC), we test with a
+    // header that includes a mix of full-width ASCII digits adjacent to the marker.
+    const fullWidthDigits = "\uFF11\uFF12\uFF13"; // "１２３" → "123" after NFKC
+    const header = `${fullWidthDigits},${PLVR_NEW_FORMAT_MARKER},other`;
+    // The header contains the marker directly — detectCsvFormat normalizes and checks
     expect(detectCsvFormat(header)).toBe("new28");
+    // Also verify that a full-width version of a non-CJK marker fails gracefully
+    const noMarkerHeader = `\uFF11\uFF12\uFF13,plain,header`;
+    expect(detectCsvFormat(noMarkerHeader)).toBe("legacy26");
   });
 
   it("handles empty header string as legacy", () => {

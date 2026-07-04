@@ -139,15 +139,19 @@ function normalizeCityName(city: string): string {
   return city.replace(/臺/g, "台");
 }
 
-/** Compute the centroid of a GeoJSON Polygon's outer ring */
+/** Compute the centroid of a GeoJSON Polygon's outer ring.
+ * GeoJSON rings are closed (first vertex == last vertex), so we strip the
+ * duplicate before averaging to avoid biasing the centroid. */
 function polygonCentroid(coords: number[][]): { lon: number; lat: number } {
+  // Deduplicate the closing vertex
+  const open = coords.slice(0, -1);
   let lonSum = 0;
   let latSum = 0;
-  for (const [lon, lat] of coords) {
+  for (const [lon, lat] of open) {
     lonSum += lon;
     latSum += lat;
   }
-  return { lon: lonSum / coords.length, lat: latSum / coords.length };
+  return { lon: lonSum / open.length, lat: latSum / open.length };
 }
 
 /** Parse sqm area → 坪 (1 坪 = 3.30579 m², so divide; rounded to 1 decimal) */
@@ -436,9 +440,9 @@ async function downloadAndExtract(): Promise<ExtractedFile[]> {
     for await (const chunk of entry as AsyncIterable<Buffer>) {
       chunks.push(chunk);
     }
-    extracted.push({ filename, buffer: Buffer.concat(chunks) });
-    const sizeKb = (Buffer.byteLength(Buffer.concat(chunks)) / 1024).toFixed(0);
-    console.log(`[download] Extracted ${filename} (${sizeKb} KB)`);
+    const buf = Buffer.concat(chunks);
+    extracted.push({ filename, buffer: buf });
+    console.log(`[download] Extracted ${filename} (${(buf.byteLength / 1024).toFixed(0)} KB)`);
   }
 
   console.log(`[download] Extracted ${extracted.length} sales CSV file(s)`);
