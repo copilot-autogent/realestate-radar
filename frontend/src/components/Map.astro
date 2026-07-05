@@ -4606,6 +4606,25 @@
       }));
     }
 
+    // Dispatch buyer timing score to sidebar card (issue #153 — IA Section ②)
+    {
+      const featureCityForBuyer = (e.features[0].properties.city as string | undefined) ?? activeCity ?? undefined;
+      const btScore = computeBuyerTimingScore(district, featureCityForBuyer ?? undefined);
+      let btLabel = "—"; let btEmoji = ""; let btRationale = "選擇行政區以查看時機分析";
+      if (btScore !== null) {
+        const bkt = buyerScoreBucket(btScore);
+        btLabel = bkt.label; btEmoji = bkt.emoji;
+        btRationale = btScore >= 70
+          ? "目前供給下行、買方議價空間擴大，為相對有利的進場時機。"
+          : btScore >= 40
+          ? "市場供需尚均衡，建議持續觀察議價成交趨勢。"
+          : "目前賣方市場，議價空間較小，宜謹慎評估。";
+      }
+      document.dispatchEvent(new CustomEvent("district-buyer-timing", {
+        detail: { district, city: featureCityForBuyer ?? "", score: btScore, label: btLabel, emoji: btEmoji, rationale: btRationale },
+      }));
+    }
+
     // Pre-sale spread badge — always shown in click popup
     const featureCityForPresale = (e.features[0].properties.city as string | undefined) ?? activeCity ?? undefined;
     const presaleSpreadClickHtml = renderPresaleSpreadBadgeHtml(district, featureCityForPresale);
