@@ -182,56 +182,41 @@ const showBuyersMarket = !isStale && dataYear !== null;
         </select>
       </div>
 
-      <!-- Choropleth toggle -->
-      <div class="toggle-row">
+
+      <!-- Overlay toggle controls — kept in DOM for JS access; visually surfaced in IA sections below -->
+      <div class="toggle-row ia-hidden-toggle" id="choropleth-toggle-row">
         <input type="checkbox" id="choropleth-toggle" checked />
         <label for="choropleth-toggle">顯示行政區熱力圖</label>
       </div>
-
-      <!-- Completion supply overlay toggle -->
-      <div class="toggle-row">
+      <div class="toggle-row ia-hidden-toggle" id="completion-overlay-toggle-row">
         <input type="checkbox" id="completion-overlay-toggle" />
         <label for="completion-overlay-toggle">📦 完工供給強度</label>
       </div>
-
-      <!-- Supply pressure overlay toggle -->
-      <div class="toggle-row">
+      <div class="toggle-row ia-hidden-toggle" id="supply-pressure-toggle-row">
         <input type="checkbox" id="supply-pressure-toggle" />
         <label for="supply-pressure-toggle">⚠️ 供給壓力</label>
       </div>
-
-      <!-- Buyer timing score overlay toggle -->
-      <div class="toggle-row">
+      <div class="toggle-row ia-hidden-toggle" id="buyer-score-toggle-row">
         <input type="checkbox" id="buyer-score-toggle" />
         <label for="buyer-score-toggle">🎯 顯示買方時機分</label>
       </div>
-
-      <!-- Volatility risk score overlay toggle -->
-      <div class="toggle-row">
+      <div class="toggle-row ia-hidden-toggle" id="volatility-toggle-row">
         <input type="checkbox" id="volatility-toggle" />
         <label for="volatility-toggle">📊 顯示價格波動度</label>
       </div>
-
-      <!-- MRT proximity premium overlay toggle -->
-      <div class="toggle-row">
+      <div class="toggle-row ia-hidden-toggle" id="mrt-premium-toggle-row">
         <input type="checkbox" id="mrt-premium-toggle" />
         <label for="mrt-premium-toggle">🚇 捷運溢價熱力圖</label>
       </div>
-
-      <!-- MRT proximity tier overlay toggle (issue #144) -->
-      <div class="toggle-row">
+      <div class="toggle-row ia-hidden-toggle" id="mrt-tier-toggle-row">
         <input type="checkbox" id="mrt-tier-toggle" />
         <label for="mrt-tier-toggle">🚇 捷運距離評分地圖</label>
       </div>
-
-      <!-- Pre-sale spread overlay toggle -->
-      <div class="toggle-row">
+      <div class="toggle-row ia-hidden-toggle" id="presale-spread-toggle-row">
         <input type="checkbox" id="presale-spread-toggle" />
         <label for="presale-spread-toggle">🏗 預售溢價熱力圖</label>
       </div>
-
-      <!-- First-buyer affordability heat-map overlay toggle (issue #133) -->
-      <div class="toggle-row">
+      <div class="toggle-row ia-hidden-toggle" id="affordability-overlay-row">
         <input type="checkbox" id="affordability-overlay" />
         <label for="affordability-overlay">🏠 首購族負擔能力地圖</label>
       </div>
@@ -242,8 +227,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <label for="mrt-layer-toggle">🚇 顯示捷運站圖示</label>
       </div>
 
-      <!-- 首購族地區配對精靈 re-match button -->
-      <button id="wizard-reopen-btn" class="wizard-reopen-btn">🧭 首購族配對精靈</button>
+      <!-- 首購族配對精靈 — persistent top-of-sidebar CTA -->
+      <button id="wizard-reopen-btn" class="wizard-reopen-btn sidebar-wizard-cta">🧭 首購族配對精靈</button>
 
       <button id="search-btn" class="search-btn">搜尋</button>
       <button id="reset-btn" class="reset-btn">清除篩選</button>
@@ -265,535 +250,656 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <p class="watchlist-hint">點擊地圖行政區，按「⭐ 關注此行政區」可追蹤均價變動（最多 3 個）。</p>
       </div>
 
-      <!-- Budget Calculator -->
-      <div id="budget-calculator" class="budget-calculator">
-        <h3>💰 預算計算器</h3>
-        <div class="calc-inputs">
-          <div class="calc-input-row">
-            <label for="budget-total">總預算 (萬)</label>
-            <input type="number" id="budget-total" placeholder="例如: 1000" min="0" step="50" />
-          </div>
-          <div class="calc-input-row">
-            <label for="budget-ping">坪數需求 (坪)</label>
-            <input type="number" id="budget-ping" placeholder="例如: 30" min="0" step="1" />
-          </div>
-        </div>
-        <div id="budget-result" class="budget-result" style="display:none">
-          <p>您的單價上限：<strong id="max-unit-price">0</strong> 萬/坪</p>
-          <p id="affordable-districts" class="affordable-districts"></p>
-        </div>
-          <div class="toggle-row" id="affordability-toggle-row" style="margin-top:10px">
-            <input type="checkbox" id="affordability-toggle" />
-            <label for="affordability-toggle">🗺️ 顯示可負擔性地圖</label>
-          </div>
-      </div>
-
-      <!-- Mortgage Calculator -->
-      <div id="mortgage-calculator" class="mortgage-calculator">
-        <h3>🏦 房貸試算器</h3>
-        <div class="calc-inputs">
-          <div class="calc-input-row">
-            <label for="mortgage-total">總價 (萬)</label>
-            <input type="number" id="mortgage-total" placeholder="例如: 1000" min="0" step="10" />
-          </div>
-          <div class="calc-input-row">
-            <label for="mortgage-down">頭期款 (%)</label>
-            <input type="number" id="mortgage-down" value="20" min="0" max="100" step="5" />
-          </div>
-          <div class="calc-input-row">
-            <label for="mortgage-years">貸款年限</label>
-            <select id="mortgage-years">
-              <option value="20">20年</option>
-              <option value="30" selected>30年</option>
-            </select>
-          </div>
-          <div class="calc-input-row">
-            <label for="mortgage-rate">利率 (%)</label>
-            <input type="number" id="mortgage-rate" value="2.5" min="0" max="10" step="0.1" />
-          </div>
-        </div>
-        <div id="mortgage-result" class="mortgage-result" style="display:none">
-          <p>貸款金額：<strong id="loan-amount">0</strong> 萬</p>
-          <p>每月還款：<strong id="monthly-payment">0</strong> 元</p>
-          <p class="mortgage-detail">貸款總額：<span id="total-payment">0</span> 萬</p>
-        </div>
-
-        <!-- 青安利率到期影響試算 toggle -->
-        <button id="qingan-compare-toggle" class="qingan-compare-toggle" aria-expanded="false">
-          📊 比較青安利率影響
+      <!-- IA Section 1: affordability (expanded) -->
+      <div class="ia-section" id="ia-section-1">
+        <button class="ia-section-header" aria-expanded="true" aria-controls="ia-section-1-body" id="ia-section-1-btn">
+          <span class="ia-section-title">① 我能負擔嗎？</span>
+          <span class="ia-section-chevron" aria-hidden="true">▲</span>
         </button>
+        <div class="ia-section-body" id="ia-section-1-body">
 
-        <!-- Rate Sensitivity Panel -->
-        <div id="qingan-compare-panel" class="qingan-compare-panel" style="display:none" aria-hidden="true">
-          <div class="qingan-compare-header">
-            <span class="qingan-compare-title">青安利率到期影響試算</span>
-            <div class="qingan-compare-rate-row">
-              <label for="qingan-post-rate" class="qingan-post-rate-label">青安到期後利率 (%)</label>
-              <input type="number" id="qingan-post-rate" class="qingan-post-rate-input"
-                value="2.5" min="0" max="10" step="0.05" />
+          <!-- Budget Calculator -->
+          <div id="budget-calculator" class="budget-calculator">
+            <h3>💰 預算計算器</h3>
+            <div class="calc-inputs">
+              <div class="calc-input-row">
+                <label for="budget-total">總預算 (萬)</label>
+                <input type="number" id="budget-total" placeholder="例如: 1000" min="0" step="50" />
+              </div>
+              <div class="calc-input-row">
+                <label for="budget-ping">坪數需求 (坪)</label>
+                <input type="number" id="budget-ping" placeholder="例如: 30" min="0" step="1" />
+              </div>
+            </div>
+            <div id="budget-result" class="budget-result" style="display:none">
+              <p>您的單價上限：<strong id="max-unit-price">0</strong> 萬/坪</p>
+              <p id="affordable-districts" class="affordable-districts"></p>
+            </div>
+            <div class="toggle-row" id="affordability-toggle-row" style="margin-top:10px">
+              <input type="checkbox" id="affordability-toggle" />
+              <label for="affordability-toggle">🗺️ 顯示可負擔性地圖</label>
             </div>
           </div>
 
-          <div id="qingan-compare-body" class="qingan-compare-body" style="display:none">
-            <table class="qingan-compare-table" aria-label="青安利率與到期後利率每月還款比較">
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>青安期間</th>
-                  <th>青安到期後</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>利率</td>
-                  <td>1.775%</td>
-                  <td id="qc-post-rate-display">2.5%</td>
-                </tr>
-                <tr>
-                  <td>每月還款</td>
-                  <td id="qc-monthly-qingan">—</td>
-                  <td id="qc-monthly-post">—</td>
-                </tr>
-                <tr>
-                  <td id="qc-interest-label">30年總利息</td>
-                  <td id="qc-interest-qingan">—</td>
-                  <td id="qc-interest-post">—</td>
-                </tr>
-                <tr class="qingan-diff-row" id="qingan-diff-row">
-                  <td>差額</td>
-                  <td>—</td>
-                  <td id="qc-diff">—</td>
-                </tr>
-              </tbody>
-            </table>
+          <!-- Mortgage Calculator -->
+          <div id="mortgage-calculator" class="mortgage-calculator">
+            <h3>� 房貸試算器</h3>
+            <div class="calc-inputs">
+              <div class="calc-input-row">
+                <label for="mortgage-total">總價 (萬)</label>
+                <input type="number" id="mortgage-total" placeholder="例如: 1000" min="0" step="10" />
+              </div>
+              <div class="calc-input-row">
+                <label for="mortgage-down">頭期款 (%)</label>
+                <input type="number" id="mortgage-down" value="20" min="0" max="100" step="5" />
+              </div>
+              <div class="calc-input-row">
+                <label for="mortgage-years">貸款年限</label>
+                <select id="mortgage-years">
+                  <option value="20">20年</option>
+                  <option value="30" selected>30年</option>
+                </select>
+              </div>
+              <div class="calc-input-row">
+                <label for="mortgage-rate">利率 (%)</label>
+                <input type="number" id="mortgage-rate" value="2.5" min="0" max="10" step="0.1" />
+              </div>
+            </div>
+            <div id="mortgage-result" class="mortgage-result" style="display:none">
+              <p>貸款金額：<strong id="loan-amount">0</strong> 萬</p>
+              <p>每月還款：<strong id="monthly-payment">0</strong> 元</p>
+              <p class="mortgage-detail">貸款總額：<span id="total-payment">0</span> 萬</p>
+            </div>
 
-            <div id="qingan-deadline-cta" class="qingan-deadline-cta">
-              申請截止日：2026年7月31日 — 把握最後機會
+            <!-- 青安利率到期影響試算 toggle -->
+            <button id="qingan-compare-toggle" class="qingan-compare-toggle" aria-expanded="false">
+              📊 比較青安利率影響
+            </button>
+
+            <!-- Rate Sensitivity Panel -->
+            <div id="qingan-compare-panel" class="qingan-compare-panel" style="display:none" aria-hidden="true">
+              <div class="qingan-compare-header">
+                <span class="qingan-compare-title">青安利率到期影響試算</span>
+                <div class="qingan-compare-rate-row">
+                  <label for="qingan-post-rate" class="qingan-post-rate-label">青安到期後利率 (%)</label>
+                  <input type="number" id="qingan-post-rate" class="qingan-post-rate-input"
+                    value="2.5" min="0" max="10" step="0.05" />
+                </div>
+              </div>
+
+              <div id="qingan-compare-body" class="qingan-compare-body" style="display:none">
+                <table class="qingan-compare-table" aria-label="青安利率與到期後利率每月還款比較">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>青安期間</th>
+                      <th>青安到期後</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>利率</td>
+                      <td>1.775%</td>
+                      <td id="qc-post-rate-display">2.5%</td>
+                    </tr>
+                    <tr>
+                      <td>每月還款</td>
+                      <td id="qc-monthly-qingan">—</td>
+                      <td id="qc-monthly-post">—</td>
+                    </tr>
+                    <tr>
+                      <td id="qc-interest-label">30年總利息</td>
+                      <td id="qc-interest-qingan">—</td>
+                      <td id="qc-interest-post">—</td>
+                    </tr>
+                    <tr class="qingan-diff-row" id="qingan-diff-row">
+                      <td>差額</td>
+                      <td>—</td>
+                      <td id="qc-diff">—</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div id="qingan-deadline-cta" class="qingan-deadline-cta">
+                  申請截止日：2026年7月31日 — 把握最後機會
+                </div>
+              </div>
+
+              <p id="qingan-compare-hint" class="qingan-compare-hint">請先輸入總價以查看比較結果</p>
             </div>
           </div>
 
-          <p id="qingan-compare-hint" class="qingan-compare-hint">請先輸入總價以查看比較結果</p>
-        </div>
-      </div>
+          <!-- Down-Payment Timeline Calculator (issue #111) -->
+          <div id="down-payment-timeline" class="down-payment-timeline">
+            <h3>📅 首付款時間軸</h3>
+            <div class="calc-inputs">
+              <div class="calc-input-row">
+                <label for="dpt-savings">目前存款 (萬)</label>
+                <input type="number" id="dpt-savings" placeholder="例如: 50" min="0" step="1" />
+              </div>
+              <div class="calc-input-row">
+                <label for="dpt-monthly">每月儲蓄 (萬)</label>
+                <input type="number" id="dpt-monthly" placeholder="例如: 3" min="0" step="0.5" />
+              </div>
+              <div class="calc-input-row">
+                <label for="dpt-price">目標總價 (萬)</label>
+                <div class="dpt-price-wrapper">
+                  <input type="number" id="dpt-price" placeholder="例如: 1000" min="0" step="10" />
+                  <span id="dpt-price-hint" class="dpt-price-hint"></span>
+                </div>
+              </div>
+              <div class="calc-input-row">
+                <label for="dpt-income">月收入 (萬，選填)</label>
+                <input type="number" id="dpt-income" placeholder="例如: 8" min="0" step="0.5" />
+              </div>
+            </div>
 
-      <!-- Down-Payment Timeline Calculator (issue #111) -->
-      <div id="down-payment-timeline" class="down-payment-timeline">
-        <h3>📅 首付款時間軸</h3>
-        <div class="calc-inputs">
-          <div class="calc-input-row">
-            <label for="dpt-savings">目前存款 (萬)</label>
-            <input type="number" id="dpt-savings" placeholder="例如: 50" min="0" step="1" />
+            <!-- Timeline bar result -->
+            <div id="dpt-result" class="dpt-result" style="display:none">
+              <div id="dpt-tiers" class="dpt-tiers"></div>
+              <div id="dpt-affordability" class="dpt-affordability" style="display:none"></div>
+            </div>
+            <p id="dpt-placeholder" class="dpt-placeholder">請輸入存款與儲蓄金額以查看時間軸</p>
           </div>
-          <div class="calc-input-row">
-            <label for="dpt-monthly">每月儲蓄 (萬)</label>
-            <input type="number" id="dpt-monthly" placeholder="例如: 3" min="0" step="0.5" />
+
+          <!-- First-buyer affordability heat-map panel (issue #133) -->
+          <div id="first-buyer-panel" class="first-buyer-panel" style="display:none">
+            <h3>🏠 首購族負擔能力地圖</h3>
+            <div class="calc-inputs">
+              <div class="calc-input-row">
+                <label for="fb-monthly-income">月收入 (萬)</label>
+                <input type="number" id="fb-monthly-income" placeholder="例如: 8" min="0" step="0.5"
+                  aria-label="月收入（萬元）" />
+              </div>
+              <div class="calc-input-row">
+                <label for="fb-down-payment">頭期款 (萬)</label>
+                <input type="number" id="fb-down-payment" placeholder="例如: 300" min="0" step="10"
+                  aria-label="頭期款（萬元）" />
+              </div>
+            </div>
+            <div id="fb-result" class="fb-result" style="display:none">
+              <p>最高可負擔總價：<strong id="fb-max-affordable">0</strong> 萬</p>
+              <div class="fb-legend">
+                <span class="fb-tier-dot" style="background:#22c55e"></span>可負擔 (≥90%)
+                <span class="fb-tier-dot" style="background:#eab308;margin-left:8px"></span>勉強可負擔 (60–90%)
+              </div>
+            </div>
+            <button id="fb-reset-btn" class="fb-reset-btn" aria-label="清除負擔能力地圖">重設</button>
           </div>
-          <div class="calc-input-row">
-            <label for="dpt-price">目標總價 (萬)</label>
-            <div class="dpt-price-wrapper">
-              <input type="number" id="dpt-price" placeholder="例如: 1000" min="0" step="10" />
-              <span id="dpt-price-hint" class="dpt-price-hint"></span>
+
+          <!-- Hidden Costs Breakdown (acquisition-cost-calculator) -->
+          <div id="acquisition-cost-calculator" class="acquisition-cost-calculator">
+            <h3>💰 首購隱藏費用明細</h3>
+            <div class="calc-inputs">
+              <div class="calc-input-row">
+                <label for="acq-price">總價 (萬)</label>
+                <div class="acq-price-wrapper">
+                  <input type="number" id="acq-price" placeholder="例如: 1000" min="0" step="10"
+                    aria-label="購屋總價（萬元）" />
+                  <span id="acq-price-hint" class="acq-price-hint"></span>
+                </div>
+              </div>
+              <div class="calc-input-row">
+                <label for="acq-ping">坪數</label>
+                <input type="number" id="acq-ping" placeholder="例如: 30" min="1" step="1"
+                  aria-label="房屋坪數" />
+              </div>
+              <div class="calc-input-row">
+                <label for="acq-age">屋齡 (年)</label>
+                <input type="number" id="acq-age" placeholder="例如: 10" min="0" step="1"
+                  aria-label="屋齡（年）" />
+              </div>
+              <div class="calc-input-row">
+                <label for="acq-dp">頭期款 (%)</label>
+                <input type="number" id="acq-dp" value="20" min="0" max="100" step="5"
+                  aria-label="頭期款比例（%）" />
+              </div>
+              <div class="calc-input-row acq-toggle-row">
+                <label class="acq-toggle-label">
+                  <input type="checkbox" id="acq-agent" checked aria-label="是否含仲介費" />
+                  含仲介費（1%）
+                </label>
+              </div>
+            </div>
+
+            <div id="acq-result" class="acq-result" style="display:none">
+              <table class="acq-breakdown-table" aria-label="隱藏費用明細表">
+                <thead>
+                  <tr>
+                    <th>費用項目</th>
+                    <th class="acq-th-rate">計算依據</th>
+                    <th class="acq-th-amount">金額</th>
+                  </tr>
+                </thead>
+                <tbody id="acq-breakdown-body"></tbody>
+              </table>
+              <div id="acq-summary" class="acq-summary" aria-live="polite"></div>
+            </div>
+            <p id="acq-placeholder" class="acq-placeholder">請輸入總價以查看費用明細</p>
+          </div>
+
+          <!-- Loan Program Comparator (issue #125) -->
+          <div id="loan-program-comparator" class="loan-program-comparator">
+            <h3>🏦 貸款方案比較試算表</h3>
+
+            <!-- 青安截止倒數計時 banner (hidden client-side after 2026-07-31 23:59 TST) -->
+            <div id="lpc-deadline-banner" class="lpc-deadline-banner" role="alert" style="display:none">
+              ⚠️ <strong>青安截止日 2026-07-31</strong> — 剩 <span id="lpc-days-remaining">—</span> 天
+            </div>
+
+            <div class="calc-inputs">
+              <div class="calc-input-row">
+                <label for="lpc-total">目標總價 (萬)</label>
+                <div class="lpc-price-wrapper">
+                  <input type="number" id="lpc-total" placeholder="例如: 1000" min="0" step="10"
+                    aria-label="購屋總價（萬元）" />
+                  <span id="lpc-price-hint" class="lpc-price-hint"></span>
+                </div>
+              </div>
+              <div class="calc-input-row lpc-slider-row">
+                <label for="lpc-down">自備款比例</label>
+                <div class="lpc-slider-wrapper">
+                  <input type="range" id="lpc-down" min="10" max="40" step="10" value="20"
+                    aria-label="自備款比例" />
+                  <span id="lpc-down-display" class="lpc-down-display">20%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Program toggle checkboxes -->
+            <div id="lpc-toggles" class="lpc-toggles">
+              <span class="lpc-toggle-label">排除：</span>
+              <label class="lpc-toggle-chip">
+                <input type="checkbox" id="lpc-hide-civil" />
+                非公教人員（隱藏公教優惠）
+              </label>
+            </div>
+
+            <!-- Results table -->
+            <div id="lpc-result" class="lpc-result" style="display:none">
+              <div class="lpc-table-scroll">
+                <table class="lpc-table" aria-label="貸款方案比較表">
+                  <thead>
+                    <tr>
+                      <th>方案</th>
+                      <th>利率</th>
+                      <th>每月還款</th>
+                      <th>總利息</th>
+                      <th>備註</th>
+                    </tr>
+                  </thead>
+                  <tbody id="lpc-tbody"></tbody>
+                </table>
+              </div>
+              <p class="lpc-footnote">以 30 年等額攤還計算。利率為參考值，實際以各行庫核定為準。</p>
+            </div>
+            <p id="lpc-placeholder" class="lpc-placeholder">請輸入總價以查看各方案比較</p>
+          </div>
+
+          <!-- 租售比試算器 (Price-to-Rent Ratio Calculator) — issue #143 -->
+          <div id="rent-ratio-panel" class="rent-ratio-panel" aria-label="租售比試算器">
+            <h3>🏡 租售比試算器</h3>
+
+            <div class="calc-inputs">
+              <div class="calc-input-row">
+                <label for="rr-price">房屋總價 (萬)</label>
+                <div class="rr-price-wrapper">
+                  <input type="number" id="rr-price" placeholder="例如: 1000" min="0" step="10"
+                    aria-label="房屋總價（萬元）" />
+                  <span id="rr-price-hint" class="rr-price-hint"></span>
+                </div>
+              </div>
+              <div class="calc-input-row">
+                <label for="rr-rent">每月租金 (元)</label>
+                <div class="rr-rent-wrapper">
+                  <input type="number" id="rr-rent" placeholder="例如: 25000" min="0" step="1000"
+                    aria-label="每月租金（新台幣）" />
+                  <span id="rr-rent-hint" class="rr-rent-hint"></span>
+                </div>
+              </div>
+              <div class="calc-input-row">
+                <label for="rr-down">頭期款 (%)</label>
+                <input type="number" id="rr-down" value="20" min="0" max="100" step="5"
+                  aria-label="頭期款比例（%）" />
+              </div>
+              <div class="calc-input-row">
+                <label for="rr-rate">貸款利率 (%)</label>
+                <input type="number" id="rr-rate" value="2.35" min="0" max="10" step="0.05"
+                  aria-label="年利率（%）" />
+              </div>
+              <div class="calc-input-row">
+                <label for="rr-appreciation">年增值率 (%)</label>
+                <input type="number" id="rr-appreciation" value="0" min="-5" max="10" step="0.5"
+                  aria-label="年增值率（%）" />
+              </div>
+            </div>
+
+            <!-- Results -->
+            <div id="rr-result" class="rr-result" style="display:none" aria-live="polite">
+              <!-- Row 1: Price-to-rent ratio -->
+              <div class="rr-metric-row">
+                <span class="rr-metric-label">租售比</span>
+                <span id="rr-ratio-value" class="rr-ratio-value"></span>
+                <span id="rr-tier-badge" class="rr-tier-badge"></span>
+              </div>
+              <!-- Row 2: Break-even -->
+              <div class="rr-metric-row">
+                <span class="rr-metric-label">損益平衡年限</span>
+                <span id="rr-breakeven-value" class="rr-breakeven-value"></span>
+              </div>
+              <!-- Row 3: Monthly comparison -->
+              <div class="rr-monthly-compare" aria-label="月租 vs 月貸比較">
+                <div id="rr-rent-card" class="rr-compare-card">
+                  <span class="rr-compare-label">月租</span>
+                  <span id="rr-monthly-rent" class="rr-compare-amount"></span>
+                </div>
+                <div class="rr-compare-vs">vs</div>
+                <div id="rr-mortgage-card" class="rr-compare-card">
+                  <span class="rr-compare-label">月貸</span>
+                  <span id="rr-monthly-mortgage" class="rr-compare-amount"></span>
+                </div>
+              </div>
+              <p id="rr-compare-note" class="rr-compare-note"></p>
+            </div>
+            <p id="rr-placeholder" class="rr-placeholder">請輸入總價與租金以查看租售分析</p>
+            <button id="rr-reset-btn" class="rr-reset-btn" aria-label="重設租售比試算器">重設</button>
+          </div>
+
+
+          <!-- Affordability overlay toggle (contextual) -->
+          <div class="ia-toggle-row">
+            <div class="toggle-row" style="margin-top:4px">
+              <input type="checkbox" id="affordability-overlay-s1"
+                onchange="document.getElementById('affordability-overlay').checked=this.checked;document.getElementById('affordability-overlay').dispatchEvent(new Event('change'))" />
+              <label for="affordability-overlay-s1">🏠 顯示首購族負擔能力地圖</label>
             </div>
           </div>
-          <div class="calc-input-row">
-            <label for="dpt-income">月收入 (萬，選填)</label>
-            <input type="number" id="dpt-income" placeholder="例如: 8" min="0" step="0.5" />
-          </div>
-        </div>
 
-        <!-- Timeline bar result -->
-        <div id="dpt-result" class="dpt-result" style="display:none">
-          <div id="dpt-tiers" class="dpt-tiers"></div>
-          <div id="dpt-affordability" class="dpt-affordability" style="display:none"></div>
-        </div>
-        <p id="dpt-placeholder" class="dpt-placeholder">請輸入存款與儲蓄金額以查看時間軸</p>
-      </div>
+        </div><!-- /ia-section-1-body -->
+      </div><!-- /ia-section-1 -->
 
-      <!-- First-buyer affordability heat-map panel (issue #133) -->
-      <div id="first-buyer-panel" class="first-buyer-panel" style="display:none">
-        <h3>🏠 首購族負擔能力地圖</h3>
-        <div class="calc-inputs">
-          <div class="calc-input-row">
-            <label for="fb-monthly-income">月收入 (萬)</label>
-            <input type="number" id="fb-monthly-income" placeholder="例如: 8" min="0" step="0.5"
-              aria-label="月家庭收入（萬元）" />
-          </div>
-          <div class="calc-input-row">
-            <label for="fb-down-payment">自備款 (萬)</label>
-            <input type="number" id="fb-down-payment" placeholder="例如: 300" min="0" step="10"
-              aria-label="自備款金額（萬元）" />
-          </div>
-        </div>
-        <div id="fb-result" class="fb-result" style="display:none">
-          <p>最高可負擔總價：<strong id="fb-max-affordable">0</strong> 萬</p>
-        </div>
-        <div class="fb-legend-hint">
-          <span class="fb-tier-dot" style="background:#22c55e"></span>可負擔 (≥90%)
-          <span class="fb-tier-dot" style="background:#eab308;margin-left:8px"></span>勉強可負擔 (60–90%)
-          <span class="fb-tier-dot" style="background:#ef4444;margin-left:8px"></span>超出能力範圍
-        </div>
-        <button id="fb-reset-btn" class="fb-reset-btn" aria-label="清除負擔能力地圖覆蓋層">重設</button>
-      </div>
+      <!-- ═══════════════════════════════════════════════════════════
+      <!-- IA Section 2: timing (collapsed) -->
+      <div class="ia-section" id="ia-section-2">
+        <button class="ia-section-header" aria-expanded="false" aria-controls="ia-section-2-body" id="ia-section-2-btn">
+          <span class="ia-section-title">② 現在是好時機嗎？</span>
+          <span class="ia-section-chevron" aria-hidden="true">▼</span>
+        </button>
+        <div class="ia-section-body ia-section-body-hidden" id="ia-section-2-body" hidden>
 
-      <!-- Hidden Acquisition Cost Calculator (issue #121) -->
-      <div id="acquisition-cost-calculator" class="acquisition-cost-calculator">
-        <h3>💰 首購隱藏費用明細</h3>
-        <div class="calc-inputs">
-          <div class="calc-input-row">
-            <label for="acq-price">總價 (萬)</label>
-            <div class="acq-price-wrapper">
-              <input type="number" id="acq-price" placeholder="例如: 1000" min="0" step="10"
-                aria-label="購屋總價（萬元）" />
-              <span id="acq-price-hint" class="acq-price-hint"></span>
+          <!-- Prominent buyer timing card (issue #153: surfaced from hidden checkbox) -->
+          <div id="buyer-timing-card" class="buyer-timing-card" aria-label="買方時機分析">
+            <div class="buyer-timing-card-header">
+              <span class="buyer-timing-card-title">🎯 買方時機分</span>
+              <span id="buyer-timing-badge" class="buyer-timing-badge buyer-timing-badge-empty">—</span>
+            </div>
+            <div id="buyer-timing-rationale" class="buyer-timing-rationale">選擇行政區以查看時機分析</div>
+            <div class="toggle-row" style="margin-top:8px;margin-bottom:0">
+              <input type="checkbox" id="buyer-score-toggle-s2"
+                onchange="document.getElementById('buyer-score-toggle').checked=this.checked;document.getElementById('buyer-score-toggle').dispatchEvent(new Event('change'))" />
+              <label for="buyer-score-toggle-s2">🗺️ 顯示地圖覆蓋層</label>
             </div>
           </div>
-          <div class="calc-input-row">
-            <label for="acq-ping">坪數</label>
-            <input type="number" id="acq-ping" placeholder="例如: 30" min="1" step="1"
-              aria-label="房屋坪數" />
+
+          <!-- Supply overlays -->
+          <div class="ia-overlay-group">
+            <p class="ia-overlay-label">供給壓力地圖</p>
+            <div class="toggle-row">
+              <input type="checkbox" id="supply-pressure-toggle-s2"
+                onchange="document.getElementById('supply-pressure-toggle').checked=this.checked;document.getElementById('supply-pressure-toggle').dispatchEvent(new Event('change'))" />
+              <label for="supply-pressure-toggle-s2">⚠️ 供給壓力</label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="completion-overlay-toggle-s2"
+                onchange="document.getElementById('completion-overlay-toggle').checked=this.checked;document.getElementById('completion-overlay-toggle').dispatchEvent(new Event('change'))" />
+              <label for="completion-overlay-toggle-s2">📦 完工供給強度</label>
+            </div>
           </div>
-          <div class="calc-input-row">
-            <label for="acq-age">屋齡 (年)</label>
-            <input type="number" id="acq-age" placeholder="例如: 10" min="0" step="1"
-              aria-label="屋齡（年）" />
+
+          <!-- Volume YoY Panel -->
+          <div id="volume-yoy-panel" class="volume-yoy-panel" style="display:none">
+            <div class="volume-yoy-header">
+              <h3>📊 成交量年同比<span id="volume-yoy-district-label" class="volume-yoy-district-label"></span></h3>
+              <div id="volume-yoy-badge" class="volume-yoy-badge" style="display:none"></div>
+            </div>
+            <p class="volume-yoy-desc">各季度成交量（本年 vs 去年）</p>
+            <div id="volume-yoy-insufficient" class="volume-yoy-insufficient" style="display:none">資料不足</div>
+            <div class="volume-yoy-chart-wrap">
+              <canvas id="volume-yoy-chart" width="260" height="160" aria-label="季度成交量年同比條形圖"></canvas>
+            </div>
+            <div id="volume-yoy-delta-labels" class="volume-yoy-delta-labels"></div>
           </div>
-          <div class="calc-input-row">
-            <label for="acq-dp">頭期款 (%)</label>
-            <input type="number" id="acq-dp" value="20" min="0" max="100" step="5"
-              aria-label="頭期款比例（%）" />
+
+          <!-- Seasonal panel -->
+          <div id="seasonal-panel" class="seasonal-panel" style="display:none" aria-label="季節性成交規律面板">
+            <h3>📅 季節性成交規律<span id="seasonal-district-label" class="seasonal-district-label"></span></h3>
+            <!-- Buy-timing badge -->
+            <div id="seasonal-tier-badge" class="seasonal-tier-badge" style="display:none" role="status" aria-live="polite"></div>
+            <!-- Insufficient data guard -->
+            <div id="seasonal-insufficient" class="seasonal-insufficient" style="display:none">資料不足（需 ≥3 年且 ≥12 個月歷史資料）</div>
+            <!-- Monthly volume radar chart -->
+            <p class="seasonal-note" id="seasonal-volume-label">月均成交量（歷年平均）</p>
+            <canvas id="seasonal-chart" width="260" height="200" aria-label="月均成交量雷達圖" role="img"></canvas>
+            <!-- Price seasonality index bar chart -->
+            <p class="seasonal-note seasonal-price-label" id="seasonal-price-label">月中位價季節指數（100 = 年均）</p>
+            <canvas id="seasonal-price-chart" width="260" height="120" aria-label="月中位價季節指數條形圖" role="img"></canvas>
+            <div id="seasonal-summary" class="seasonal-summary" style="display:none"></div>
           </div>
-          <div class="calc-input-row acq-toggle-row">
-            <label class="acq-toggle-label">
-              <input type="checkbox" id="acq-agent" checked aria-label="是否含仲介費" />
-              含仲介費（1%）
+
+          <!-- Monthly heatmap (issue #112) -->
+          <div id="heatmap-panel" class="heatmap-panel" style="display:none">
+            <div class="heatmap-header">
+              <h3>🗓 月份成交量熱力圖</h3>
+              <div class="heatmap-scope-toggle" role="group" aria-label="選擇範圍">
+                <button id="heatmap-btn-district" class="heatmap-scope-btn active" data-scope="district">本區</button>
+                <button id="heatmap-btn-global"   class="heatmap-scope-btn"        data-scope="global">全臺灣</button>
+              </div>
+            </div>
+            <p class="heatmap-note">成交筆數 × 月份，顏色深淺 = 相對熱度。🔵 = 買方優勢月（量 &lt; 年高峰 70%）</p>
+            <div id="heatmap-insufficient" class="heatmap-insufficient" style="display:none">資料不足（需 ≥12 個月歷史）</div>
+            <canvas id="heatmap-canvas" class="heatmap-canvas" aria-label="月份成交量"></canvas>
+            <div id="heatmap-tooltip" class="heatmap-tooltip" style="display:none"></div>
+            <div id="heatmap-buyer-summary" class="heatmap-buyer-summary" style="display:none"></div>
+          </div>
+
+          <!-- Completion Wave Panel -->
+          <div id="completion-wave-panel" class="completion-wave-panel">
+            <div class="completion-wave-header">
+              <h3>📦 建造完工供給波浪</h3>
+              <span class="completion-wave-badge projected-badge">2026–2028 預測</span>
+            </div>
+            <p class="completion-wave-desc">
+              各縣市季度使用執照核發數（建築完工）。2026–2028 為依建照推估之預測值。
+            </p>
+            <div class="completion-city-select-row">
+              <label for="completion-city-select">縣市</label>
+              <select id="completion-city-select">
+                <option value="台北市">台北市</option>
+                <option value="新北市">新北市</option>
+                <option value="桃園市">桃園市</option>
+                <option value="台中市">台中市</option>
+                <option value="台南市">台南市</option>
+                <option value="高雄市">高雄市</option>
+              </select>
+            </div>
+            <div class="completion-chart-wrap">
+              <canvas id="completion-wave-chart" width="260" height="200" aria-label="完工供給波浪圖"></canvas>
+            </div>
+            <p class="completion-wave-note" id="completion-wave-note">
+              資料來源：內政部不動產資訊平台 E3030（示範資料）
+            </p>
+          </div>
+
+        </div><!-- /ia-section-2-body -->
+      </div><!-- /ia-section-2 -->
+
+      <!-- IA Section 3: price fairness (collapsed) -->
+      <div class="ia-section" id="ia-section-3">
+        <button class="ia-section-header" aria-expanded="false" aria-controls="ia-section-3-body" id="ia-section-3-btn">
+          <span class="ia-section-title">③ 這個價格合理嗎？</span>
+          <span class="ia-section-chevron" aria-hidden="true">▼</span>
+        </button>
+        <div class="ia-section-body ia-section-body-hidden" id="ia-section-3-body" hidden>
+
+          <!-- Price overlay controls -->
+          <div class="ia-overlay-group">
+            <p class="ia-overlay-label">價格地圖</p>
+            <div class="toggle-row">
+              <input type="checkbox" id="choropleth-toggle-s3" checked
+                onchange="document.getElementById('choropleth-toggle').checked=this.checked;document.getElementById('choropleth-toggle').dispatchEvent(new Event('change'))" />
+              <label for="choropleth-toggle-s3">🗺️ 行政區熱力圖（均價）</label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="volatility-toggle-s3"
+                onchange="document.getElementById('volatility-toggle').checked=this.checked;document.getElementById('volatility-toggle').dispatchEvent(new Event('change'))" />
+              <label for="volatility-toggle-s3">📊 顯示價格波動度</label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="presale-spread-toggle-s3"
+                onchange="document.getElementById('presale-spread-toggle').checked=this.checked;document.getElementById('presale-spread-toggle').dispatchEvent(new Event('change'))" />
+              <label for="presale-spread-toggle-s3">🏗 預售溢價熱力圖</label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="mrt-premium-toggle-s3"
+                onchange="document.getElementById('mrt-premium-toggle').checked=this.checked;document.getElementById('mrt-premium-toggle').dispatchEvent(new Event('change'))" />
+              <label for="mrt-premium-toggle-s3">🚇 捷運溢價熱力圖</label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="mrt-tier-toggle-s3"
+                onchange="document.getElementById('mrt-tier-toggle').checked=this.checked;document.getElementById('mrt-tier-toggle').dispatchEvent(new Event('change'))" />
+              <label for="mrt-tier-toggle-s3">🚇 捷運距離評分地圖</label>
+            </div>
+          </div>
+
+          <!-- Stats panel (negotiation margin + price data) -->
+          <div id="stats-panel" class="stats-panel">
+            <h3>統計資訊</h3>
+            {showBuyersMarket && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
+            <div id="stats-content">
+              <p class="placeholder">選擇條件後按搜尋</p>
+            </div>
+            <div id="yoy-panel" class="yoy-panel" style="display:none"></div>
+          </div>
+
+          <!-- Price trend panel -->
+          <div id="trend-panel" class="trend-panel" style="display:none">
+            <h3 id="trend-title">價格走勢</h3>
+            <!-- ── Box-plot / Line toggle (issue #124) ── -->
+            <div id="price-chart-toggle" class="price-chart-toggle" role="group" aria-label="圖表類型">
+              <button type="button" id="btn-boxplot" class="chart-toggle-btn" data-chart="boxplot">箱型圖</button>
+              <button type="button" id="btn-linechart" class="chart-toggle-btn active" data-chart="line">折線圖</button>
+            </div>
+            <!-- Line chart panel (issue #131: monthly trend with MA3, YoY, toggle) -->
+            <div id="line-chart-panel">
+              <!-- 每坪/總價 toggle (issue #131) -->
+              <div id="price-mode-toggle" class="price-mode-toggle" role="group" aria-label="價格模式">
+                <button type="button" id="btn-per-ping" class="price-mode-btn active" data-mode="perPing">每坪單價</button>
+                <button type="button" id="btn-total" class="price-mode-btn" data-mode="total">總價</button>
+              </div>
+              <canvas id="trend-chart" width="260" height="160" aria-label="每月中位數單價折線趨勢圖"></canvas>
+              <div id="trend-insufficient" class="trend-insufficient" style="display:none">資料不足（需 ≥6 個月歷史交易）</div>
+              <p id="trend-note" class="trend-note"></p>
+              <p id="trend-yoy" class="trend-yoy" style="display:none"></p>
+            </div>
+            <!-- Box-plot chart (issue #124) -->
+            <div id="boxplot-panel" class="boxplot-inner-panel" style="display:none">
+              <canvas id="boxplot-canvas" width="260" height="180" aria-label="歷史成交價位箱型圖"></canvas>
+              <div id="boxplot-insufficient" class="boxplot-insufficient" style="display:none">資料不足（需 ≥2 年歷史交易）</div>
+              <p id="boxplot-percentile-label" class="boxplot-percentile-label" style="display:none"></p>
+            </div>
+          </div>
+
+          <!-- Building-age depreciation curve -->
+          <div id="age-curve-panel" class="age-curve-panel" style="display:none">
+            <h3>🏗 屋齡折舊曲線<span id="age-curve-district-label" class="age-curve-district-label"></span></h3>
+            <p class="age-curve-note">中位數單價 (萬/坪) by 屋齡</p>
+            <div id="age-curve-insufficient" class="age-curve-insufficient" style="display:none">資料不足（需 ≥3 屋齡區間，每區間 ≥5 筆）</div>
+            <canvas id="age-curve-chart" width="260" height="160"></canvas>
+          </div>
+
+          <!-- Price histogram panel -->
+          <div id="histogram-panel" class="histogram-panel" style="display:none">
+            <h3>單價分佈 (萬/坪)<span id="histogram-district-label" class="histogram-district-label"></span></h3>
+            <p class="histogram-note">近 12 個月成交</p>
+            <div id="histogram-insufficient" class="histogram-insufficient" style="display:none">資料不足（需 ≥10 筆成交）</div>
+            <div id="histogram-svg-container"></div>
+            <div id="histogram-target-row" class="histogram-target-row">
+              <label for="histogram-target-price">目標單價</label>
+              <input type="number" id="histogram-target-price" class="histogram-target-input" placeholder="萬/坪" min="0" step="0.1" />
+              <span class="histogram-target-unit">萬/坪</span>
+            </div>
+            <p id="histogram-percentile-label" class="histogram-percentile-label"></p>
+          </div>
+
+          <!-- Building Age Distribution Panel (issue #134) -->
+          <div id="building-age-panel" class="building-age-panel" style="display:none">
+            <div class="building-age-header">
+              <h3>🏗️ 屋齡分布<span id="building-age-district-label" class="building-age-district-label"></span></h3>
+              <div id="building-age-annotation" class="building-age-annotation" style="display:none"></div>
+            </div>
+            <div id="building-age-insufficient" class="building-age-insufficient" style="display:none">資料不足（少於5筆含年份資料）</div>
+            <div id="building-age-chart-wrap" class="building-age-chart-wrap">
+              <canvas id="building-age-chart" width="260" height="180" aria-label="屋齡分布水平條形圖"></canvas>
+            </div>
+            <div id="building-age-completeness" class="building-age-completeness" style="display:none"></div>
+          </div>
+
+          <!-- Transaction list panel -->
+          <div id="transaction-list-panel" class="transaction-list-panel" style="display:none">
+            <div class="transaction-list-header">
+              <h3>交易紀錄</h3>
+              <div class="transaction-list-sort">
+                <label>排序：</label>
+                <select id="sort-by">
+                  <option value="date-desc">日期 (新→舊)</option>
+                  <option value="date-asc">日期 (舊→新)</option>
+                  <option value="unitPrice-desc">單價 (高→低)</option>
+                  <option value="unitPrice-asc">單價 (低→高)</option>
+                  <option value="totalPrice-desc">總價 (高→低)</option>
+                  <option value="totalPrice-asc">總價 (低→高)</option>
+                </select>
+              </div>
+            </div>
+            <div id="transaction-list-content" class="transaction-list-content"></div>
+          </div>
+
+          <!-- Transit Panel (MRT Proximity Score, issue #144) -->
+          <div id="transit-panel" class="transit-panel" style="display:none" aria-label="捷運距離評分">
+            <h3 class="transit-panel-title">🚇 捷運距離評分<span id="transit-panel-label" class="transit-panel-label"></span></h3>
+            <div id="transit-panel-body" class="transit-panel-body" aria-live="polite"></div>
+          </div>
+
+        </div><!-- /ia-section-3-body -->
+      </div><!-- /ia-section-3 -->
+
+      <!-- IA Section 4: alternatives (collapsed) -->
+      <div class="ia-section" id="ia-section-4">
+        <button class="ia-section-header" aria-expanded="false" aria-controls="ia-section-4-body" id="ia-section-4-btn">
+          <span class="ia-section-title">④ 有沒有更便宜的替代方案？</span>
+          <span class="ia-section-chevron" aria-hidden="true">▼</span>
+        </button>
+        <div class="ia-section-body ia-section-body-hidden" id="ia-section-4-body" hidden>
+
+          <!-- Similar Districts Panel (issue #141) -->
+          <div id="similar-districts-panel" class="similar-districts-panel" style="display:none" aria-label="相似地區推薦">
+            <h3 class="similar-districts-title">🔍 相似地區推薦<span id="similar-districts-label" class="similar-districts-label"></span></h3>
+            <div id="similar-districts-insufficient" class="similar-districts-insufficient" style="display:none">
+              資料不足（找不到足夠的相似替代地區）
+            </div>
+            <ul id="similar-districts-list" class="similar-districts-list" aria-label="相似地區清單"></ul>
+            <label class="similar-districts-city-toggle">
+              <input type="checkbox" id="similar-districts-same-city" />
+              <span>僅顯示同縣市</span>
             </label>
           </div>
-        </div>
 
-        <div id="acq-result" class="acq-result" style="display:none">
-          <table class="acq-breakdown-table" aria-label="隱藏費用明細表">
-            <thead>
-              <tr>
-                <th>費用項目</th>
-                <th class="acq-th-rate">計算依據</th>
-                <th class="acq-th-amount">金額</th>
-              </tr>
-            </thead>
-            <tbody id="acq-breakdown-body"></tbody>
-          </table>
-          <div id="acq-summary" class="acq-summary" aria-live="polite"></div>
-        </div>
-        <p id="acq-placeholder" class="acq-placeholder">請輸入總價以查看費用明細</p>
-      </div>
-
-      <!-- Loan Program Comparator (issue #125) -->
-      <div id="loan-program-comparator" class="loan-program-comparator">
-        <h3>🏦 貸款方案比較試算表</h3>
-
-        <!-- 青安截止倒數計時 banner (hidden client-side after 2026-07-31 23:59 TST) -->
-        <div id="lpc-deadline-banner" class="lpc-deadline-banner" role="alert" style="display:none">
-          ⚠️ <strong>青安截止日 2026-07-31</strong> — 剩 <span id="lpc-days-remaining">—</span> 天
-        </div>
-
-        <div class="calc-inputs">
-          <div class="calc-input-row">
-            <label for="lpc-total">目標總價 (萬)</label>
-            <div class="lpc-price-wrapper">
-              <input type="number" id="lpc-total" placeholder="例如: 1000" min="0" step="10"
-                aria-label="購屋總價（萬元）" />
-              <span id="lpc-price-hint" class="lpc-price-hint"></span>
-            </div>
+          <!-- Shortlist comparison shortcut -->
+          <div class="ia-comparison-hint">
+            <p class="ia-comparison-hint-text">💡 點擊地圖行政區，按「🔖 加入比較清單」可加入最多 5 個地區進行並排比較。</p>
           </div>
-          <div class="calc-input-row lpc-slider-row">
-            <label for="lpc-down">自備款比例</label>
-            <div class="lpc-slider-wrapper">
-              <input type="range" id="lpc-down" min="10" max="40" step="10" value="20"
-                aria-label="自備款比例" />
-              <span id="lpc-down-display" class="lpc-down-display">20%</span>
-            </div>
-          </div>
-        </div>
 
-        <!-- Program toggle checkboxes -->
-        <div id="lpc-toggles" class="lpc-toggles">
-          <span class="lpc-toggle-label">排除：</span>
-          <label class="lpc-toggle-chip">
-            <input type="checkbox" id="lpc-hide-civil" />
-            非公教人員（隱藏公教優惠）
-          </label>
-        </div>
-
-        <!-- Results table -->
-        <div id="lpc-result" class="lpc-result" style="display:none">
-          <div class="lpc-table-scroll">
-            <table class="lpc-table" aria-label="貸款方案比較表">
-              <thead>
-                <tr>
-                  <th>方案</th>
-                  <th>利率</th>
-                  <th>每月還款</th>
-                  <th>總利息</th>
-                  <th>備註</th>
-                </tr>
-              </thead>
-              <tbody id="lpc-tbody"></tbody>
-            </table>
-          </div>
-          <p class="lpc-footnote">以 30 年等額攤還計算。利率為參考值，實際以各行庫核定為準。</p>
-        </div>
-        <p id="lpc-placeholder" class="lpc-placeholder">請輸入總價以查看各方案比較</p>
-      </div>
-
-      <!-- 租售比試算器 (Price-to-Rent Ratio Calculator) — issue #143 -->
-      <div id="rent-ratio-panel" class="rent-ratio-panel" aria-label="租售比試算器">
-        <h3>🏡 租售比試算器</h3>
-
-        <div class="calc-inputs">
-          <div class="calc-input-row">
-            <label for="rr-price">房屋總價 (萬)</label>
-            <div class="rr-price-wrapper">
-              <input type="number" id="rr-price" placeholder="例如: 1000" min="0" step="10"
-                aria-label="房屋總價（萬元）" />
-              <span id="rr-price-hint" class="rr-price-hint"></span>
-            </div>
-          </div>
-          <div class="calc-input-row">
-            <label for="rr-rent">每月租金 (元)</label>
-            <div class="rr-rent-wrapper">
-              <input type="number" id="rr-rent" placeholder="例如: 25000" min="0" step="1000"
-                aria-label="每月租金（新台幣）" />
-              <span id="rr-rent-hint" class="rr-rent-hint"></span>
-            </div>
-          </div>
-          <div class="calc-input-row">
-            <label for="rr-down">頭期款 (%)</label>
-            <input type="number" id="rr-down" value="20" min="0" max="100" step="5"
-              aria-label="頭期款比例（%）" />
-          </div>
-          <div class="calc-input-row">
-            <label for="rr-rate">貸款利率 (%)</label>
-            <input type="number" id="rr-rate" value="2.35" min="0" max="10" step="0.05"
-              aria-label="年利率（%）" />
-          </div>
-          <div class="calc-input-row">
-            <label for="rr-appreciation">年增值率 (%)</label>
-            <input type="number" id="rr-appreciation" value="0" min="-5" max="10" step="0.5"
-              aria-label="年增值率（%）" />
-          </div>
-        </div>
-
-        <!-- Results -->
-        <div id="rr-result" class="rr-result" style="display:none" aria-live="polite">
-          <!-- Row 1: Price-to-rent ratio -->
-          <div class="rr-metric-row">
-            <span class="rr-metric-label">租售比</span>
-            <span id="rr-ratio-value" class="rr-ratio-value"></span>
-            <span id="rr-tier-badge" class="rr-tier-badge"></span>
-          </div>
-          <!-- Row 2: Break-even -->
-          <div class="rr-metric-row">
-            <span class="rr-metric-label">損益平衡年限</span>
-            <span id="rr-breakeven-value" class="rr-breakeven-value"></span>
-          </div>
-          <!-- Row 3: Monthly comparison -->
-          <div class="rr-monthly-compare" aria-label="月租 vs 月貸比較">
-            <div id="rr-rent-card" class="rr-compare-card">
-              <span class="rr-compare-label">月租</span>
-              <span id="rr-monthly-rent" class="rr-compare-amount"></span>
-            </div>
-            <div class="rr-compare-vs">vs</div>
-            <div id="rr-mortgage-card" class="rr-compare-card">
-              <span class="rr-compare-label">月貸</span>
-              <span id="rr-monthly-mortgage" class="rr-compare-amount"></span>
-            </div>
-          </div>
-          <p id="rr-compare-note" class="rr-compare-note"></p>
-        </div>
-        <p id="rr-placeholder" class="rr-placeholder">請輸入總價與租金以查看租售分析</p>
-        <button id="rr-reset-btn" class="rr-reset-btn" aria-label="重設租售比試算器">重設</button>
-      </div>
-
-      <div id="stats-panel" class="stats-panel">
-        <h3>統計資訊</h3>
-        {showBuyersMarket && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
-        <div id="stats-content">
-          <p class="placeholder">選擇條件後按搜尋</p>
-        </div>
-        <div id="yoy-panel" class="yoy-panel" style="display:none"></div>
-      </div>
-
-      <div id="trend-panel" class="trend-panel" style="display:none">
-        <h3 id="trend-title">價格走勢</h3>
-        <!-- ── Box-plot / Line toggle (issue #124) ── -->
-        <div id="price-chart-toggle" class="price-chart-toggle" role="group" aria-label="圖表類型">
-          <button type="button" id="btn-boxplot" class="chart-toggle-btn" data-chart="boxplot">箱型圖</button>
-          <button type="button" id="btn-linechart" class="chart-toggle-btn active" data-chart="line">折線圖</button>
-        </div>
-        <!-- Line chart panel (issue #131: monthly trend with MA3, YoY, toggle) -->
-        <div id="line-chart-panel">
-          <!-- 每坪/總價 toggle (issue #131) -->
-          <div id="price-mode-toggle" class="price-mode-toggle" role="group" aria-label="價格模式">
-            <button type="button" id="btn-per-ping" class="price-mode-btn active" data-mode="perPing">每坪單價</button>
-            <button type="button" id="btn-total" class="price-mode-btn" data-mode="total">總價</button>
-          </div>
-          <canvas id="trend-chart" width="260" height="160" aria-label="每月中位數單價折線趨勢圖"></canvas>
-          <div id="trend-insufficient" class="trend-insufficient" style="display:none">資料不足（需 ≥6 個月歷史交易）</div>
-          <p id="trend-note" class="trend-note"></p>
-          <p id="trend-yoy" class="trend-yoy" style="display:none"></p>
-        </div>
-        <!-- Box-plot chart (issue #124) -->
-        <div id="boxplot-panel" class="boxplot-inner-panel" style="display:none">
-          <canvas id="boxplot-canvas" width="260" height="180" aria-label="歷史成交價位箱型圖"></canvas>
-          <div id="boxplot-insufficient" class="boxplot-insufficient" style="display:none">資料不足（需 ≥2 年歷史交易）</div>
-          <p id="boxplot-percentile-label" class="boxplot-percentile-label" style="display:none"></p>
-        </div>
-      </div>
-
-      <!-- ── Building-age depreciation curve ── -->
-      <div id="age-curve-panel" class="age-curve-panel" style="display:none">
-        <h3>🏗 屋齡折舊曲線<span id="age-curve-district-label" class="age-curve-district-label"></span></h3>
-        <p class="age-curve-note">中位數單價 (萬/坪) by 屋齡</p>
-        <div id="age-curve-insufficient" class="age-curve-insufficient" style="display:none">資料不足（需 ≥3 屋齡區間，每區間 ≥5 筆）</div>
-        <canvas id="age-curve-chart" width="260" height="160"></canvas>
-      </div>
-
-      <!-- ── Seasonal deal-flow calendar (issue #142) ── -->
-      <div id="seasonal-panel" class="seasonal-panel" style="display:none" aria-label="季節性成交規律面板">
-        <h3>📅 季節性成交規律<span id="seasonal-district-label" class="seasonal-district-label"></span></h3>
-        <!-- Buy-timing badge -->
-        <div id="seasonal-tier-badge" class="seasonal-tier-badge" style="display:none" role="status" aria-live="polite"></div>
-        <!-- Insufficient data guard -->
-        <div id="seasonal-insufficient" class="seasonal-insufficient" style="display:none">資料不足（需 ≥3 年且 ≥12 個月歷史資料）</div>
-        <!-- Monthly volume radar chart -->
-        <p class="seasonal-note" id="seasonal-volume-label">月均成交量（歷年平均）</p>
-        <canvas id="seasonal-chart" width="260" height="200" aria-label="月均成交量雷達圖" role="img"></canvas>
-        <!-- Price seasonality index bar chart -->
-        <p class="seasonal-note seasonal-price-label" id="seasonal-price-label">月中位價季節指數（100 = 年均）</p>
-        <canvas id="seasonal-price-chart" width="260" height="120" aria-label="月中位價季節指數條形圖" role="img"></canvas>
-        <div id="seasonal-summary" class="seasonal-summary" style="display:none"></div>
-      </div>
-
-      <!-- ── Monthly heatmap (issue #112) ── -->
-      <div id="heatmap-panel" class="heatmap-panel" style="display:none">
-        <div class="heatmap-header">
-          <h3>🗓 月份成交量熱力圖</h3>
-          <div class="heatmap-scope-toggle" role="group" aria-label="選擇範圍">
-            <button id="heatmap-btn-district" class="heatmap-scope-btn active" data-scope="district">本區</button>
-            <button id="heatmap-btn-global"   class="heatmap-scope-btn"        data-scope="global">全臺灣</button>
-          </div>
-        </div>
-        <p class="heatmap-note">成交筆數 × 月份，顏色深淺 = 相對熱度。🔵 = 買方優勢月（量 &lt; 年高峰 70%）</p>
-        <div id="heatmap-insufficient" class="heatmap-insufficient" style="display:none">資料不足（需 ≥12 個月歷史）</div>
-        <canvas id="heatmap-canvas" class="heatmap-canvas" aria-label="月份成交量熱力圖"></canvas>
-        <div id="heatmap-tooltip" class="heatmap-tooltip" style="display:none"></div>
-        <div id="heatmap-buyer-summary" class="heatmap-buyer-summary" style="display:none"></div>
-      </div>
-
-      <div id="histogram-panel" class="histogram-panel" style="display:none">
-        <h3>單價分佈 (萬/坪)<span id="histogram-district-label" class="histogram-district-label"></span></h3>
-        <p class="histogram-note">近 12 個月成交</p>
-        <div id="histogram-insufficient" class="histogram-insufficient" style="display:none">資料不足（需 ≥10 筆成交）</div>
-        <div id="histogram-svg-container"></div>
-        <div id="histogram-target-row" class="histogram-target-row">
-          <label for="histogram-target-price">目標單價</label>
-          <input type="number" id="histogram-target-price" class="histogram-target-input" placeholder="萬/坪" min="0" step="0.1" />
-          <span class="histogram-target-unit">萬/坪</span>
-        </div>
-        <p id="histogram-percentile-label" class="histogram-percentile-label"></p>
-      </div>
-
-      <div id="transaction-list-panel" class="transaction-list-panel" style="display:none">
-        <div class="transaction-list-header">
-          <h3>交易紀錄</h3>
-          <div class="transaction-list-sort">
-            <label>排序：</label>
-            <select id="sort-by">
-              <option value="date-desc">日期 (新→舊)</option>
-              <option value="date-asc">日期 (舊→新)</option>
-              <option value="unitPrice-desc">單價 (高→低)</option>
-              <option value="unitPrice-asc">單價 (低→高)</option>
-              <option value="totalPrice-desc">總價 (高→低)</option>
-              <option value="totalPrice-asc">總價 (低→高)</option>
-            </select>
-          </div>
-        </div>
-        <div id="transaction-list-content" class="transaction-list-content"></div>
-      </div>
-
-      <!-- ── Volume YoY Panel (issue #132) ── -->
-      <div id="volume-yoy-panel" class="volume-yoy-panel" style="display:none">
-        <div class="volume-yoy-header">
-          <h3>📊 成交量年同比<span id="volume-yoy-district-label" class="volume-yoy-district-label"></span></h3>
-          <div id="volume-yoy-badge" class="volume-yoy-badge" style="display:none"></div>
-        </div>
-        <p class="volume-yoy-desc">各季度成交量（本年 vs 去年）</p>
-        <div id="volume-yoy-insufficient" class="volume-yoy-insufficient" style="display:none">資料不足</div>
-        <div class="volume-yoy-chart-wrap">
-          <canvas id="volume-yoy-chart" width="260" height="160" aria-label="季度成交量年同比條形圖"></canvas>
-        </div>
-        <div id="volume-yoy-delta-labels" class="volume-yoy-delta-labels"></div>
-      </div>
-
-      <!-- ── Building Age Distribution Panel (issue #134) ── -->
-      <div id="building-age-panel" class="building-age-panel" style="display:none">
-        <div class="building-age-header">
-          <h3>🏗️ 屋齡分布<span id="building-age-district-label" class="building-age-district-label"></span></h3>
-          <div id="building-age-annotation" class="building-age-annotation" style="display:none"></div>
-        </div>
-        <div id="building-age-insufficient" class="building-age-insufficient" style="display:none">資料不足（少於5筆含年份資料）</div>
-        <div id="building-age-chart-wrap" class="building-age-chart-wrap">
-          <canvas id="building-age-chart" width="260" height="180" aria-label="屋齡分布水平條形圖"></canvas>
-        </div>
-        <div id="building-age-completeness" class="building-age-completeness" style="display:none"></div>
-      </div>
-
-      <!-- ── Similar Districts Panel (issue #141) ── -->
-      <div id="similar-districts-panel" class="similar-districts-panel" style="display:none" aria-label="相似地區推薦">
-        <h3 class="similar-districts-title">🔍 相似地區推薦<span id="similar-districts-label" class="similar-districts-label"></span></h3>
-        <div id="similar-districts-insufficient" class="similar-districts-insufficient" style="display:none">
-          資料不足（找不到足夠的相似替代地區）
-        </div>
-        <ul id="similar-districts-list" class="similar-districts-list" aria-label="相似地區清單"></ul>
-        <label class="similar-districts-city-toggle">
-          <input type="checkbox" id="similar-districts-same-city" />
-          <span>僅顯示同縣市</span>
-        </label>
-      </div>
-
-      <!-- ── Transit Panel (MRT Proximity Score, issue #144) ── -->
-      <div id="transit-panel" class="transit-panel" style="display:none" aria-label="捷運距離評分面板">
-        <h3 class="transit-panel-title">🚇 捷運距離評分<span id="transit-panel-label" class="transit-panel-label"></span></h3>
-        <div id="transit-panel-body" class="transit-panel-body" aria-live="polite"></div>
-      </div>
-
-      <!-- ── Completion Wave Panel ── -->
-      <div id="completion-wave-panel" class="completion-wave-panel">
-        <div class="completion-wave-header">
-          <h3>📦 建造完工供給波浪</h3>
-          <span class="completion-wave-badge projected-badge">2026–2028 預測</span>
-        </div>
-        <p class="completion-wave-desc">
-          各縣市季度使用執照核發數（建築完工）。2026–2028 為依建照推估之預測值。
-        </p>
-        <div class="completion-city-select-row">
-          <label for="completion-city-select">縣市</label>
-          <select id="completion-city-select">
-            <option value="all">全部六都</option>
-            <option value="台北市">台北市</option>
-            <option value="新北市">新北市</option>
-            <option value="桃園市">桃園市</option>
-            <option value="台中市">台中市</option>
-            <option value="台南市">台南市</option>
-            <option value="高雄市">高雄市</option>
-          </select>
-        </div>
-        <div class="completion-chart-wrap">
-          <canvas id="completion-wave-chart" width="260" height="200" aria-label="完工供給波浪圖"></canvas>
-        </div>
-        <p class="completion-wave-note" id="completion-wave-note">
-          資料來源：內政部不動產資訊平台 E3030（示範資料）
-        </p>
-      </div>
+        </div><!-- /ia-section-4-body -->
+      </div><!-- /ia-section-4 -->
     </aside>
 
     <div class="map-container" id="map-view-container">
@@ -5165,6 +5271,205 @@ const showBuyersMarket = !isStale && dataYear !== null;
   @media (max-width: 480px) {
     .wizard-panel { padding: 20px 14px 16px; }
   }
+  /* ═══════════════════════════════════════════════════════════════
+     IA Section structure — 4 buyer-question collapsible sections
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* Overlay toggles kept in DOM but not visually shown at top level */
+  .ia-hidden-toggle {
+    display: none !important;
+  }
+
+  /* Wizard CTA promoted to persistent top-of-sidebar position */
+  .sidebar-wizard-cta {
+    width: 100%;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    background: #1a7a52;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+    letter-spacing: 0.2px;
+    box-shadow: 0 2px 6px rgba(26,122,82,0.18);
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  .sidebar-wizard-cta:hover {
+    background: #155936;
+    box-shadow: 0 3px 10px rgba(26,122,82,0.28);
+  }
+
+  /* IA section container */
+  .ia-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  /* IA section header (clickable button) */
+  .ia-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 12px 14px;
+    background: #f8fafc;
+    border: none;
+    border-bottom: 1px solid #e2e8f0;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1e293b;
+    transition: background 0.15s;
+    gap: 8px;
+  }
+  .ia-section-header:hover {
+    background: #f1f5f9;
+  }
+  .ia-section-header[aria-expanded="true"] {
+    background: #eff6ff;
+    border-bottom-color: #bfdbfe;
+    color: #1d4ed8;
+  }
+
+  .ia-section-title {
+    flex: 1;
+    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.1px;
+  }
+
+  .ia-section-chevron {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .ia-section-header[aria-expanded="true"] .ia-section-chevron {
+    color: #3b82f6;
+  }
+
+  /* IA section body */
+  .ia-section-body {
+    padding: 12px 10px;
+  }
+  .ia-section-body-hidden {
+    display: none;
+  }
+
+  /* Overlay toggle group label inside sections */
+  .ia-overlay-group {
+    margin-bottom: 10px;
+  }
+  .ia-overlay-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 6px 2px;
+  }
+  .ia-toggle-row {
+    margin-bottom: 6px;
+  }
+
+  /* Shortlist comparison hint in Section ④ */
+  .ia-comparison-hint {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+  }
+  .ia-comparison-hint-text {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     Buyer Timing Card — prominent card in Section ②
+     ═══════════════════════════════════════════════════════════════ */
+  .buyer-timing-card {
+    background: #f0f9ff;
+    border: 1.5px solid #bae6fd;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .buyer-timing-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    gap: 8px;
+  }
+  .buyer-timing-card-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #0369a1;
+    white-space: nowrap;
+  }
+  .buyer-timing-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .buyer-timing-badge-empty {
+    background: #f1f5f9;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+  }
+  .buyer-timing-badge-green {
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1.5px solid #86efac;
+  }
+  .buyer-timing-badge-yellow {
+    background: #fefce8;
+    color: #a16207;
+    border: 1.5px solid #fde047;
+  }
+  .buyer-timing-badge-red {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1.5px solid #fecaca;
+  }
+  .buyer-timing-rationale {
+    font-size: 0.78rem;
+    color: #475569;
+    margin-bottom: 4px;
+    line-height: 1.45;
+  }
+
+  /* Mobile: sections stack vertically (already the default in column layout) */
+  @media (max-width: 768px) {
+    .ia-section-header {
+      padding: 11px 12px;
+    }
+    .ia-section-title {
+      font-size: 0.85rem;
+    }
+    .ia-section-body {
+      padding: 10px 8px;
+    }
+    .sidebar-wizard-cta {
+      padding: 12px 14px;
+      font-size: 0.92rem;
+    }
+  }
+
 </style>
 
 <script>
@@ -8177,4 +8482,106 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // Initial badge render
   scpRender();
+</script>
+
+<script>
+  // ── IA Section collapse/expand (#153 issue) ───────────────────────────
+
+  // Wire up 4 collapsible section headers
+  for (let i = 1; i <= 4; i++) {
+    const btn  = document.getElementById(`ia-section-${i}-btn`) as HTMLButtonElement | null;
+    const body = document.getElementById(`ia-section-${i}-body`) as HTMLElement | null;
+    if (!btn || !body) continue;
+
+    btn.addEventListener("click", () => {
+      const expanded = btn.getAttribute("aria-expanded") === "true";
+      const nowExpanded = !expanded;
+
+      btn.setAttribute("aria-expanded", String(nowExpanded));
+      const chevron = btn.querySelector(".ia-section-chevron") as HTMLElement | null;
+      if (chevron) chevron.textContent = nowExpanded ? "▲" : "▼";
+
+      if (nowExpanded) {
+        body.removeAttribute("hidden");
+        body.classList.remove("ia-section-body-hidden");
+      } else {
+        body.setAttribute("hidden", "");
+        body.classList.add("ia-section-body-hidden");
+      }
+    });
+  }
+
+  // Keep proxy checkboxes (s2, s3 variants) in sync with canonical hidden toggles
+  function syncProxyCheckbox(proxyId: string, canonicalId: string): void {
+    const proxy     = document.getElementById(proxyId)     as HTMLInputElement | null;
+    const canonical = document.getElementById(canonicalId) as HTMLInputElement | null;
+    if (!proxy || !canonical) return;
+    proxy.checked = canonical.checked; // init from current state
+    // When canonical changes (e.g. from URL params or reset), mirror to proxy
+    canonical.addEventListener("change", () => { proxy.checked = canonical.checked; });
+  }
+
+  syncProxyCheckbox("buyer-score-toggle-s2",        "buyer-score-toggle");
+  syncProxyCheckbox("supply-pressure-toggle-s2",    "supply-pressure-toggle");
+  syncProxyCheckbox("completion-overlay-toggle-s2", "completion-overlay-toggle");
+  syncProxyCheckbox("choropleth-toggle-s3",         "choropleth-toggle");
+  syncProxyCheckbox("volatility-toggle-s3",         "volatility-toggle");
+  syncProxyCheckbox("presale-spread-toggle-s3",     "presale-spread-toggle");
+  syncProxyCheckbox("mrt-premium-toggle-s3",        "mrt-premium-toggle");
+  syncProxyCheckbox("mrt-tier-toggle-s3",           "mrt-tier-toggle");
+  syncProxyCheckbox("affordability-overlay-s1",     "affordability-overlay");
+
+  // ── Buyer Timing Card — update on district-buyer-timing event (issue #153) ──
+
+  const timingBadge     = document.getElementById("buyer-timing-badge")     as HTMLElement | null;
+  const timingRationale = document.getElementById("buyer-timing-rationale") as HTMLElement | null;
+
+  function expandIaSection(n) {
+    var btn=document.getElementById('ia-section-'+n+'-btn');
+    var body=document.getElementById('ia-section-'+n+'-body');
+    if(!btn||!body||btn.getAttribute('aria-expanded')==='true')return;
+    btn.setAttribute('aria-expanded','true');
+    var ch=btn.querySelector('.ia-section-chevron');if(ch)ch.textContent='▲';
+    body.removeAttribute('hidden');body.classList.remove('ia-section-body-hidden');
+  }
+  ['yoy-signal','stats-histogram','district-trend','district-price-trend'].forEach(function(ev){document.addEventListener(ev,function(){expandIaSection(3);});});
+  document.addEventListener('district-similar',function(){expandIaSection(4);});
+
+  document.addEventListener("district-buyer-timing", (e: Event) => {
+    expandIaSection(2);
+    const { score, label, emoji, rationale } = (e as CustomEvent<{
+      score: number | null;
+      label: string;
+      emoji: string;
+      rationale: string;
+    }>).detail;
+
+    if (!timingBadge || !timingRationale) return;
+
+    // Remove prior badge classes
+    timingBadge.className = "buyer-timing-badge";
+
+    if (score === null) {
+      timingBadge.textContent = "資料不足";
+      timingBadge.classList.add("buyer-timing-badge-empty");
+      timingRationale.textContent = rationale || "資料不足（需 ≥10 筆交易）";
+    } else {
+      const bucketCls =
+        score >= 70 ? "buyer-timing-badge-green" :
+        score >= 40 ? "buyer-timing-badge-yellow" :
+                      "buyer-timing-badge-red";
+      timingBadge.classList.add(bucketCls);
+      timingBadge.textContent = `${emoji} ${label} ${score}/100`;
+      timingRationale.textContent = rationale;
+    }
+  });
+
+  // Clear timing card when district filter is cleared
+  document.addEventListener("district-cleared", () => {
+    if (timingBadge) {
+      timingBadge.className = "buyer-timing-badge buyer-timing-badge-empty";
+      timingBadge.textContent = "—";
+    }
+    if (timingRationale) timingRationale.textContent = "選擇行政區以查看時機分析";
+  });
 </script>
