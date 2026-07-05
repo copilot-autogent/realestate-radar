@@ -140,49 +140,62 @@ describe("computeBreakEvenYears", () => {
   });
 
   it("withinLoanTerm is true when break-even ≤ term years", () => {
-    // Large rent vs small mortgage → break-even expected sooner
+    // Large rent vs small mortgage: 5M property, 80% down → principal 1M,
+    // monthly mortgage ~3,700, vs monthly rent 40,000. Rent >> mortgage,
+    // cumulative rent eclipses ownership cost very quickly.
     const result = computeBreakEvenYears(5_000_000, 80, 2.35, 30, 40_000);
-    if (result.years !== null && result.years <= 30) {
-      expect(result.withinLoanTerm).toBe(true);
-    }
+    expect(result.years).not.toBeNull();
+    expect(result.years!).toBeLessThanOrEqual(30);
+    expect(result.withinLoanTerm).toBe(true);
   });
 
   it("withinLoanTerm is false when break-even > term years", () => {
-    // Very high mortgage, moderate rent → break-even after loan term
+    // Very high mortgage, moderate rent → will take well over 30 years
     const result = computeBreakEvenYears(30_000_000, 20, 2.35, 30, 30_000);
-    if (result.years !== null && result.years > 30) {
-      expect(result.withinLoanTerm).toBe(false);
+    // At 30M, 80% LTV, monthly mortgage ≈ 94k vs 30k rent: break-even > 30yr or null
+    if (result.years !== null) {
+      expect(result.years).toBeGreaterThan(30);
     }
+    expect(result.withinLoanTerm).toBe(false);
   });
 
   it("0% appreciation gives same or longer break-even than positive appreciation", () => {
     const noAppreciation = computeBreakEvenYears(10_000_000, 20, 2.35, 30, 25_000, 0);
     const someAppreciation = computeBreakEvenYears(10_000_000, 20, 2.35, 30, 25_000, 2);
     // Appreciation reduces net ownership cost → shorter break-even
-    if (noAppreciation.years !== null && someAppreciation.years !== null) {
-      expect(someAppreciation.years).toBeLessThanOrEqual(noAppreciation.years);
-    }
+    // Both should produce a result (neither is null) for these parameters
+    expect(noAppreciation.years).not.toBeNull();
+    expect(someAppreciation.years).not.toBeNull();
+    expect(someAppreciation.years!).toBeLessThanOrEqual(noAppreciation.years!);
   });
 
   it("higher rent → earlier break-even year", () => {
     const lowerRent = computeBreakEvenYears(10_000_000, 20, 2.35, 30, 20_000);
     const higherRent = computeBreakEvenYears(10_000_000, 20, 2.35, 30, 40_000);
-    if (lowerRent.years !== null && higherRent.years !== null) {
-      expect(higherRent.years).toBeLessThanOrEqual(lowerRent.years);
+    // Higher rent: cumulative rent accumulates faster, catches up sooner
+    expect(higherRent.years).not.toBeNull();
+    if (lowerRent.years !== null) {
+      expect(higherRent.years!).toBeLessThanOrEqual(lowerRent.years);
     }
   });
 
   it("zero rate mortgage uses principal/term calculation correctly", () => {
+    // 0% rate, 100% LTV (0% down), 30yr: monthly = 5M/360 ≈ 13,889 < 15k rent
+    // Ownership cost/yr ≈ 13,889×12 + 15,000 (0.3%) = 181,667; rent/yr = 180,000
+    // These are very close — just verify a valid result comes back
     const result = computeBreakEvenYears(5_000_000, 0, 0, 30, 15_000);
-    // With 0% rate, monthly mortgage = 5M / 360 ≈ 13,889 NT$ < 15,000 rent
-    // So buying is cheaper from month 1 → break-even likely very soon
-    expect(result).toBeDefined();
+    expect(result).toHaveProperty("years");
+    expect(result).toHaveProperty("withinLoanTerm");
   });
 
-  it("very high appreciation can produce early break-even on expensive property", () => {
-    // 3% appreciation on 10M property → ~300k/yr gain reducing net ownership cost
-    const result = computeBreakEvenYears(10_000_000, 20, 2.35, 30, 20_000, 3);
-    expect(result).toBeDefined(); // should not throw
+  it("returns null for NaN appreciation", () => {
+    const result = computeBreakEvenYears(10_000_000, 20, 2.35, 30, 25_000, NaN);
+    expect(result.years).toBeNull();
+  });
+
+  it("returns null for Infinity appreciation", () => {
+    const result = computeBreakEvenYears(10_000_000, 20, 2.35, 30, 25_000, Infinity);
+    expect(result.years).toBeNull();
   });
 
   it("returns struct with years and withinLoanTerm fields", () => {
@@ -218,7 +231,13 @@ describe("suggestMonthlyRent", () => {
     expect(rent40 / rent20).toBeCloseTo(2, 5);
   });
 
-  it("defaults to 30 ping when area is 0", () => {
+  it("defaults to 30 ping when area is explicitly 0", () => {
+    const rentZero = suggestMonthlyRent("台北市", 0);
+    const rent30 = suggestMonthlyRent("台北市", 30);
+    expect(rentZero).toBe(rent30);
+  });
+
+  it("defaults to 30 ping when no area arg provided", () => {
     const rentDefault = suggestMonthlyRent("台北市");
     const rent30 = suggestMonthlyRent("台北市", 30);
     expect(rentDefault).toBe(rent30);
@@ -295,6 +314,20 @@ describe("computeRentRatioSummary", () => {
     const s1 = computeRentRatioSummary(10_000_000, 20_000, 20, 2.35, 30);
     const s2 = computeRentRatioSummary(10_000_000, 20_000, 20, 2.35, 30, 0);
     expect(s1!.breakEven.years).toBe(s2!.breakEven.years);
+  });
+
+  it("returns null when down payment is out of range", () => {
+    expect(computeRentRatioSummary(10_000_000, 20_000, 110, 2.35, 30)).toBeNull();
+    expect(computeRentRatioSummary(10_000_000, 20_000, -5, 2.35, 30)).toBeNull();
+  });
+
+  it("returns null when rate is negative", () => {
+    expect(computeRentRatioSummary(10_000_000, 20_000, 20, -1, 30)).toBeNull();
+  });
+
+  it("returns null when term is zero or negative", () => {
+    expect(computeRentRatioSummary(10_000_000, 20_000, 20, 2.35, 0)).toBeNull();
+    expect(computeRentRatioSummary(10_000_000, 20_000, 20, 2.35, -5)).toBeNull();
   });
 
   it("non-zero appreciation changes break-even vs 0%", () => {

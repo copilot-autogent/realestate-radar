@@ -130,10 +130,13 @@ export function computeBreakEvenYears(
     !Number.isFinite(downPaymentPct) || downPaymentPct < 0 || downPaymentPct > 100 ||
     !Number.isFinite(annualRatePercent) || annualRatePercent < 0 ||
     !Number.isFinite(termYears) || termYears <= 0 ||
-    !Number.isFinite(monthlyRentNTD) || monthlyRentNTD <= 0
+    !Number.isFinite(monthlyRentNTD) || monthlyRentNTD <= 0 ||
+    !Number.isFinite(annualAppreciationPct)
   ) {
     return { years: null, withinLoanTerm: false };
   }
+  // Clamp appreciation to a reasonable range to avoid runaway/negative ownership costs
+  const safeAppreciation = Math.max(-20, Math.min(20, annualAppreciationPct));
 
   const loanPct = Math.max(0, Math.min(100, 100 - downPaymentPct));
   const principalNTD = totalPriceNTD * (loanPct / 100);
@@ -152,7 +155,7 @@ export function computeBreakEvenYears(
     cumulativeOwnership += annualMortgage + annualOwnershipFixedCost;
 
     // Subtract appreciation: property gains value each year
-    const appreciationThisYear = propertyValue * (annualAppreciationPct / 100);
+    const appreciationThisYear = propertyValue * (safeAppreciation / 100);
     propertyValue += appreciationThisYear;
     // Net ownership cost is reduced by appreciation (gain on asset)
     cumulativeOwnership -= appreciationThisYear;
@@ -203,7 +206,10 @@ export function computeRentRatioSummary(
 ): RentRatioSummary | null {
   if (
     !Number.isFinite(totalPriceNTD) || totalPriceNTD <= 0 ||
-    !Number.isFinite(monthlyRentNTD) || monthlyRentNTD <= 0
+    !Number.isFinite(monthlyRentNTD) || monthlyRentNTD <= 0 ||
+    !Number.isFinite(downPaymentPct) || downPaymentPct < 0 || downPaymentPct > 100 ||
+    !Number.isFinite(annualRatePercent) || annualRatePercent < 0 ||
+    !Number.isFinite(termYears) || termYears <= 0
   ) return null;
 
   const annualRentNTD = monthlyRentNTD * 12;

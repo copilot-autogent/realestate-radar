@@ -2230,6 +2230,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       suggestMonthlyRent,
       DEFAULT_RENT_PER_PING,
       DEFAULT_RENT_PER_PING_FALLBACK,
+      MAX_BREAK_EVEN_YEARS: RR_MAX_YEARS,
     } = await import("../lib/rentRatioUtils.js");
 
     const { computeMonthlyPayment } = await import("../lib/loanProgramUtils.js");
@@ -2298,7 +2299,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       // Break-even
       const be = computeBreakEvenYears(priceNTD, safeDown, safeRate, 30, rentNTD, safeAppr);
       if (be.years === null) {
-        rrBreakevenVal.textContent = `> ${60} 年（不建議購買）`;
+        rrBreakevenVal.textContent = `> ${RR_MAX_YEARS} 年（不建議購買）`;
       } else {
         const withinNote = be.withinLoanTerm ? "（貸款期間內回本）" : "（貸款還清後）";
         rrBreakevenVal.textContent = `約 ${be.years} 年 ${withinNote}`;
