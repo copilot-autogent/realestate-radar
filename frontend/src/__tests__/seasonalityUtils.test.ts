@@ -203,12 +203,11 @@ describe("computeMonthlySeasonality — guards", () => {
   });
 
   it("normalises full-width district names in features (NFKC)", () => {
-    // Features use full-width district name (e.g. from a gov CSV field)
-    // U+FF24U+FF41U+FF4EU+FF41U+FF41 = ｄａｎａａ — use real full-width CJK:
-    // "大" in full-width: ｄ-style is not common; instead use full-width latin in district
-    // Simulate: feature has "Ａ區" (full-width A = U+FF21), search with ASCII "A區"
-    const fullWidthDistrict = "\uFF21\u533A"; // Ａ區
-    const halfWidthDistrict = "A\u533A";      // A区 → NFKC → same
+    // Features use full-width ASCII letter in district name (U+FF21 = Ａ, full-width A).
+    // computeMonthlySeasonality normalises via NFKC, so querying with half-width "A"
+    // should still match the full-width "Ａ" in the feature data.
+    const fullWidthDistrict = "\uFF21\u533A"; // Ａ區 (full-width A + 區)
+    const halfWidthDistrict = "A\u533A";      // A區 (half-width A + 區)
     const features = makeMultiYearFeatures(fullWidthDistrict, "台北市", 2021, 3, 300000);
     // querying with half-width should match via NFKC normalization
     const result = computeMonthlySeasonality(features, halfWidthDistrict, "台北市");

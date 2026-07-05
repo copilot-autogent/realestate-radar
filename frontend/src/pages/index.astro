@@ -5752,7 +5752,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (volumeLabel) volumeLabel.style.display = "block";
     if (priceLabel) priceLabel.style.display = "block";
 
-    // ── Buy-timing badge ───────────────────────────────────────────────────
+    await ensureChart();
+    if (seq !== seasonalRenderSeq) return; // stale event — newer click already in progress
+
+    // ── Buy-timing badge (rendered after stale guard to avoid stale state) ─
     if (badgeEl && currentMonthTier) {
       const tierInfo: Record<string, { cls: string; label: string }> = {
         low:  { cls: "tier-low",  label: "🟢 現在是淡季（歷史低價月）" },
@@ -5766,9 +5769,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
         badgeEl.style.display = "inline-flex";
       }
     }
-
-    await ensureChart();
-    if (seq !== seasonalRenderSeq) return; // stale event — newer click already in progress
 
     // ── Volume radar chart ─────────────────────────────────────────────────
     if (seasonalChartInstance) {
@@ -5879,7 +5879,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
             tooltip: {
               callbacks: {
                 label: (ctx: any) => {
-                  const v = ctx.parsed.y as number;
+                  const v = ctx.parsed.y;
+                  if (v == null) return "";
                   const tier = v < 95 ? " 🟢淡季" : v > 105 ? " 🔴旺季" : " 🟡平季";
                   return `指數 ${v}${tier}`;
                 },
