@@ -250,9 +250,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <p class="watchlist-hint">點擊地圖行政區，按「⭐ 關注此行政區」可追蹤均價變動（最多 3 個）。</p>
       </div>
 
-      <!-- ════════════════════════════════════
-           IA Section ① 我能負擔嗎？  (expanded by default)
- -->           ═══════════════════════════════════════
+      <!-- IA Section 1: affordability (expanded) -->
       <div class="ia-section" id="ia-section-1">
         <button class="ia-section-header" aria-expanded="true" aria-controls="ia-section-1-body" id="ia-section-1-btn">
           <span class="ia-section-title">① 我能負擔嗎？</span>
@@ -607,9 +605,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
             <button id="rr-reset-btn" class="rr-reset-btn" aria-label="重設租售比試算器">重設</button>
           </div>
 
-          <div id="stats-panel" class="stats-panel">
-
-          <!-- Affordability overlay
 
           <!-- Affordability overlay toggle (contextual) -->
           <div class="ia-toggle-row">
@@ -624,8 +619,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </div><!-- /ia-section-1 -->
 
       <!-- ═══════════════════════════════════════════════════════════
-exit  (collapsed by default)
-           ═══════════════════════════════════════════════════════════ -->
+      <!-- IA Section 2: timing (collapsed) -->
       <div class="ia-section" id="ia-section-2">
         <button class="ia-section-header" aria-expanded="false" aria-controls="ia-section-2-body" id="ia-section-2-btn">
           <span class="ia-section-title">② 現在是好時機嗎？</span>
@@ -677,7 +671,7 @@ exit  (collapsed by default)
           </div>
 
           <!-- Seasonal panel -->
-          <div id="seasonal-panel" class="seasonal-panel" style="display:none" aria-">
+          <div id="seasonal-panel" class="seasonal-panel" style="display:none" aria-label="季節性成交規律面板">
             <h3>📅 季節性成交規律<span id="seasonal-district-label" class="seasonal-district-label"></span></h3>
             <!-- Buy-timing badge -->
             <div id="seasonal-tier-badge" class="seasonal-tier-badge" style="display:none" role="status" aria-live="polite"></div>
@@ -720,8 +714,7 @@ exit  (collapsed by default)
             <div class="completion-city-select-row">
               <label for="completion-city-select">縣市</label>
               <select id="completion-city-select">
-                <option value="all">全部六都</option>
-</option>                <option value="台北市">
+                <option value="台北市">台北市</option>
                 <option value="新北市">新北市</option>
                 <option value="桃園市">桃園市</option>
                 <option value="台中市">台中市</option>
@@ -740,9 +733,7 @@ exit  (collapsed by default)
         </div><!-- /ia-section-2-body -->
       </div><!-- /ia-section-2 -->
 
-      <!-- ══════════════════════════════════════════════════════════
-           IA Section ③ 這個價格合理嗎？  (collapsed by default)
- -->           ══════════════════════════════════════════════════════════
+      <!-- IA Section 3: price fairness (collapsed) -->
       <div class="ia-section" id="ia-section-3">
         <button class="ia-section-header" aria-expanded="false" aria-controls="ia-section-3-body" id="ia-section-3-btn">
           <span class="ia-section-title">③ 這個價格合理嗎？</span>
@@ -881,9 +872,7 @@ exit  (collapsed by default)
         </div><!-- /ia-section-3-body -->
       </div><!-- /ia-section-3 -->
 
-      <!-- ═════════════════════════════════════════════════════
-           IA Section ④ 有沒有更便宜的替代方案？  (collapsed by default)
- -->           ═════════════════════════════════════════════════
+      <!-- IA Section 4: alternatives (collapsed) -->
       <div class="ia-section" id="ia-section-4">
         <button class="ia-section-header" aria-expanded="false" aria-controls="ia-section-4-body" id="ia-section-4-btn">
           <span class="ia-section-title">④ 有沒有更便宜的替代方案？</span>
@@ -5405,9 +5394,9 @@ exit  (collapsed by default)
     line-height: 1.5;
   }
 
-  /* ═════════════════════
+  /* ═══════════════════════════════════════════════════════════════
      Buyer Timing Card — prominent card in Section ②
- */     ═══════════════════════════
+     ═══════════════════════════════════════════════════════════════ */
   .buyer-timing-card {
     background: #f0f9ff;
     border: 1.5px solid #bae6fd;
@@ -8527,6 +8516,7 @@ exit  (collapsed by default)
     const proxy     = document.getElementById(proxyId)     as HTMLInputElement | null;
     const canonical = document.getElementById(canonicalId) as HTMLInputElement | null;
     if (!proxy || !canonical) return;
+    proxy.checked = canonical.checked; // init from current state
     // When canonical changes (e.g. from URL params or reset), mirror to proxy
     canonical.addEventListener("change", () => { proxy.checked = canonical.checked; });
   }
@@ -8546,7 +8536,19 @@ exit  (collapsed by default)
   const timingBadge     = document.getElementById("buyer-timing-badge")     as HTMLElement | null;
   const timingRationale = document.getElementById("buyer-timing-rationale") as HTMLElement | null;
 
+  function expandIaSection(n) {
+    var btn=document.getElementById('ia-section-'+n+'-btn');
+    var body=document.getElementById('ia-section-'+n+'-body');
+    if(!btn||!body||btn.getAttribute('aria-expanded')==='true')return;
+    btn.setAttribute('aria-expanded','true');
+    var ch=btn.querySelector('.ia-section-chevron');if(ch)ch.textContent='▲';
+    body.removeAttribute('hidden');body.classList.remove('ia-section-body-hidden');
+  }
+  ['yoy-signal','stats-histogram','district-trend','district-price-trend'].forEach(function(ev){document.addEventListener(ev,function(){expandIaSection(3);});});
+  document.addEventListener('district-similar',function(){expandIaSection(4);});
+
   document.addEventListener("district-buyer-timing", (e: Event) => {
+    expandIaSection(2);
     const { score, label, emoji, rationale } = (e as CustomEvent<{
       score: number | null;
       label: string;

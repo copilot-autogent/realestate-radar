@@ -4609,7 +4609,7 @@
     // Dispatch buyer timing score to sidebar card (issue #153 — IA Section ②)
     {
       const featureCityForBuyer = (e.features[0].properties.city as string | undefined) ?? activeCity ?? undefined;
-      const btScore = computeBuyerTimingScore(district, featureCityForBuyer ?? undefined);
+      const btScore = computeBuyerTimingScore(district, featureCityForBuyer);
       let btLabel = "—"; let btEmoji = ""; let btRationale = "選擇行政區以查看時機分析";
       if (btScore !== null) {
         const bkt = buyerScoreBucket(btScore);
@@ -4621,7 +4621,7 @@
           : "目前賣方市場，議價空間較小，宜謹慎評估。";
       }
       document.dispatchEvent(new CustomEvent("district-buyer-timing", {
-        detail: { district, city: featureCityForBuyer ?? "", score: btScore, label: btLabel, emoji: btEmoji, rationale: btRationale },
+        detail: { district, city: featureCityForBuyer, score: btScore, label: btLabel, emoji: btEmoji, rationale: btRationale },
       }));
     }
 
