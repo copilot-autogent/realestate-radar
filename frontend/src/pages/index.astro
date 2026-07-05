@@ -594,7 +594,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <!-- Buy-timing badge -->
         <div id="seasonal-tier-badge" class="seasonal-tier-badge" style="display:none" role="status" aria-live="polite"></div>
         <!-- Insufficient data guard -->
-        <div id="seasonal-insufficient" class="seasonal-insufficient" style="display:none">資料不足（需 ≥3 年歷史資料）</div>
+        <div id="seasonal-insufficient" class="seasonal-insufficient" style="display:none">資料不足（需 ≥3 年且 ≥12 個月歷史資料）</div>
         <!-- Monthly volume radar chart -->
         <p class="seasonal-note" id="seasonal-volume-label">月均成交量（歷年平均）</p>
         <canvas id="seasonal-chart" width="260" height="200" aria-label="月均成交量雷達圖" role="img"></canvas>
@@ -5879,20 +5879,18 @@ const showBuyersMarket = !isStale && dataYear !== null;
             tooltip: {
               callbacks: {
                 label: (ctx: any) => {
-                  const v = ctx.parsed.y as number | null;
-                  if (v === null) return "資料不足";
+                  const v = ctx.parsed.y as number;
                   const tier = v < 95 ? " 🟢淡季" : v > 105 ? " 🔴旺季" : " 🟡平季";
                   return `指數 ${v}${tier}`;
                 },
               },
             },
-            annotation: undefined,
           },
           scales: {
             y: {
               min: yMin,
               max: yMax,
-              ticks: { font: { size: 9 }, maxTicksLimit: 5, callback: (v: any) => `${v}` },
+              ticks: { font: { size: 9 }, maxTicksLimit: 5 },
               grid: { color: "rgba(0,0,0,0.05)" },
             },
             x: {

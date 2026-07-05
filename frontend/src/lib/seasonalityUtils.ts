@@ -194,7 +194,14 @@ export function computeMonthlySeasonality(
   });
 
   // ── Current-month tier ───────────────────────────────────────────────────
-  const currentMonthIdx = ((nowMonth != null ? nowMonth : new Date().getMonth() + 1) - 1 + 12) % 12;
+  // Resolve the current calendar month (1-based).
+  // If nowMonth is out of range [1–12], fall back to the system clock to prevent
+  // silent mismapping (e.g. a 0-based Date#getMonth() value would wrap January → December).
+  const resolvedMonth =
+    nowMonth != null && Number.isInteger(nowMonth) && nowMonth >= 1 && nowMonth <= 12
+      ? nowMonth
+      : new Date().getMonth() + 1;
+  const currentMonthIdx = resolvedMonth - 1; // 0-based index
   const currentIndex = priceIndexByMonth[currentMonthIdx];
   let currentMonthTier: SeasonalityTier | null = null;
   if (currentIndex !== null) {
