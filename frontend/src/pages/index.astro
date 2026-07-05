@@ -5749,8 +5749,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (insuffEl) insuffEl.style.display = "none";
     canvas.style.display = "block";
     if (priceCanvas) priceCanvas.style.display = "block";
-    if (volumeLabel) volumeLabel.style.display = "";
-    if (priceLabel) priceLabel.style.display = "";
+    if (volumeLabel) volumeLabel.style.display = "block";
+    if (priceLabel) priceLabel.style.display = "block";
 
     // ── Buy-timing badge ───────────────────────────────────────────────────
     if (badgeEl && currentMonthTier) {
@@ -5787,6 +5787,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
       }
       return "rgba(100,116,139,0.35)"; // slate — normal
     });
+    const radarBorderColors = monthAvgs.map((v) =>
+      v > 0 && v < threshold ? "rgba(13,148,136,1)" : "rgba(100,116,139,0.7)"
+    );
 
     seasonalChartInstance = new Chart(canvas, {
       type: "radar",
@@ -5798,7 +5801,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
           backgroundColor: "rgba(13,148,136,0.12)",
           borderColor: "rgba(13,148,136,0.7)",
           pointBackgroundColor: radarColors,
-          pointBorderColor: radarColors.map(c => c.replace("0.6","1").replace("0.35","0.7")),
+          pointBorderColor: radarBorderColors,
           pointRadius: 4,
           borderWidth: 2,
         }],
@@ -5836,12 +5839,25 @@ const showBuyersMarket = !isStale && dataYear !== null;
         seasonalPriceChartInstance = null;
       }
 
-      const priceColors = (priceIndexByMonth ?? []).map(v => {
+      const priceColors     = (priceIndexByMonth ?? []).map(v => {
         if (v === null) return "rgba(203,213,225,0.4)";
         if (v < 95)  return "rgba(22,163,74,0.65)";   // green — cheap
         if (v > 105) return "rgba(220,38,38,0.65)";   // red — expensive
         return "rgba(100,116,139,0.45)";               // slate — average
       });
+      const priceBorderColors = (priceIndexByMonth ?? []).map(v => {
+        if (v === null) return "rgba(203,213,225,0.7)";
+        if (v < 95)  return "rgba(22,163,74,1)";
+        if (v > 105) return "rgba(220,38,38,1)";
+        return "rgba(100,116,139,0.8)";
+      });
+
+      // Dynamic y-axis bounds: pad by 10 around data range, with sensible floor/ceil
+      const validPriceIndices = (priceIndexByMonth ?? []).filter((v): v is number => v !== null);
+      const priceMin = validPriceIndices.length > 0 ? Math.min(...validPriceIndices) : 80;
+      const priceMax = validPriceIndices.length > 0 ? Math.max(...validPriceIndices) : 125;
+      const yMin = Math.max(50, Math.floor(priceMin - 10));
+      const yMax = Math.min(160, Math.ceil(priceMax + 10));
 
       seasonalPriceChartInstance = new Chart(priceCanvas, {
         type: "bar",
@@ -5851,7 +5867,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
             label: "價格季節指數",
             data: (priceIndexByMonth ?? new Array(12).fill(null)),
             backgroundColor: priceColors,
-            borderColor: priceColors.map(c => c.replace(/[\d.]+\)$/, "1)")),
+            borderColor: priceBorderColors,
             borderWidth: 1,
             borderRadius: 2,
           }],
@@ -5874,8 +5890,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
           },
           scales: {
             y: {
-              min: 80,
-              max: 125,
+              min: yMin,
+              max: yMax,
               ticks: { font: { size: 9 }, maxTicksLimit: 5, callback: (v: any) => `${v}` },
               grid: { color: "rgba(0,0,0,0.05)" },
             },

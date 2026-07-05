@@ -150,8 +150,9 @@ export function computeMonthlySeasonality(
   const distinctYears = yearsSet.size;
   const minTxMonths   = yrMoVolume.size;
 
-  // Require at least 3 distinct calendar years for a meaningful seasonality signal
-  if (distinctYears < 3) {
+  // Require at least 3 distinct calendar years AND 12 (year, month) pairs
+  // for a meaningful seasonality signal. 3 years × 1 month = 3 pairs is not enough.
+  if (distinctYears < 3 || minTxMonths < 12) {
     return { ...EMPTY, minTxMonths, distinctYears };
   }
 

@@ -152,6 +152,15 @@ describe("computeMonthlySeasonality — guards", () => {
     expect(result.distinctYears).toBe(3);
   });
 
+  it("returns sufficient=false when 3 distinct years but < 12 (year, month) pairs", () => {
+    // Only 1 month per year → 3 pairs, not enough
+    const features = makeMultiYearFeatures("大安區", "台北市", 2021, 3, 300000, [1]);
+    const result = computeMonthlySeasonality(features, "大安區", "台北市");
+    expect(result.sufficient).toBe(false);
+    expect(result.distinctYears).toBe(3);
+    expect(result.minTxMonths).toBe(3);
+  });
+
   it("filters by districtId — ignores other districts", () => {
     const features = [
       ...makeMultiYearFeatures("大安區", "台北市", 2021, 3),
@@ -193,12 +202,18 @@ describe("computeMonthlySeasonality — guards", () => {
     expect(result.sufficient).toBe(true); // 3 valid years remain
   });
 
-  it("normalises full-width district names (NFKC)", () => {
-    // Full-width district name in data
-    const features = makeMultiYearFeatures("大安區", "台北市", 2021, 3);
-    // Search with full-width: "大安區" in full-width chars
-    const result = computeMonthlySeasonality(features, "大安區".normalize("NFKC"));
+  it("normalises full-width district names in features (NFKC)", () => {
+    // Features use full-width district name (e.g. from a gov CSV field)
+    // U+FF24U+FF41U+FF4EU+FF41U+FF41 = ｄａｎａａ — use real full-width CJK:
+    // "大" in full-width: ｄ-style is not common; instead use full-width latin in district
+    // Simulate: feature has "Ａ區" (full-width A = U+FF21), search with ASCII "A區"
+    const fullWidthDistrict = "\uFF21\u533A"; // Ａ區
+    const halfWidthDistrict = "A\u533A";      // A区 → NFKC → same
+    const features = makeMultiYearFeatures(fullWidthDistrict, "台北市", 2021, 3, 300000);
+    // querying with half-width should match via NFKC normalization
+    const result = computeMonthlySeasonality(features, halfWidthDistrict, "台北市");
     expect(result.sufficient).toBe(true);
+    expect(result.distinctYears).toBe(3);
   });
 });
 
@@ -221,14 +236,17 @@ describe("computeMonthlySeasonality — volumeByMonth", () => {
   });
 
   it("sets missing months to 0 in volumeByMonth", () => {
-    // Only January and July data across 3 years
-    const features = makeMultiYearFeatures("大安區", "台北市", 2021, 3, 300000, [1, 7]);
+    // Only 4 months of data across 3 years → 12 pairs, passes the guard
+    const features = makeMultiYearFeatures("大安區", "台北市", 2021, 3, 300000, [1, 4, 7, 10]);
     const result = computeMonthlySeasonality(features, "大安區", "台北市");
-    expect(result.volumeByMonth[0]).toBeGreaterThan(0); // January
-    expect(result.volumeByMonth[6]).toBeGreaterThan(0); // July
+    expect(result.sufficient).toBe(true);
+    expect(result.volumeByMonth[0]).toBeGreaterThan(0);  // January
+    expect(result.volumeByMonth[3]).toBeGreaterThan(0);  // April
+    expect(result.volumeByMonth[6]).toBeGreaterThan(0);  // July
+    expect(result.volumeByMonth[9]).toBeGreaterThan(0);  // October
     // Other months should be 0
     for (let i = 0; i < 12; i++) {
-      if (i !== 0 && i !== 6) expect(result.volumeByMonth[i]).toBe(0);
+      if (![0, 3, 6, 9].includes(i)) expect(result.volumeByMonth[i]).toBe(0);
     }
   });
 
@@ -259,12 +277,15 @@ describe("computeMonthlySeasonality — priceIndexByMonth", () => {
   });
 
   it("returns null for months with no price data", () => {
-    // Only Jan and Feb have data
-    const features = makeMultiYearFeatures("大安區", "台北市", 2021, 3, 300000, [1, 2]);
+    // Only 4 months of data across 3 years → 12 pairs, passes the guard
+    const features = makeMultiYearFeatures("大安區", "台北市", 2021, 3, 300000, [1, 2, 3, 4]);
     const result = computeMonthlySeasonality(features, "大安區", "台北市");
+    expect(result.sufficient).toBe(true);
     expect(result.priceIndexByMonth[0]).not.toBeNull(); // January
     expect(result.priceIndexByMonth[1]).not.toBeNull(); // February
-    for (let i = 2; i < 12; i++) {
+    expect(result.priceIndexByMonth[2]).not.toBeNull(); // March
+    expect(result.priceIndexByMonth[3]).not.toBeNull(); // April
+    for (let i = 4; i < 12; i++) {
       expect(result.priceIndexByMonth[i]).toBeNull();
     }
   });
