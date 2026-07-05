@@ -72,7 +72,7 @@ function median(sorted: number[]): number {
 export function parseDateYearMonth(raw: unknown): { year: number; month: number } | null {
   if (!raw || typeof raw !== "string") return null;
   const s = raw.normalize("NFKC");
-  const m = /^(\d{4})[-/](\d{1,2})(?:[-/\s]|$)/.exec(s);
+  const m = /^(\d{4})[-/](\d{1,2})(?:[-/T\s]|$)/.exec(s);
   if (!m) return null;
   const year  = parseInt(m[1]!, 10);
   const month = parseInt(m[2]!, 10);
