@@ -588,12 +588,19 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <canvas id="age-curve-chart" width="260" height="160"></canvas>
       </div>
 
-      <!-- ── Seasonal deal-flow calendar ── -->
-      <div id="seasonal-panel" class="seasonal-panel" style="display:none">
-        <h3>📅 買方季曆<span id="seasonal-district-label" class="seasonal-district-label"></span></h3>
-        <p class="seasonal-note">月均成交量（歷年平均）</p>
-        <div id="seasonal-insufficient" class="seasonal-insufficient" style="display:none">資料不足（需 ≥24 個月歷史）</div>
-        <canvas id="seasonal-chart" width="260" height="140"></canvas>
+      <!-- ── Seasonal deal-flow calendar (issue #142) ── -->
+      <div id="seasonal-panel" class="seasonal-panel" style="display:none" aria-label="季節性成交規律面板">
+        <h3>📅 季節性成交規律<span id="seasonal-district-label" class="seasonal-district-label"></span></h3>
+        <!-- Buy-timing badge -->
+        <div id="seasonal-tier-badge" class="seasonal-tier-badge" style="display:none" role="status" aria-live="polite"></div>
+        <!-- Insufficient data guard -->
+        <div id="seasonal-insufficient" class="seasonal-insufficient" style="display:none">資料不足（需 ≥3 年且 ≥12 個月歷史資料）</div>
+        <!-- Monthly volume radar chart -->
+        <p class="seasonal-note" id="seasonal-volume-label">月均成交量（歷年平均）</p>
+        <canvas id="seasonal-chart" width="260" height="200" aria-label="月均成交量雷達圖" role="img"></canvas>
+        <!-- Price seasonality index bar chart -->
+        <p class="seasonal-note seasonal-price-label" id="seasonal-price-label">月中位價季節指數（100 = 年均）</p>
+        <canvas id="seasonal-price-chart" width="260" height="120" aria-label="月中位價季節指數條形圖" role="img"></canvas>
         <div id="seasonal-summary" class="seasonal-summary" style="display:none"></div>
       </div>
 
@@ -2502,7 +2509,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     margin-top: 4px;
   }
 
-  /* ── Seasonal deal-flow calendar panel ── */
+  /* ── Seasonal deal-flow calendar panel (issue #142) ── */
   .seasonal-panel {
     margin-top: 12px;
     background: #fff;
@@ -2514,7 +2521,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     font-size: 0.72rem;
     font-weight: 700;
     color: #475569;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -2530,11 +2537,41 @@ const showBuyersMarket = !isStale && dataYear !== null;
     color: #94a3b8;
     margin: 0 0 6px;
   }
+  .seasonal-price-label {
+    margin-top: 10px;
+  }
   .seasonal-insufficient {
     font-size: 0.72rem;
     color: #94a3b8;
     font-style: italic;
     margin-top: 4px;
+  }
+  /* Buy-timing badge */
+  .seasonal-tier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: 20px;
+    padding: 4px 12px;
+    margin-bottom: 10px;
+    width: fit-content;
+  }
+  .seasonal-tier-badge.tier-low {
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1.5px solid #86efac;
+  }
+  .seasonal-tier-badge.tier-mid {
+    background: #fefce8;
+    color: #92400e;
+    border: 1.5px solid #fde047;
+  }
+  .seasonal-tier-badge.tier-high {
+    background: #fff1f2;
+    color: #be123c;
+    border: 1.5px solid #fca5a5;
   }
   .seasonal-summary {
     margin-top: 8px;
@@ -5486,8 +5523,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
     });
   })();
 
-  // ── Seasonal deal-flow calendar chart ─────────────────────────────────────
+  // ── Seasonal deal-flow calendar chart (issue #142) ────────────────────────
   let seasonalChartInstance: any = null;
+  let seasonalPriceChartInstance: any = null;
   let seasonalRenderSeq = 0;  // stale-event guard
 
   // ── Price chart toggle: 箱型圖 | 折線圖 (issue #124) ──────────────────────
@@ -5665,37 +5703,74 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   document.addEventListener("district-seasonality", async (e: Event) => {
     const seq = ++seasonalRenderSeq;
-    const { district, monthAvgs, annualAvg, sufficient } = (e as CustomEvent).detail as {
-      district: string;
-      monthAvgs: number[];        // 12 values, index 0 = Jan
-      annualAvg: number;
-      sufficient: boolean;
-    };
+    const { district, monthAvgs, annualAvg, sufficient, priceIndexByMonth, currentMonthTier } =
+      (e as CustomEvent).detail as {
+        district: string;
+        monthAvgs: number[];              // 12 values, index 0 = Jan (volume)
+        annualAvg: number;
+        sufficient: boolean;
+        priceIndexByMonth: (number | null)[]; // price seasonality index, 100 = annual avg
+        currentMonthTier: "low" | "mid" | "high" | null;
+      };
 
-    const panel      = document.getElementById("seasonal-panel")      as HTMLDivElement | null;
-    const distLabel  = document.getElementById("seasonal-district-label") as HTMLSpanElement | null;
-    const insuffEl   = document.getElementById("seasonal-insufficient") as HTMLDivElement | null;
-    const canvas     = document.getElementById("seasonal-chart")       as HTMLCanvasElement | null;
-    const summaryEl  = document.getElementById("seasonal-summary")     as HTMLDivElement | null;
+    const panel        = document.getElementById("seasonal-panel")          as HTMLDivElement | null;
+    const distLabel    = document.getElementById("seasonal-district-label") as HTMLSpanElement | null;
+    const insuffEl     = document.getElementById("seasonal-insufficient")   as HTMLDivElement | null;
+    const canvas       = document.getElementById("seasonal-chart")          as HTMLCanvasElement | null;
+    const priceCanvas  = document.getElementById("seasonal-price-chart")   as HTMLCanvasElement | null;
+    const summaryEl    = document.getElementById("seasonal-summary")        as HTMLDivElement | null;
+    const badgeEl      = document.getElementById("seasonal-tier-badge")     as HTMLDivElement | null;
+    const volumeLabel  = document.getElementById("seasonal-volume-label")   as HTMLParagraphElement | null;
+    const priceLabel   = document.getElementById("seasonal-price-label")    as HTMLParagraphElement | null;
     if (!panel || !canvas) return;
 
     if (distLabel) distLabel.textContent = district ? `— ${district}` : "";
-    panel.style.display   = "block";
+    panel.style.display = "block";
+
+    // Reset badge
+    if (badgeEl) {
+      badgeEl.style.display = "none";
+      badgeEl.className = "seasonal-tier-badge";
+      badgeEl.textContent = "";
+    }
 
     if (!sufficient) {
-      if (insuffEl) insuffEl.style.display  = "block";
-      canvas.style.display    = "none";
-      if (summaryEl) summaryEl.style.display = "none";
+      if (insuffEl) insuffEl.style.display = "block";
+      canvas.style.display = "none";
+      if (priceCanvas) priceCanvas.style.display = "none";
+      if (summaryEl)  summaryEl.style.display = "none";
+      if (volumeLabel) volumeLabel.style.display = "none";
+      if (priceLabel) priceLabel.style.display = "none";
       if (seasonalChartInstance) { seasonalChartInstance.destroy(); seasonalChartInstance = null; }
+      if (seasonalPriceChartInstance) { seasonalPriceChartInstance.destroy(); seasonalPriceChartInstance = null; }
       return;
     }
 
     if (insuffEl) insuffEl.style.display = "none";
-    canvas.style.display   = "block";
+    canvas.style.display = "block";
+    if (priceCanvas) priceCanvas.style.display = "block";
+    if (volumeLabel) volumeLabel.style.display = "block";
+    if (priceLabel) priceLabel.style.display = "block";
 
     await ensureChart();
     if (seq !== seasonalRenderSeq) return; // stale event — newer click already in progress
 
+    // ── Buy-timing badge (rendered after stale guard to avoid stale state) ─
+    if (badgeEl && currentMonthTier) {
+      const tierInfo: Record<string, { cls: string; label: string }> = {
+        low:  { cls: "tier-low",  label: "🟢 現在是淡季（歷史低價月）" },
+        mid:  { cls: "tier-mid",  label: "🟡 現在是平季（接近年均水準）" },
+        high: { cls: "tier-high", label: "🔴 現在是旺季（歷史高價月）" },
+      };
+      const info = tierInfo[currentMonthTier];
+      if (info) {
+        badgeEl.classList.add(info.cls);
+        badgeEl.textContent = info.label;
+        badgeEl.style.display = "inline-flex";
+      }
+    }
+
+    // ── Volume radar chart ─────────────────────────────────────────────────
     if (seasonalChartInstance) {
       seasonalChartInstance.destroy();
       seasonalChartInstance = null;
@@ -5704,24 +5779,31 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const MONTH_LABELS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
     const threshold = annualAvg * 0.7;
     const buyerMonthNames: string[] = [];
-    const barColors = monthAvgs.map((v, i) => {
+
+    const radarColors = monthAvgs.map((v, i) => {
       if (v > 0 && v < threshold) {
-        buyerMonthNames.push(MONTH_LABELS[i]);
-        return "rgba(13,148,136,0.75)";   // teal — buyer window
+        buyerMonthNames.push(MONTH_LABELS[i]!);
+        return "rgba(13,148,136,0.6)"; // teal — buyer window
       }
-      return "rgba(100,116,139,0.45)";    // slate — normal
+      return "rgba(100,116,139,0.35)"; // slate — normal
     });
+    const radarBorderColors = monthAvgs.map((v) =>
+      v > 0 && v < threshold ? "rgba(13,148,136,1)" : "rgba(100,116,139,0.7)"
+    );
 
     seasonalChartInstance = new Chart(canvas, {
-      type: "bar",
+      type: "radar",
       data: {
         labels: MONTH_LABELS,
         datasets: [{
+          label: "月均成交量",
           data: monthAvgs.map(v => Math.round(v * 10) / 10),
-          backgroundColor: barColors,
-          borderColor: barColors.map(c => c.replace("0.75","1").replace("0.45","0.8")),
-          borderWidth: 1,
-          borderRadius: 3,
+          backgroundColor: "rgba(13,148,136,0.12)",
+          borderColor: "rgba(13,148,136,0.7)",
+          pointBackgroundColor: radarColors,
+          pointBorderColor: radarBorderColors,
+          pointRadius: 4,
+          borderWidth: 2,
         }],
       },
       options: {
@@ -5731,29 +5813,97 @@ const showBuyersMarket = !isStale && dataYear !== null;
           tooltip: {
             callbacks: {
               label: (ctx: any) => {
-                const v = ctx.parsed.y as number;
+                const v = ctx.parsed.r as number;
                 const mo = ctx.dataIndex;
-                const isBuyer = monthAvgs[mo] > 0 && monthAvgs[mo] < threshold;
-                return `均${v}筆${isBuyer ? " 🟢買方季" : ""}`;
+                const isBuyer = monthAvgs[mo]! > 0 && monthAvgs[mo]! < threshold;
+                return `均 ${v} 筆${isBuyer ? " 🟢買方季" : ""}`;
               },
             },
           },
         },
         scales: {
-          y: {
+          r: {
             beginAtZero: true,
-            ticks: { font: { size: 9 }, maxTicksLimit: 5 },
-            grid: { color: "rgba(0,0,0,0.05)" },
-          },
-          x: {
-            ticks: { font: { size: 9 }, maxRotation: 0 },
-            grid: { display: false },
+            ticks: { font: { size: 8 }, maxTicksLimit: 4 },
+            pointLabels: { font: { size: 9 } },
+            grid: { color: "rgba(0,0,0,0.06)" },
           },
         },
       },
     });
 
-    // Summary callout
+    // ── Price seasonality index bar chart ─────────────────────────────────
+    if (priceCanvas) {
+      if (seasonalPriceChartInstance) {
+        seasonalPriceChartInstance.destroy();
+        seasonalPriceChartInstance = null;
+      }
+
+      const priceColors     = (priceIndexByMonth ?? []).map(v => {
+        if (v === null) return "rgba(203,213,225,0.4)";
+        if (v < 95)  return "rgba(22,163,74,0.65)";   // green — cheap
+        if (v > 105) return "rgba(220,38,38,0.65)";   // red — expensive
+        return "rgba(100,116,139,0.45)";               // slate — average
+      });
+      const priceBorderColors = (priceIndexByMonth ?? []).map(v => {
+        if (v === null) return "rgba(203,213,225,0.7)";
+        if (v < 95)  return "rgba(22,163,74,1)";
+        if (v > 105) return "rgba(220,38,38,1)";
+        return "rgba(100,116,139,0.8)";
+      });
+
+      // Dynamic y-axis bounds: pad by 10 around data range, with sensible floor/ceil
+      const validPriceIndices = (priceIndexByMonth ?? []).filter((v): v is number => v !== null);
+      const priceMin = validPriceIndices.length > 0 ? Math.min(...validPriceIndices) : 80;
+      const priceMax = validPriceIndices.length > 0 ? Math.max(...validPriceIndices) : 125;
+      const yMin = Math.max(50, Math.floor(priceMin - 10));
+      const yMax = Math.min(160, Math.ceil(priceMax + 10));
+
+      seasonalPriceChartInstance = new Chart(priceCanvas, {
+        type: "bar",
+        data: {
+          labels: MONTH_LABELS,
+          datasets: [{
+            label: "價格季節指數",
+            data: (priceIndexByMonth ?? new Array(12).fill(null)),
+            backgroundColor: priceColors,
+            borderColor: priceBorderColors,
+            borderWidth: 1,
+            borderRadius: 2,
+          }],
+        },
+        options: {
+          responsive: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx: any) => {
+                  const v = ctx.parsed.y;
+                  if (v == null) return "";
+                  const tier = v < 95 ? " 🟢淡季" : v > 105 ? " 🔴旺季" : " 🟡平季";
+                  return `指數 ${v}${tier}`;
+                },
+              },
+            },
+          },
+          scales: {
+            y: {
+              min: yMin,
+              max: yMax,
+              ticks: { font: { size: 9 }, maxTicksLimit: 5 },
+              grid: { color: "rgba(0,0,0,0.05)" },
+            },
+            x: {
+              ticks: { font: { size: 9 }, maxRotation: 0 },
+              grid: { display: false },
+            },
+          },
+        },
+      });
+    }
+
+    // Summary callout: buyer-window months
     if (summaryEl) {
       if (buyerMonthNames.length > 0) {
         summaryEl.textContent = `歷史買方季：${buyerMonthNames.join("、")}（成交量 < 年均 70%，競爭者較少）`;
