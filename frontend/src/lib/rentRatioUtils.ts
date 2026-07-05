@@ -162,10 +162,6 @@ export function computeBreakEvenYears(
 
     cumulativeRent += monthlyRentNTD * 12;
 
-    // Guard: clamp net ownership cost so it can't go negative (unrealized appreciation
-    // exceeding actual cash outlays would produce spurious early break-even).
-    if (cumulativeOwnership < 0) cumulativeOwnership = 0;
-
     if (cumulativeRent >= cumulativeOwnership) {
       return {
         years: year,

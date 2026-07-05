@@ -2255,7 +2255,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const rrResetBtn     = document.getElementById("rr-reset-btn")     as HTMLButtonElement;
 
     /** Current city from district-select (used for rent hint) */
-    let rrCurrentCity = "";
+    let rrCurrentCity = (document.getElementById("city-select") as HTMLSelectElement)?.value ?? "";
 
     function rrFmt(ntd: number): string {
       if (!Number.isFinite(ntd)) return "—";
@@ -2371,7 +2371,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
         : sorted[mid]!;
       const suggested = Math.round(medianUnitWan * 30);
 
-      if (suggested > 0 && (!!district || !rrPriceInput.value)) {
+      if (suggested > 0 && !rrPriceInput.value) {
+        // Only auto-fill when the field is empty (don't overwrite user-typed values)
         rrPriceInput.value = String(suggested);
         if (rrPriceHint) {
           const label = district
