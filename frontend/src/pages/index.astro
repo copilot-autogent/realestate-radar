@@ -544,6 +544,75 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <p id="lpc-placeholder" class="lpc-placeholder">請輸入總價以查看各方案比較</p>
       </div>
 
+      <!-- 租售比試算器 (Price-to-Rent Ratio Calculator) — issue #143 -->
+      <div id="rent-ratio-panel" class="rent-ratio-panel" aria-label="租售比試算器">
+        <h3>🏡 租售比試算器</h3>
+
+        <div class="calc-inputs">
+          <div class="calc-input-row">
+            <label for="rr-price">房屋總價 (萬)</label>
+            <div class="rr-price-wrapper">
+              <input type="number" id="rr-price" placeholder="例如: 1000" min="0" step="10"
+                aria-label="房屋總價（萬元）" />
+              <span id="rr-price-hint" class="rr-price-hint"></span>
+            </div>
+          </div>
+          <div class="calc-input-row">
+            <label for="rr-rent">每月租金 (元)</label>
+            <div class="rr-rent-wrapper">
+              <input type="number" id="rr-rent" placeholder="例如: 25000" min="0" step="1000"
+                aria-label="每月租金（新台幣）" />
+              <span id="rr-rent-hint" class="rr-rent-hint"></span>
+            </div>
+          </div>
+          <div class="calc-input-row">
+            <label for="rr-down">頭期款 (%)</label>
+            <input type="number" id="rr-down" value="20" min="0" max="100" step="5"
+              aria-label="頭期款比例（%）" />
+          </div>
+          <div class="calc-input-row">
+            <label for="rr-rate">貸款利率 (%)</label>
+            <input type="number" id="rr-rate" value="2.35" min="0" max="10" step="0.05"
+              aria-label="年利率（%）" />
+          </div>
+          <div class="calc-input-row">
+            <label for="rr-appreciation">年增值率 (%)</label>
+            <input type="number" id="rr-appreciation" value="0" min="-5" max="10" step="0.5"
+              aria-label="年增值率（%）" />
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div id="rr-result" class="rr-result" style="display:none" aria-live="polite">
+          <!-- Row 1: Price-to-rent ratio -->
+          <div class="rr-metric-row">
+            <span class="rr-metric-label">租售比</span>
+            <span id="rr-ratio-value" class="rr-ratio-value"></span>
+            <span id="rr-tier-badge" class="rr-tier-badge"></span>
+          </div>
+          <!-- Row 2: Break-even -->
+          <div class="rr-metric-row">
+            <span class="rr-metric-label">損益平衡年限</span>
+            <span id="rr-breakeven-value" class="rr-breakeven-value"></span>
+          </div>
+          <!-- Row 3: Monthly comparison -->
+          <div class="rr-monthly-compare" aria-label="月租 vs 月貸比較">
+            <div id="rr-rent-card" class="rr-compare-card">
+              <span class="rr-compare-label">月租</span>
+              <span id="rr-monthly-rent" class="rr-compare-amount"></span>
+            </div>
+            <div class="rr-compare-vs">vs</div>
+            <div id="rr-mortgage-card" class="rr-compare-card">
+              <span class="rr-compare-label">月貸</span>
+              <span id="rr-monthly-mortgage" class="rr-compare-amount"></span>
+            </div>
+          </div>
+          <p id="rr-compare-note" class="rr-compare-note"></p>
+        </div>
+        <p id="rr-placeholder" class="rr-placeholder">請輸入總價與租金以查看租售分析</p>
+        <button id="rr-reset-btn" class="rr-reset-btn" aria-label="重設租售比試算器">重設</button>
+      </div>
+
       <div id="stats-panel" class="stats-panel">
         <h3>統計資訊</h3>
         {showBuyersMarket && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
@@ -2151,6 +2220,189 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   // ============================================================
+  // ---- 租售比試算器 (issue #143) ----------------------------
+  // ============================================================
+  {
+    const {
+      computePriceToRentRatio,
+      rentTierLabel,
+      computeBreakEvenYears,
+      suggestMonthlyRent,
+      DEFAULT_RENT_PER_PING,
+      DEFAULT_RENT_PER_PING_FALLBACK,
+    } = await import("../lib/rentRatioUtils.js");
+
+    const { computeMonthlyPayment } = await import("../lib/loanProgramUtils.js");
+
+    const rrPriceInput   = document.getElementById("rr-price")         as HTMLInputElement;
+    const rrRentInput    = document.getElementById("rr-rent")          as HTMLInputElement;
+    const rrDownInput    = document.getElementById("rr-down")          as HTMLInputElement;
+    const rrRateInput    = document.getElementById("rr-rate")          as HTMLInputElement;
+    const rrApprInput    = document.getElementById("rr-appreciation")  as HTMLInputElement;
+    const rrPriceHint    = document.getElementById("rr-price-hint")    as HTMLSpanElement;
+    const rrRentHint     = document.getElementById("rr-rent-hint")     as HTMLSpanElement;
+    const rrResult       = document.getElementById("rr-result")        as HTMLDivElement;
+    const rrPlaceholder  = document.getElementById("rr-placeholder")   as HTMLParagraphElement;
+    const rrRatioValue   = document.getElementById("rr-ratio-value")   as HTMLSpanElement;
+    const rrTierBadge    = document.getElementById("rr-tier-badge")    as HTMLSpanElement;
+    const rrBreakevenVal = document.getElementById("rr-breakeven-value") as HTMLSpanElement;
+    const rrMonthlyRent  = document.getElementById("rr-monthly-rent")  as HTMLSpanElement;
+    const rrMonthlyMtg   = document.getElementById("rr-monthly-mortgage") as HTMLSpanElement;
+    const rrRentCard     = document.getElementById("rr-rent-card")     as HTMLDivElement;
+    const rrMortgageCard = document.getElementById("rr-mortgage-card") as HTMLDivElement;
+    const rrCompareNote  = document.getElementById("rr-compare-note")  as HTMLParagraphElement;
+    const rrResetBtn     = document.getElementById("rr-reset-btn")     as HTMLButtonElement;
+
+    /** Current city from district-select (used for rent hint) */
+    let rrCurrentCity = "";
+
+    function rrFmt(ntd: number): string {
+      if (!Number.isFinite(ntd)) return "—";
+      return Math.round(ntd).toLocaleString("zh-TW") + " 元";
+    }
+
+    function rrRender(): void {
+      const priceWan = parseFloat(rrPriceInput?.value ?? "");
+      const rentNTD  = parseFloat(rrRentInput?.value  ?? "");
+      const downPct  = parseFloat(rrDownInput?.value  ?? "20");
+      const ratePct  = parseFloat(rrRateInput?.value  ?? "2.35");
+      const apprPct  = parseFloat(rrApprInput?.value  ?? "0");
+
+      if (!Number.isFinite(priceWan) || priceWan <= 0 ||
+          !Number.isFinite(rentNTD)  || rentNTD  <= 0) {
+        rrResult.style.display = "none";
+        rrPlaceholder.style.display = "block";
+        return;
+      }
+
+      const priceNTD = priceWan * 10_000;
+      const annualRent = rentNTD * 12;
+      const safeDown  = Number.isFinite(downPct) && downPct >= 0 && downPct <= 100 ? downPct : 20;
+      const safeRate  = Number.isFinite(ratePct) && ratePct >= 0 ? ratePct : 2.35;
+      const safeAppr  = Number.isFinite(apprPct) ? apprPct : 0;
+
+      // Ratio
+      const ratio = computePriceToRentRatio(priceNTD, annualRent);
+      const tier  = rentTierLabel(ratio);
+
+      rrRatioValue.textContent = Number.isFinite(ratio) ? ratio.toFixed(1) : "—";
+
+      rrTierBadge.className = "rr-tier-badge";
+      rrTierBadge.classList.add(`rr-tier-${tier}`);
+      rrTierBadge.textContent = tier === "affordable"
+        ? "買划算（< 30）"
+        : tier === "neutral"
+        ? "中性（30–50）"
+        : "租划算（> 50）";
+
+      // Break-even
+      const be = computeBreakEvenYears(priceNTD, safeDown, safeRate, 30, rentNTD, safeAppr);
+      if (be.years === null) {
+        rrBreakevenVal.textContent = `> ${60} 年（不建議購買）`;
+      } else {
+        const withinNote = be.withinLoanTerm ? "（貸款期間內回本）" : "（貸款還清後）";
+        rrBreakevenVal.textContent = `約 ${be.years} 年 ${withinNote}`;
+      }
+
+      // Monthly comparison
+      const loanPct = Math.max(0, Math.min(100, 100 - safeDown));
+      const principalNTD = priceNTD * (loanPct / 100);
+      const monthlyMtg = computeMonthlyPayment(principalNTD, safeRate, 30);
+
+      rrMonthlyRent.textContent  = rrFmt(rentNTD);
+      rrMonthlyMtg.textContent   = rrFmt(monthlyMtg);
+
+      const rentCheaper = rentNTD < monthlyMtg;
+      rrRentCard.classList.toggle("rr-cheaper", rentCheaper);
+      rrMortgageCard.classList.toggle("rr-cheaper", !rentCheaper);
+
+      if (rentCheaper) {
+        const diff = monthlyMtg - rentNTD;
+        rrCompareNote.textContent = `租屋每月省 ${rrFmt(diff)}（不含增值）`;
+      } else {
+        const diff = rentNTD - monthlyMtg;
+        rrCompareNote.textContent = `買房月付省 ${rrFmt(diff)}（不含增值）`;
+      }
+
+      rrPlaceholder.style.display = "none";
+      rrResult.style.display      = "block";
+    }
+
+    function rrUpdateRentHint(): void {
+      if (!rrRentHint) return;
+      if (rrCurrentCity) {
+        const perPing = (DEFAULT_RENT_PER_PING as Record<string, number>)[rrCurrentCity]
+          ?? (DEFAULT_RENT_PER_PING_FALLBACK as number);
+        rrRentHint.textContent = `${rrCurrentCity} 參考：~${perPing.toLocaleString("zh-TW")} 元/坪×30坪`;
+      } else {
+        rrRentHint.textContent = "";
+      }
+    }
+
+    rrPriceInput?.addEventListener("input", rrRender);
+    rrRentInput?.addEventListener("input", rrRender);
+    rrDownInput?.addEventListener("input", rrRender);
+    rrRateInput?.addEventListener("input", rrRender);
+    rrApprInput?.addEventListener("input", rrRender);
+
+    // Auto-fill price from district click
+    document.addEventListener("stats-histogram", (e: Event) => {
+      const { pricesWan: rawPrices, district, city } =
+        (e as CustomEvent<{ pricesWan?: number[]; district?: string; city?: string }>).detail;
+
+      if (city) {
+        rrCurrentCity = city;
+        rrUpdateRentHint();
+        // Suggest rent if rent field is empty
+        if (!rrRentInput.value) {
+          const suggested = suggestMonthlyRent(city, 30);
+          rrRentInput.value = String(suggested);
+        }
+      }
+
+      if (!rawPrices || rawPrices.length === 0) return;
+      const finite = rawPrices.filter((p: number) => Number.isFinite(p) && p > 0);
+      if (finite.length === 0) return;
+      const sorted = [...finite].sort((a: number, b: number) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const medianUnitWan = sorted.length % 2 === 0
+        ? (sorted[mid - 1]! + sorted[mid]!) / 2
+        : sorted[mid]!;
+      const suggested = Math.round(medianUnitWan * 30);
+
+      if (suggested > 0 && (!!district || !rrPriceInput.value)) {
+        rrPriceInput.value = String(suggested);
+        if (rrPriceHint) {
+          const label = district
+            ? `${district} 中位 ${medianUnitWan.toFixed(1)} 萬/坪 × 30坪`
+            : `中位 ${medianUnitWan.toFixed(1)} 萬/坪 × 30坪`;
+          rrPriceHint.textContent = `≈ ${label}`;
+        }
+        rrRender();
+      }
+    });
+
+    // Reset button
+    rrResetBtn?.addEventListener("click", () => {
+      rrPriceInput.value       = "";
+      rrRentInput.value        = "";
+      rrDownInput.value        = "20";
+      rrRateInput.value        = "2.35";
+      rrApprInput.value        = "0";
+      if (rrPriceHint)  rrPriceHint.textContent  = "";
+      if (rrRentHint)   rrRentHint.textContent    = "";
+      rrResult.style.display      = "none";
+      rrPlaceholder.style.display = "block";
+    });
+
+    // Track city selection changes (for rent hint)
+    document.getElementById("city-select")?.addEventListener("change", (e) => {
+      rrCurrentCity = (e.target as HTMLSelectElement).value;
+      rrUpdateRentHint();
+    });
+  }
+
+  // ============================================================
   // ---- Saved Search Feature ----------------------------------
   // ============================================================
 
@@ -3348,6 +3600,137 @@ const showBuyersMarket = !isStale && dataYear !== null;
     text-align: center;
     padding: 12px 0;
   }
+
+  /* ---- 租售比試算器 (issue #143) ---- */
+  .rent-ratio-panel {
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    padding: 14px 14px 10px;
+    margin-bottom: 14px;
+  }
+  .rent-ratio-panel h3 {
+    font-size: 0.97rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 10px;
+  }
+  .rr-price-wrapper,
+  .rr-rent-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .rr-price-hint,
+  .rr-rent-hint {
+    font-size: 0.72rem;
+    color: #64748b;
+    min-height: 1em;
+  }
+  .rr-result {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .rr-metric-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .rr-metric-label {
+    font-size: 0.8rem;
+    color: #64748b;
+    min-width: 90px;
+  }
+  .rr-ratio-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+  .rr-tier-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+  }
+  .rr-tier-affordable {
+    background: #dcfce7;
+    color: #166534;
+  }
+  .rr-tier-neutral {
+    background: #fef9c3;
+    color: #854d0e;
+  }
+  .rr-tier-expensive {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+  .rr-breakeven-value {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #334155;
+  }
+  .rr-monthly-compare {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .rr-compare-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 6px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+  }
+  .rr-compare-card.rr-cheaper {
+    border-color: #86efac;
+    background: #f0fdf4;
+  }
+  .rr-compare-label {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 2px;
+  }
+  .rr-compare-amount {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+  .rr-compare-vs {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    padding: 0 2px;
+  }
+  .rr-compare-note {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin: 2px 0 0;
+    text-align: center;
+  }
+  .rr-placeholder {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    text-align: center;
+    padding: 12px 0;
+  }
+  .rr-reset-btn {
+    width: 100%;
+    padding: 6px;
+    margin-top: 4px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .rr-reset-btn:hover { background: #e2e8f0; }
 
   /* ---- Saved Search ---- */
   .save-search-btn {
