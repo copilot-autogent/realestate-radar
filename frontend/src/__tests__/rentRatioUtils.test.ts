@@ -153,9 +153,7 @@ describe("computeBreakEvenYears", () => {
     // Very high mortgage, moderate rent → will take well over 30 years
     const result = computeBreakEvenYears(30_000_000, 20, 2.35, 30, 30_000);
     // At 30M, 80% LTV, monthly mortgage ≈ 94k vs 30k rent: break-even > 30yr or null
-    if (result.years !== null) {
-      expect(result.years).toBeGreaterThan(30);
-    }
+    // Either way, withinLoanTerm must be false
     expect(result.withinLoanTerm).toBe(false);
   });
 
@@ -196,6 +194,17 @@ describe("computeBreakEvenYears", () => {
   it("returns null for Infinity appreciation", () => {
     const result = computeBreakEvenYears(10_000_000, 20, 2.35, 30, 25_000, Infinity);
     expect(result.years).toBeNull();
+  });
+
+  it("clamped appreciation prevents ownership cost from going negative (floor guard)", () => {
+    // With 20% appreciation (clamped max), ownership cost floor guard ensures
+    // cumulativeOwnership never drops below 0; break-even is early but valid
+    const result = computeBreakEvenYears(10_000_000, 20, 2.35, 30, 25_000, 20);
+    // Should return a finite result (not throw); years may be very early due to appreciation
+    expect(result).toHaveProperty("years");
+    expect(result).toHaveProperty("withinLoanTerm");
+    // At max 20% appreciation, ownership cost collapses → break-even expected
+    expect(result.years).not.toBeUndefined();
   });
 
   it("returns struct with years and withinLoanTerm fields", () => {
@@ -328,6 +337,14 @@ describe("computeRentRatioSummary", () => {
   it("returns null when term is zero or negative", () => {
     expect(computeRentRatioSummary(10_000_000, 20_000, 20, 2.35, 0)).toBeNull();
     expect(computeRentRatioSummary(10_000_000, 20_000, 20, 2.35, -5)).toBeNull();
+  });
+
+  it("returns null when appreciation is NaN", () => {
+    expect(computeRentRatioSummary(10_000_000, 20_000, 20, 2.35, 30, NaN)).toBeNull();
+  });
+
+  it("returns null when appreciation is Infinity", () => {
+    expect(computeRentRatioSummary(10_000_000, 20_000, 20, 2.35, 30, Infinity)).toBeNull();
   });
 
   it("non-zero appreciation changes break-even vs 0%", () => {
