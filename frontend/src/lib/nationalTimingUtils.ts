@@ -83,6 +83,7 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
   if (!Array.isArray(features) || features.length === 0) return INSUFFICIENT;
 
   // ── Step 1: Accumulate per-month unit prices and transaction counts ──────────
+  // monthCounts uses ALL transactions (not just priced) for volume signal accuracy
   const monthPrices = new Map<string, number[]>();
   const monthCounts = new Map<string, number>();
   let latestMonth = "";
@@ -90,14 +91,17 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
   for (const f of features) {
     const p = f?.properties;
     if (!p) continue;
-    const up = Number(p.unitPrice);
-    if (!isFinite(up) || up <= 0) continue;
     const monthKey = parseDateMonth(p.date);
     if (!monthKey) continue;
     if (monthKey > latestMonth) latestMonth = monthKey;
-    if (!monthPrices.has(monthKey)) monthPrices.set(monthKey, []);
-    monthPrices.get(monthKey)!.push(up);
+    // Count all transactions (volume signal)
     monthCounts.set(monthKey, (monthCounts.get(monthKey) ?? 0) + 1);
+    // Prices only for priced transactions
+    const up = Number(p.unitPrice);
+    if (isFinite(up) && up > 0) {
+      if (!monthPrices.has(monthKey)) monthPrices.set(monthKey, []);
+      monthPrices.get(monthKey)!.push(up);
+    }
   }
 
   // Require at least 24 distinct months — no point computing partial YoY
@@ -178,17 +182,24 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
     const priceFalling = yoyPriceChange <= -1;
     const priceRising  = yoyPriceChange >= 3;
     const buyerDom     = buyerAdvantageRatio >= 50;
+    // Build a price-direction clause for use in summaries
+    const yoyClause =
+      Math.abs(yoyPriceChange) < 0.05
+        ? "單價持平"
+        : yoyPriceChange < 0
+        ? `單價 ▼${Math.abs(yoyPriceChange).toFixed(1)}% YoY`
+        : `單價 ▲${Math.abs(yoyPriceChange).toFixed(1)}% YoY`;
 
     if (priceFalling || (Math.abs(yoyPriceChange) < 1 && buyerDom)) {
       verdict = "green";
       verdictEmoji = "🟢";
       verdictLabel = "買方有利";
-      verdictSummary = `近12個月成交量低於歷史高峰，議價空間擴大（單價 ${formatYoY(yoyPriceChange)} YoY）`;
+      verdictSummary = `近12個月成交量低於歷史高峰，議價空間擴大（${yoyClause}）`;
     } else if (priceRising && !buyerDom) {
       verdict = "red";
       verdictEmoji = "🔴";
       verdictLabel = "賣方主導";
-      verdictSummary = `近12個月成交量維持高水位，賣方議價力強（單價 ${formatYoY(yoyPriceChange)} YoY）`;
+      verdictSummary = `近12個月成交量維持高水位，賣方議價力強（${yoyClause}）`;
     } else {
       verdictSummary = `全台行情 ${formatYoY(yoyPriceChange)} YoY，買方優勢月比例 ${buyerAdvantageRatio}%`;
     }
