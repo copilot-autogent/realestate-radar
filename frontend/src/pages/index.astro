@@ -5472,10 +5472,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
     border-radius: 10px;
     padding: 12px 14px;
     margin-bottom: 12px;
-    transition: opacity 0.2s ease;
-  }
-  .national-timing-banner.ntb-collapsed {
-    display: none;
   }
   .national-timing-banner-header {
     display: flex;
@@ -8722,27 +8718,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
   }
 
-  // Collapse banner (hide, not remove) when a district is selected
-  function ntbCollapse(): void {
-    ntbBanner?.classList.add("ntb-collapsed");
-  }
-
-  // Restore banner when district is cleared
-  function ntbRestore(): void {
-    ntbBanner?.classList.remove("ntb-collapsed");
-  }
-
-  // Populate banner once raw features are loaded
+  // Populate banner once raw features are loaded; guard against missing detail payload
   document.addEventListener("rawdata-loaded", (e: Event) => {
-    const { features } = (e as CustomEvent<{ features: any[] }>).detail;
+    const detail = (e as CustomEvent<{ features?: any[] }>).detail;
+    const features = detail?.features;
+    if (!Array.isArray(features)) return;
     ntbRender(features);
-  });
-
-  document.addEventListener("district-buyer-timing", () => {
-    ntbCollapse();
-  });
-
-  document.addEventListener("district-cleared", () => {
-    ntbRestore();
   });
 </script>

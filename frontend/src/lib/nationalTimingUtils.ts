@@ -8,9 +8,13 @@
  */
 
 export interface NationalTimingSummary {
-  /** YoY % change: trailing 12mo aggregate median vs prior 12mo. Null when < 24 months of data. */
+  /** YoY % change: trailing 12mo aggregate median vs prior 12mo median. Null when < 24 months of data. */
   yoyPriceChange: number | null;
-  /** % of last 12 calendar months that are buyer-advantage months (0–100). Null when insufficient. */
+  /**
+   * % of last 12 calendar months that are buyer-advantage months (0–100).
+   * Denominator is the number of months that had ≥1 transaction (min 6 to qualify).
+   * Null when insufficient.
+   */
   buyerAdvantageRatio: number | null;
   /** Composite verdict */
   verdict: "green" | "yellow" | "red";
@@ -27,7 +31,8 @@ export interface NationalTimingSummary {
 function parseDateMonth(raw: unknown): string | null {
   if (!raw || typeof raw !== "string") return null;
   const s = raw.normalize("NFKC");
-  const m = /^(\d{4})[-/](\d{1,2})(?:[-/\s]|$)/.exec(s);
+  // Accept trailing: -, /, space, T (ISO-8601), or end-of-string
+  const m = /^(\d{4})[-/](\d{1,2})(?:[-/\sT]|$)/.exec(s);
   if (!m) return null;
   const year = parseInt(m[1]!, 10);
   const month = parseInt(m[2]!, 10);
@@ -75,7 +80,7 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
     sufficient: false,
   };
 
-  if (!features.length) return INSUFFICIENT;
+  if (!Array.isArray(features) || features.length === 0) return INSUFFICIENT;
 
   // ── Step 1: Accumulate per-month unit prices and transaction counts ──────────
   const monthPrices = new Map<string, number[]>();
@@ -95,7 +100,8 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
     monthCounts.set(monthKey, (monthCounts.get(monthKey) ?? 0) + 1);
   }
 
-  if (!latestMonth || monthPrices.size < 12) return INSUFFICIENT;
+  // Require at least 24 distinct months — no point computing partial YoY
+  if (!latestMonth || monthPrices.size < 24) return INSUFFICIENT;
 
   // ── Step 2: YoY price change — trailing 12mo vs prior 12mo ──────────────────
   // trailing window: [latestMonth - 11 .. latestMonth]
@@ -115,10 +121,8 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
     }
   }
 
-  const sufficient = monthPrices.size >= 24;
-
   let yoyPriceChange: number | null = null;
-  if (sufficient && trailingPrices.length > 0 && priorPrices.length > 0) {
+  if (trailingPrices.length > 0 && priorPrices.length > 0) {
     const trailingMedian = median(trailingPrices);
     const priorMedian = median(priorPrices);
     if (priorMedian > 0) {
@@ -129,6 +133,7 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
   // ── Step 3: Buyer-advantage month ratio for last 12 months ──────────────────
   // A month is "buyer-advantaged" when its count < 70% of that year's monthly peak
   // (mirrors the heatmap definition in heatmapUtils.ts).
+  // Denominator: months with ≥1 transaction (min 6 required to emit a ratio).
   const yearPeaks = new Map<number, number>();
   for (const [month, count] of monthCounts) {
     const year = parseInt(month.slice(0, 4), 10);
@@ -159,18 +164,15 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
     }
   }
 
+  // Divide by presentMonths (not a fixed 12) so sparse months don't inflate/deflate ratio
   const buyerAdvantageRatio: number | null =
-    presentMonths >= 6 ? Math.round((buyerAdvMonths / 12) * 100) : null;
+    presentMonths >= 6 ? Math.round((buyerAdvMonths / presentMonths) * 100) : null;
 
   // ── Step 4: Composite verdict ────────────────────────────────────────────────
   let verdict: "green" | "yellow" | "red" = "yellow";
   let verdictEmoji = "🟡";
   let verdictLabel = "市場觀望";
   let verdictSummary = "全台行情平穩，建議選擇行政區查看詳細分析";
-
-  if (!sufficient) {
-    return { ...INSUFFICIENT, yoyPriceChange, buyerAdvantageRatio, sufficient: false };
-  }
 
   if (yoyPriceChange !== null && buyerAdvantageRatio !== null) {
     const priceFalling = yoyPriceChange <= -1;
@@ -182,15 +184,16 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
       verdictEmoji = "🟢";
       verdictLabel = "買方有利";
       const pctStr =
-        yoyPriceChange < 0
+        yoyPriceChange < -0.05
           ? `▼${Math.abs(yoyPriceChange).toFixed(1)}%`
           : "持平";
-      verdictSummary = `近12個月成交量低於歷史高峰，議價空間擴大`;
+      verdictSummary = `近12個月成交量低於歷史高峰，議價空間擴大（單價 ${pctStr} YoY）`;
     } else if (priceRising && !buyerDom) {
       verdict = "red";
       verdictEmoji = "🔴";
       verdictLabel = "賣方主導";
-      verdictSummary = `近12個月成交量維持高水位，賣方議價力強`;
+      const pctStr = `▲${Math.abs(yoyPriceChange).toFixed(1)}%`;
+      verdictSummary = `近12個月成交量維持高水位，賣方議價力強（單價 ${pctStr} YoY）`;
     } else {
       const dirStr =
         yoyPriceChange > 0.5
@@ -201,7 +204,6 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
       verdictSummary = `全台行情 ${dirStr} YoY，買方優勢月比例 ${buyerAdvantageRatio}%`;
     }
   } else {
-    // Partial data: price or ratio unavailable
     verdictSummary = "部分數據不足，建議選擇行政區查看詳細分析";
   }
 
@@ -212,7 +214,7 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
     verdictEmoji,
     verdictLabel,
     verdictSummary,
-    sufficient,
+    sufficient: true,
   };
 }
 
