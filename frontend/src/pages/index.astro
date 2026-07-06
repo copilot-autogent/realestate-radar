@@ -7765,8 +7765,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
     computeDistrictRows,
   } from "../lib/districtTableUtils.js";
 
-  const WIZARD_DISMISSED_KEY = "rr-wizard-dismissed";
-  const WIZARD_RESULTS_KEY   = "rr-wizard-results";
+  const WIZARD_KEY         = "rr_wizard_seen_v1";
+  const WIZARD_KEY_LEGACY  = "rr-wizard-dismissed"; // pre-v1 key — migrate on first load
+  const WIZARD_RESULTS_KEY = "rr-wizard-results";
   const BASE_URL = import.meta.env.BASE_URL;
 
   const overlay      = document.getElementById("wizard-overlay")     as HTMLElement;
@@ -7824,7 +7825,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   function closeWizard(): void {
     overlay.hidden = true;
     document.body.style.overflow = "";
-    localStorage.setItem(WIZARD_DISMISSED_KEY, "1");
+    localStorage.setItem(WIZARD_KEY, "1");
   }
 
   // ── Data loading ───────────────────
@@ -8063,12 +8064,18 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // ── On first visit, show wizard; otherwise offer saved results ───────────────
 
-  const dismissed = localStorage.getItem(WIZARD_DISMISSED_KEY);
+  // Migrate legacy key so existing returning users aren't re-shown the wizard.
+  if (localStorage.getItem(WIZARD_KEY_LEGACY)) {
+    localStorage.setItem(WIZARD_KEY, "1");
+    localStorage.removeItem(WIZARD_KEY_LEGACY);
+  }
+
+  const dismissed = localStorage.getItem(WIZARD_KEY);
   if (!dismissed) {
     // First visit — show wizard after map has a chance to initialise
     setTimeout(() => {
       // Re-check: user may have already dismissed before the timer fires
-      if (!localStorage.getItem(WIZARD_DISMISSED_KEY)) openWizard();
+      if (!localStorage.getItem(WIZARD_KEY)) openWizard();
     }, 800);
   }
   // Returning visitors: saved results load on demand when they click 重新配對
