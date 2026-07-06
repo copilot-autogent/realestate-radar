@@ -7766,6 +7766,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
   } from "../lib/districtTableUtils.js";
 
   const WIZARD_KEY         = "rr_wizard_seen_v1";
+  const WIZARD_KEY_LEGACY  = "rr-wizard-dismissed"; // pre-v1 key — migrate on first load
   const WIZARD_RESULTS_KEY = "rr-wizard-results";
   const BASE_URL = import.meta.env.BASE_URL;
 
@@ -8062,6 +8063,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
 
   // ── On first visit, show wizard; otherwise offer saved results ───────────────
+
+  // Migrate legacy key so existing returning users aren't re-shown the wizard.
+  if (localStorage.getItem(WIZARD_KEY_LEGACY)) {
+    localStorage.setItem(WIZARD_KEY, "1");
+    localStorage.removeItem(WIZARD_KEY_LEGACY);
+  }
 
   const dismissed = localStorage.getItem(WIZARD_KEY);
   if (!dismissed) {
