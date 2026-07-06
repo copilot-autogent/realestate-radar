@@ -627,6 +627,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
         </button>
         <div class="ia-section-body ia-section-body-hidden" id="ia-section-2-body" hidden>
 
+          <!-- National timing summary banner (issue #156: visible before district selection) -->
+          <div id="national-timing-banner" class="national-timing-banner" aria-label="全台灣時機摘要" aria-live="polite">
+            <div class="national-timing-banner-header">
+              <span class="national-timing-banner-title">📊 全台灣目前行情</span>
+              <span id="national-timing-verdict-badge" class="national-timing-verdict-badge national-timing-verdict-loading">載入中…</span>
+            </div>
+            <div id="national-timing-summary-text" class="national-timing-summary-text"></div>
+            <div id="national-timing-metrics" class="national-timing-metrics"></div>
+          </div>
+
           <!-- Prominent buyer timing card (issue #153: surfaced from hidden checkbox) -->
           <div id="buyer-timing-card" class="buyer-timing-card" aria-label="買方時機分析">
             <div class="buyer-timing-card-header">
@@ -5453,6 +5463,86 @@ const showBuyersMarket = !isStale && dataYear !== null;
     line-height: 1.45;
   }
 
+  /* ═══════════════════════════════════════════════════════════════
+     National Timing Banner — section ② pre-district summary (issue #156)
+     ═══════════════════════════════════════════════════════════════ */
+  .national-timing-banner {
+    background: #f8fafc;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    transition: opacity 0.2s ease;
+  }
+  .national-timing-banner.ntb-collapsed {
+    display: none;
+  }
+  .national-timing-banner-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .national-timing-banner-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #334155;
+    white-space: nowrap;
+  }
+  .national-timing-verdict-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .national-timing-verdict-loading {
+    background: #f1f5f9;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+  }
+  .national-timing-verdict-green {
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1.5px solid #86efac;
+  }
+  .national-timing-verdict-yellow {
+    background: #fefce8;
+    color: #a16207;
+    border: 1.5px solid #fde047;
+  }
+  .national-timing-verdict-red {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1.5px solid #fecaca;
+  }
+  .national-timing-summary-text {
+    font-size: 0.78rem;
+    color: #475569;
+    margin-bottom: 4px;
+    line-height: 1.45;
+  }
+  .national-timing-metrics {
+    font-size: 0.76rem;
+    color: #64748b;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 2px;
+  }
+  .national-timing-metric {
+    white-space: nowrap;
+  }
+  @media (max-width: 480px) {
+    .national-timing-metrics {
+      flex-direction: column;
+      gap: 3px;
+    }
+  }
+
   /* Mobile: sections stack vertically (already the default in column layout) */
   @media (max-width: 768px) {
     .ia-section-header {
@@ -8583,5 +8673,76 @@ const showBuyersMarket = !isStale && dataYear !== null;
       timingBadge.textContent = "—";
     }
     if (timingRationale) timingRationale.textContent = "選擇行政區以查看時機分析";
+  });
+</script>
+
+<script>
+  // ── National Timing Banner — issue #156 ──────────────────────────────────────
+  import {
+    computeNationalTimingSummary,
+    formatYoY,
+  } from "../lib/nationalTimingUtils.js";
+
+  const ntbBanner      = document.getElementById("national-timing-banner")      as HTMLElement | null;
+  const ntbBadge       = document.getElementById("national-timing-verdict-badge") as HTMLElement | null;
+  const ntbSummaryText = document.getElementById("national-timing-summary-text") as HTMLElement | null;
+  const ntbMetrics     = document.getElementById("national-timing-metrics")      as HTMLElement | null;
+
+  function ntbRender(features: any[]): void {
+    if (!ntbBanner || !ntbBadge || !ntbSummaryText || !ntbMetrics) return;
+    const summary = computeNationalTimingSummary(features);
+
+    // Update badge
+    ntbBadge.className = "national-timing-verdict-badge";
+    const verdictCls =
+      summary.verdict === "green" ? "national-timing-verdict-green" :
+      summary.verdict === "red"   ? "national-timing-verdict-red"   :
+                                    "national-timing-verdict-yellow";
+    ntbBadge.classList.add(verdictCls);
+    ntbBadge.textContent = `${summary.verdictEmoji} ${summary.verdictLabel}`;
+
+    // Update summary text
+    ntbSummaryText.textContent = summary.verdictSummary;
+
+    // Update metric pills
+    ntbMetrics.innerHTML = "";
+    if (summary.sufficient) {
+      if (summary.yoyPriceChange !== null) {
+        const m = document.createElement("span");
+        m.className = "national-timing-metric";
+        m.textContent = `中位數單價 ${formatYoY(summary.yoyPriceChange)} YoY`;
+        ntbMetrics.appendChild(m);
+      }
+      if (summary.buyerAdvantageRatio !== null) {
+        const m = document.createElement("span");
+        m.className = "national-timing-metric";
+        m.textContent = `買方優勢月比例 ${summary.buyerAdvantageRatio}%`;
+        ntbMetrics.appendChild(m);
+      }
+    }
+  }
+
+  // Collapse banner (hide, not remove) when a district is selected
+  function ntbCollapse(): void {
+    ntbBanner?.classList.add("ntb-collapsed");
+  }
+
+  // Restore banner when district is cleared
+  function ntbRestore(): void {
+    ntbBanner?.classList.remove("ntb-collapsed");
+  }
+
+  // Populate banner once raw features are loaded
+  document.addEventListener("rawdata-loaded", (e: Event) => {
+    const { features } = (e as CustomEvent<{ features: any[] }>).detail;
+    ntbRender(features);
+  });
+
+  document.addEventListener("district-buyer-timing", () => {
+    ntbCollapse();
+  });
+
+  document.addEventListener("district-cleared", () => {
+    ntbRestore();
   });
 </script>
