@@ -127,25 +127,50 @@ describe("computeNationalTimingSummary", () => {
     expect(result.yoyPriceChange!).toBeCloseTo(10, 0);
   });
 
-  it("assigns green verdict when prices falling and buyer-advantage ratio is high", () => {
-    // Falling prices + high buyer-advantage months → 🟢 買方有利
-    // Set trailing months to have low counts (< 70% of peak) → buyer advantaged
+  it("assigns green verdict when prices falling (price-driven)", () => {
+    // Falling prices alone trigger green (priceFalling: yoy <= -1%)
+    // Prior 12 months: high price + high volume (2023, peak=10)
+    // Trailing 12 months: lower price + low volume (2024, count=2 → buyer advantaged)
     const features: any[] = [];
-    // Prior 12 months with high price + high volume (2023)
     for (let mo = 1; mo <= 12; mo++) {
       const date = `2023-${String(mo).padStart(2, "0")}-15`;
       for (let c = 0; c < 10; c++) features.push(makeFeature(date, 300000));
     }
-    // Trailing 12 months with lower price + low volume (2024, only 2 per month → buyer advantaged)
     for (let mo = 1; mo <= 12; mo++) {
       const date = `2024-${String(mo).padStart(2, "0")}-15`;
-      // 2 transactions vs 2023 peak of 10 → 20% of peak → buyer advantaged
       for (let c = 0; c < 2; c++) features.push(makeFeature(date, 280000));
     }
     const result = computeNationalTimingSummary(features);
     expect(result.sufficient).toBe(true);
     expect(result.verdict).toBe("green");
     expect(result.verdictLabel).toBe("買方有利");
+    // YoY ≈ -6.67% — priceFalling triggers green regardless of buyerAdvantageRatio
+    expect(result.yoyPriceChange!).toBeLessThan(-1);
+  });
+
+  it("assigns green verdict when prices flat but buyer-advantage months dominate", () => {
+    // Same price across 24 months; low transaction volume in last 12 months creates
+    // buyer-advantage months relative to higher-volume prior year
+    const features: any[] = [];
+    // Prior year (2023): high volume = 10/month (sets yearPeak for 2023)
+    for (let mo = 1; mo <= 12; mo++) {
+      const date = `2023-${String(mo).padStart(2, "0")}-15`;
+      for (let c = 0; c < 10; c++) features.push(makeFeature(date, 300000));
+    }
+    // Trailing year (2024): very low volume = 2/month < 70% of 2024 peak
+    // To get all 12 months buyer-advantaged, we need a high 2024 peak in one month
+    // and low volume in the rest. Set Jan 2024 to 10 (peak), rest to 2.
+    features.push(...Array.from({length: 10}, () => makeFeature("2024-01-15", 300000)));
+    for (let mo = 2; mo <= 12; mo++) {
+      const date = `2024-${String(mo).padStart(2, "0")}-15`;
+      for (let c = 0; c < 2; c++) features.push(makeFeature(date, 300000));
+    }
+    const result = computeNationalTimingSummary(features);
+    expect(result.sufficient).toBe(true);
+    // YoY ≈ 0% (same price), but high buyer-advantage ratio → green
+    expect(Math.abs(result.yoyPriceChange!)).toBeLessThan(1);
+    expect(result.buyerAdvantageRatio!).toBeGreaterThan(50);
+    expect(result.verdict).toBe("green");
   });
 
   it("assigns red verdict when prices rising and buyer-advantage ratio is low", () => {

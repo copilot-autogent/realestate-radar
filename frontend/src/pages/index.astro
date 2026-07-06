@@ -619,13 +619,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </div><!-- /ia-section-1 -->
 
       <!-- ═══════════════════════════════════════════════════════════
-      <!-- IA Section 2: timing (collapsed) -->
+      <!-- IA Section 2: timing (expanded by default — issue #156: banner visible on load) -->
       <div class="ia-section" id="ia-section-2">
-        <button class="ia-section-header" aria-expanded="false" aria-controls="ia-section-2-body" id="ia-section-2-btn">
+        <button class="ia-section-header" aria-expanded="true" aria-controls="ia-section-2-body" id="ia-section-2-btn">
           <span class="ia-section-title">② 現在是好時機嗎？</span>
-          <span class="ia-section-chevron" aria-hidden="true">▼</span>
+          <span class="ia-section-chevron" aria-hidden="true">▲</span>
         </button>
-        <div class="ia-section-body ia-section-body-hidden" id="ia-section-2-body" hidden>
+        <div class="ia-section-body" id="ia-section-2-body">
 
           <!-- National timing summary banner (issue #156: visible before district selection) -->
           <div id="national-timing-banner" class="national-timing-banner" aria-label="全台灣時機摘要" aria-live="polite">

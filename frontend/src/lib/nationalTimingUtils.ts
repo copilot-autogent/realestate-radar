@@ -183,25 +183,14 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
       verdict = "green";
       verdictEmoji = "🟢";
       verdictLabel = "買方有利";
-      const pctStr =
-        yoyPriceChange < -0.05
-          ? `▼${Math.abs(yoyPriceChange).toFixed(1)}%`
-          : "持平";
-      verdictSummary = `近12個月成交量低於歷史高峰，議價空間擴大（單價 ${pctStr} YoY）`;
+      verdictSummary = `近12個月成交量低於歷史高峰，議價空間擴大（單價 ${formatYoY(yoyPriceChange)} YoY）`;
     } else if (priceRising && !buyerDom) {
       verdict = "red";
       verdictEmoji = "🔴";
       verdictLabel = "賣方主導";
-      const pctStr = `▲${Math.abs(yoyPriceChange).toFixed(1)}%`;
-      verdictSummary = `近12個月成交量維持高水位，賣方議價力強（單價 ${pctStr} YoY）`;
+      verdictSummary = `近12個月成交量維持高水位，賣方議價力強（單價 ${formatYoY(yoyPriceChange)} YoY）`;
     } else {
-      const dirStr =
-        yoyPriceChange > 0.5
-          ? `▲${Math.abs(yoyPriceChange).toFixed(1)}%`
-          : yoyPriceChange < -0.5
-          ? `▼${Math.abs(yoyPriceChange).toFixed(1)}%`
-          : "持平";
-      verdictSummary = `全台行情 ${dirStr} YoY，買方優勢月比例 ${buyerAdvantageRatio}%`;
+      verdictSummary = `全台行情 ${formatYoY(yoyPriceChange)} YoY，買方優勢月比例 ${buyerAdvantageRatio}%`;
     }
   } else {
     verdictSummary = "部分數據不足，建議選擇行政區查看詳細分析";
