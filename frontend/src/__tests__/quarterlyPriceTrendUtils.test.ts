@@ -173,6 +173,19 @@ describe("computeQuarterlyPriceSeries", () => {
     expect(result.district).toBe("大安區");
   });
 
+  it("falls back when district has 10+ transactions but concentrated in < MIN_QUARTERS quarters", () => {
+    // 30 transactions for 大安區 all in one quarter — produces only 1 qualifying quarter
+    const features = txRange("大安區", "台北市", 2024, 2, 30, 500000);
+    const fallback = [
+      ...txRange("其他區", "台北市", 2024, 1, 20, 400000),
+      ...txRange("其他區", "台北市", 2024, 2, 20, 410000),
+      ...txRange("其他區", "台北市", 2024, 3, 20, 420000),
+      ...txRange("其他區", "台北市", 2024, 4, 20, 415000),
+    ];
+    const result = computeQuarterlyPriceSeries([...features, ...fallback], "大安區", "台北市");
+    expect(result.isFallback).toBe(true);
+  });
+
   it("returns district series when district has sufficient data", () => {
     // 4 quarters with 10+ transactions each
     const features = [

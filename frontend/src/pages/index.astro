@@ -785,6 +785,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <div id="stats-panel" class="stats-panel">
             <h3>統計資訊</h3>
             {showBuyersMarket && <p class="buyers-market-context" id="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
+            {!showBuyersMarket && <p class="buyers-market-context" id="buyers-market-context" style="display:none"></p>}
             <div id="stats-content">
               <p class="placeholder">選擇條件後按搜尋</p>
             </div>
@@ -7357,6 +7358,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
           buyersCtxEl.style.borderColor  = "#cbd5e1";
         }
         buyersCtxEl.style.display = "block";
+      } else {
+        // YoY data unavailable (e.g., first year on record — no prior-year quarter)
+        // Hide the banner rather than showing stale guidance from a previous selection
+        buyersCtxEl.style.display = "none";
       }
     }
 

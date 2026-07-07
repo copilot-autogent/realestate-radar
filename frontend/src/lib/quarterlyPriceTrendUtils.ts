@@ -214,52 +214,52 @@ export function computeQuarterlyPriceSeries(
 
   if (!features.length) return EMPTY;
 
+  /**
+   * Build qualified points from a bucket map.
+   * Filters quarters below minTx FIRST, then takes the MAX_QUARTERS most-recent
+   * qualifying quarters (avoids sparse recent quarters consuming the window).
+   */
+  function buildPoints(
+    buckets: Map<string, number[]>,
+    minTx: number,
+  ): QuarterlyPricePoint[] {
+    // Filter to quarters with enough transactions, sort descending (most recent first)
+    const qualifyingKeys = [...buckets.keys()]
+      .filter((key) => (buckets.get(key)?.length ?? 0) >= minTx)
+      .sort()
+      .reverse();
+
+    // Take at most MAX_QUARTERS qualifying quarters, then sort ascending for display
+    const windowKeys = qualifyingKeys.slice(0, MAX_QUARTERS).sort();
+
+    return windowKeys.flatMap((key) => {
+      const prices = buckets.get(key)!;
+      const med = median(prices);
+      if (med === null) return [];
+      return [{ label: key, medianPerPing: med / 10000, count: prices.length }];
+    });
+  }
+
   let isFallback = false;
-  let buckets: Map<string, number[]>;
+  let points: QuarterlyPricePoint[] = [];
 
   if (districtId) {
     const districtBuckets = accumulateQuarterBuckets(features, districtId, city);
+    const districtPoints  = buildPoints(districtBuckets, MIN_QUARTER_TX);
 
-    // Count total qualifying transactions across all quarters
-    const totalTx = [...districtBuckets.values()].reduce((s, arr) => s + arr.length, 0);
-
-    // Fall back if district has too few transactions overall
-    if (totalTx < MIN_QUARTER_TX) {
+    // Fall back when the district yields fewer than MIN_QUARTERS qualifying quarters
+    if (districtPoints.length < MIN_QUARTERS) {
       isFallback = true;
-      buckets = accumulateQuarterBuckets(features, "");
+      const fallbackBuckets = accumulateQuarterBuckets(features, "");
+      points = buildPoints(fallbackBuckets, MIN_FALLBACK_TX);
     } else {
-      buckets = districtBuckets;
+      points = districtPoints;
     }
   } else {
     // No district selected — use all-Taiwan from the start
     isFallback = true;
-    buckets = accumulateQuarterBuckets(features, "");
-  }
-
-  if (!buckets.size) return { ...EMPTY, isFallback };
-
-  // Determine trailing window: sort all quarter keys descending, take MAX_QUARTERS
-  const allKeys = [...buckets.keys()].sort().reverse();
-  const windowKeys = new Set(allKeys.slice(0, MAX_QUARTERS));
-
-  // Build points (ascending order)
-  const points: QuarterlyPricePoint[] = [];
-  for (const key of [...windowKeys].sort()) {
-    const prices = buckets.get(key)!;
-    // For district series: skip quarters with fewer than MIN_QUARTER_TX transactions
-    // For fallback (all-Taiwan) series: MIN_FALLBACK_TX
-    const minTx = isFallback ? MIN_FALLBACK_TX : MIN_QUARTER_TX;
-    if (prices.length < minTx) continue;
-
-    const med = median(prices);
-    if (med === null) continue;
-
-    points.push({
-      label: key,
-      // Convert NT$/坪 to 萬/坪
-      medianPerPing: med / 10000,
-      count: prices.length,
-    });
+    const fallbackBuckets = accumulateQuarterBuckets(features, "");
+    points = buildPoints(fallbackBuckets, MIN_FALLBACK_TX);
   }
 
   if (points.length === 0) return { ...EMPTY, isFallback };
