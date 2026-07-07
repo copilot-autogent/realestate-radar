@@ -88,14 +88,21 @@ export function parseDateQuarter(raw: unknown): { year: number; quarter: 1 | 2 |
   if (!raw || typeof raw !== "string") return null;
   const s = raw.normalize("NFKC");
 
-  // YYYY-MM-DD, YYYY/MM/DD, or YYYYMMDD
-  const m =
-    /^(\d{4})[-/](\d{1,2})/.exec(s) ||
-    /^(\d{4})(\d{2})\d{2}$/.exec(s);
-  if (!m) return null;
+  let year: number, month: number;
 
-  const year  = parseInt(m[1]!, 10);
-  const month = parseInt(m[2]!, 10);
+  // YYYYMMDD — must match exactly 8 digits (anchored) to avoid matching YYYY-MM-DD via this branch
+  const compact = /^(\d{4})(\d{2})\d{2}$/.exec(s);
+  if (compact) {
+    year  = parseInt(compact[1]!, 10);
+    month = parseInt(compact[2]!, 10);
+  } else {
+    // YYYY-MM-DD or YYYY/MM/DD (separator required after month)
+    const sep = /^(\d{4})[-/](\d{1,2})(?:[-/]\d|$)/.exec(s);
+    if (!sep) return null;
+    year  = parseInt(sep[1]!, 10);
+    month = parseInt(sep[2]!, 10);
+  }
+
   if (isNaN(year) || isNaN(month) || year < 1900 || year > 2100 || month < 1 || month > 12) {
     return null;
   }
@@ -129,9 +136,9 @@ export function yoyToTrendColor(yoyPct: number | null): TrendColor {
 /** Format a YoY percentage as a human-readable badge string. */
 export function formatYoYBadge(yoyPct: number | null): string {
   if (yoyPct === null) return "";
-  const sign   = yoyPct >= 0 ? "+" : "";
-  const arrow  = yoyPct >= 0 ? "↑" : "↓";
-  return `${sign}${yoyPct.toFixed(1)}% YoY ${arrow}`;
+  if (yoyPct > 0) return `+${yoyPct.toFixed(1)}% YoY ↑`;
+  if (yoyPct < 0) return `${yoyPct.toFixed(1)}% YoY ↓`;
+  return `0.0% YoY →`;
 }
 
 // ── Core computation ──────────────────────────────────────────────────────────

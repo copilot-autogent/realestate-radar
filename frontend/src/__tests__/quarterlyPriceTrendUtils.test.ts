@@ -55,7 +55,8 @@ describe("parseDateQuarter", () => {
     expect(parseDateQuarter(12345)).toBeNull();
     expect(parseDateQuarter("")).toBeNull();
     expect(parseDateQuarter("not-a-date")).toBeNull();
-    expect(parseDateQuarter("9999-13-01")).toBeNull(); // invalid month
+    // year > 2100 check
+    expect(parseDateQuarter("9999-01-01")).toBeNull();
   });
 
   it("returns null for months out of range", () => {
@@ -125,8 +126,8 @@ describe("formatYoYBadge", () => {
     expect(formatYoYBadge(-5.1)).toBe("-5.1% YoY ↓");
   });
 
-  it("formats zero as positive", () => {
-    expect(formatYoYBadge(0)).toBe("+0.0% YoY ↑");
+  it("formats zero as flat (→, no sign)", () => {
+    expect(formatYoYBadge(0)).toBe("0.0% YoY →");
   });
 
   it("returns empty string for null", () => {

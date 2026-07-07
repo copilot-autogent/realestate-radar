@@ -784,8 +784,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <!-- Stats panel (negotiation margin + price data) -->
           <div id="stats-panel" class="stats-panel">
             <h3>統計資訊</h3>
-            {showBuyersMarket && <p class="buyers-market-context" id="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
-            {!showBuyersMarket && <p class="buyers-market-context" id="buyers-market-context" style="display:none"></p>}
+            {showBuyersMarket && <p class="buyers-market-context" id="buyers-market-context" data-fresh="true">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
+            {!showBuyersMarket && <p class="buyers-market-context" id="buyers-market-context" data-fresh="false" style="display:none"></p>}
             <div id="stats-content">
               <p class="placeholder">選擇條件後按搜尋</p>
             </div>
@@ -7334,37 +7334,34 @@ const showBuyersMarket = !isStale && dataYear !== null;
       titleEl.textContent = `近 ${n} 季走勢${quarterlyTrend.isFallback ? "（全台）" : ""}`;
     }
 
-    // Dynamic buyers-market-context: replace hardcoded text with computed signal
-    if (buyersCtxEl) {
+    // Dynamic buyers-market-context: replace hardcoded text with computed signal.
+    // Respects the server-side freshness gate (data-fresh="false" = stale/unknown dataset).
+    if (buyersCtxEl && buyersCtxEl.dataset["fresh"] !== "false") {
       if (quarterlyTrend.yoyPct !== null) {
-        const color = quarterlyTrend.trendColor;
+        const color    = quarterlyTrend.trendColor;
+        const scopeTag = quarterlyTrend.isFallback ? "（全台）" : "";
         if (color === "green") {
-          // Falling prices — buyer advantage
-          buyersCtxEl.textContent = `📉 行情走跌 ${quarterlyTrend.yoyBadge} — 首購族議價空間擴大`;
-          buyersCtxEl.style.color        = "#15803d";
-          buyersCtxEl.style.background   = "#dcfce7";
-          buyersCtxEl.style.borderColor  = "#86efac";
+          buyersCtxEl.textContent = `📉 行情走跌${scopeTag} ${quarterlyTrend.yoyBadge} — 首購族議價空間擴大`;
+          buyersCtxEl.style.color       = "#15803d";
+          buyersCtxEl.style.background  = "#dcfce7";
+          buyersCtxEl.style.borderColor = "#86efac";
         } else if (color === "red") {
-          // Rising prices — caution
-          buyersCtxEl.textContent = `📈 行情走升 ${quarterlyTrend.yoyBadge} — 建議謹慎評估`;
-          buyersCtxEl.style.color        = "#dc2626";
-          buyersCtxEl.style.background   = "#fee2e2";
-          buyersCtxEl.style.borderColor  = "#fca5a5";
+          buyersCtxEl.textContent = `📈 行情走升${scopeTag} ${quarterlyTrend.yoyBadge} — 建議謹慎評估`;
+          buyersCtxEl.style.color       = "#dc2626";
+          buyersCtxEl.style.background  = "#fee2e2";
+          buyersCtxEl.style.borderColor = "#fca5a5";
         } else {
-          // Flat
-          buyersCtxEl.textContent = `➡️ 行情平盤 ${quarterlyTrend.yoyBadge} — 市場趨於穩定`;
-          buyersCtxEl.style.color        = "#475569";
-          buyersCtxEl.style.background   = "#f1f5f9";
-          buyersCtxEl.style.borderColor  = "#cbd5e1";
+          buyersCtxEl.textContent = `➡️ 行情平盤${scopeTag} ${quarterlyTrend.yoyBadge} — 市場趨於穩定`;
+          buyersCtxEl.style.color       = "#475569";
+          buyersCtxEl.style.background  = "#f1f5f9";
+          buyersCtxEl.style.borderColor = "#cbd5e1";
         }
         buyersCtxEl.style.display = "block";
       } else {
-        // YoY data unavailable (e.g., first year on record — no prior-year quarter)
-        // Hide the banner rather than showing stale guidance from a previous selection
+        // YoY data unavailable — hide to avoid showing stale guidance from a previous selection
         buyersCtxEl.style.display = "none";
       }
     }
-
     // YoY badge
     if (badgeEl) {
       badgeEl.textContent = quarterlyTrend.yoyBadge || "";
