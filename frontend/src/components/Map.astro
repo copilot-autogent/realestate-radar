@@ -1065,6 +1065,7 @@
   import { computeDistrictBoxPlots } from "../lib/boxPlotUtils.js";
   import { computePriceTrendSeries } from "../lib/priceTrendUtils.js";
   import { computeVolumeYoY } from "../lib/volumeTrendUtils.js";
+  import { computeQuarterlyPriceSeries } from "../lib/quarterlyPriceTrendUtils.js";
   import {
     estimateNegotiationMargin,
     type DistrictStats,
@@ -3906,6 +3907,15 @@
         }));
       }
 
+      // ── Quarterly price sparkline (dot click, issue #159) ─────────────────
+      {
+        const txCity = props.city as string | undefined;
+        const quarterlyTrend = computeQuarterlyPriceSeries(rawAllFeatures, txDistrict, txCity || undefined);
+        document.dispatchEvent(new CustomEvent("quarterly-price-trend", {
+          detail: { district: txDistrict, quarterlyTrend },
+        }));
+      }
+
       // ── Volume YoY bar chart (dot click, issue #132) ───────────────────────
       {
         const txCity = props.city as string | undefined;
@@ -4417,6 +4427,14 @@
       const priceTrend = computePriceTrendSeries(rawAllFeatures, district, clickedCity || undefined);
       document.dispatchEvent(new CustomEvent("district-price-trend", {
         detail: { priceTrend },
+      }));
+    }
+
+    // ── Quarterly price sparkline (district polygon click, issue #159) ─────────
+    {
+      const quarterlyTrend = computeQuarterlyPriceSeries(rawAllFeatures, district, clickedCity || undefined);
+      document.dispatchEvent(new CustomEvent("quarterly-price-trend", {
+        detail: { district, quarterlyTrend },
       }));
     }
 
