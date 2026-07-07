@@ -126,8 +126,11 @@ describe("formatYoYBadge", () => {
     expect(formatYoYBadge(-5.1)).toBe("-5.1% YoY ↓");
   });
 
-  it("formats zero as flat (→, no sign)", () => {
+  it("formats zero and near-zero as flat (→)", () => {
     expect(formatYoYBadge(0)).toBe("0.0% YoY →");
+    // Values rounding to 0.0 also use the flat branch
+    expect(formatYoYBadge(0.04)).toBe("0.0% YoY →");
+    expect(formatYoYBadge(-0.04)).toBe("0.0% YoY →");
   });
 
   it("returns empty string for null", () => {

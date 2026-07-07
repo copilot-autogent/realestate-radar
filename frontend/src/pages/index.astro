@@ -784,8 +784,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <!-- Stats panel (negotiation margin + price data) -->
           <div id="stats-panel" class="stats-panel">
             <h3>統計資訊</h3>
-            {showBuyersMarket && <p class="buyers-market-context" id="buyers-market-context" data-fresh="true">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
-            {!showBuyersMarket && <p class="buyers-market-context" id="buyers-market-context" data-fresh="false" style="display:none"></p>}
+            <p class="buyers-market-context" id="buyers-market-context" data-fresh={showBuyersMarket ? "true" : "false"} style={showBuyersMarket ? undefined : "display:none"}>{showBuyersMarket && <>📉 {dataYear}年行情下行中 — 首購族議價空間擴大</>}</p>
             <div id="stats-content">
               <p class="placeholder">選擇條件後按搜尋</p>
             </div>
@@ -7335,9 +7334,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
 
     // Dynamic buyers-market-context: replace hardcoded text with computed signal.
-    // Respects the server-side freshness gate (data-fresh="false" = stale/unknown dataset).
+    // Only applies when the server-side freshness gate allows it (data-fresh="true").
+    // When yoyPct is null (no prior-year quarter), preserves the server-rendered guidance.
     if (buyersCtxEl && buyersCtxEl.dataset["fresh"] !== "false") {
-      if (quarterlyTrend.yoyPct !== null) {
+      if (quarterlyTrend.yoyPct !== null && quarterlyTrend.sufficient) {
         const color    = quarterlyTrend.trendColor;
         const scopeTag = quarterlyTrend.isFallback ? "（全台）" : "";
         if (color === "green") {
@@ -7357,10 +7357,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
           buyersCtxEl.style.borderColor = "#cbd5e1";
         }
         buyersCtxEl.style.display = "block";
-      } else {
-        // YoY data unavailable — hide to avoid showing stale guidance from a previous selection
-        buyersCtxEl.style.display = "none";
       }
+      // When yoyPct is null or data is insufficient: keep the current state unchanged
+      // (server-rendered or last valid signal) rather than hiding — avoids losing guidance
+      // on first click into a new district without a prior-year quarter.
     }
     // YoY badge
     if (badgeEl) {
@@ -7385,6 +7385,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     if (!sufficient || seq !== _quarterlyRenderSeq) return;
 
+    // Check Chart.js availability before any chart operations
+    const Chart = (window as any).Chart;
+    if (!Chart) {
+      // Chart.js not loaded — hide canvas to avoid showing a blank element
+      canvas.style.display = "none";
+      return;
+    }
+
     // Destroy prior chart instance if any
     if (_quarterlySparklineChart) {
       _quarterlySparklineChart.destroy();
@@ -7401,10 +7409,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       red:   "rgba(220,38,38,0.75)",
       grey:  "rgba(100,116,139,0.55)",
     };
-    const barColor = colorMap[quarterlyTrend.trendColor] ?? colorMap["grey"]!;
-
-    const Chart = (window as any).Chart;
-    if (!Chart) return;
+    const barColor = colorMap[quarterlyTrend.trendColor] ?? colorMap["grey"]!
 
     _quarterlySparklineChart = new Chart(canvas, {
       type: "bar",

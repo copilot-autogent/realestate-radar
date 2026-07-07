@@ -133,11 +133,16 @@ export function yoyToTrendColor(yoyPct: number | null): TrendColor {
   return "grey";
 }
 
-/** Format a YoY percentage as a human-readable badge string. */
+/** Format a YoY percentage as a human-readable badge string.
+ * Snaps to the flat (→) branch when the displayed value would round to 0.0,
+ * keeping the arrow consistent with `yoyToTrendColor`'s grey/flat classification.
+ */
 export function formatYoYBadge(yoyPct: number | null): string {
   if (yoyPct === null) return "";
-  if (yoyPct > 0) return `+${yoyPct.toFixed(1)}% YoY ↑`;
-  if (yoyPct < 0) return `${yoyPct.toFixed(1)}% YoY ↓`;
+  // Round to one decimal place first to match the displayed value
+  const rounded = Math.round(yoyPct * 10) / 10;
+  if (rounded > 0) return `+${rounded.toFixed(1)}% YoY ↑`;
+  if (rounded < 0) return `${rounded.toFixed(1)}% YoY ↓`;
   return `0.0% YoY →`;
 }
 
