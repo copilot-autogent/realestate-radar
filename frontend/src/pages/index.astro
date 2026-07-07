@@ -784,11 +784,22 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <!-- Stats panel (negotiation margin + price data) -->
           <div id="stats-panel" class="stats-panel">
             <h3>統計資訊</h3>
-            {showBuyersMarket && <p class="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
+            {showBuyersMarket && <p class="buyers-market-context" id="buyers-market-context">📉 {dataYear}年行情下行中 — 首購族議價空間擴大</p>}
             <div id="stats-content">
               <p class="placeholder">選擇條件後按搜尋</p>
             </div>
             <div id="yoy-panel" class="yoy-panel" style="display:none"></div>
+          </div>
+
+          <!-- Quarterly price sparkline panel (issue #159) -->
+          <div id="quarterly-sparkline-panel" class="quarterly-sparkline-panel" style="display:none">
+            <div class="quarterly-sparkline-header">
+              <h4 class="quarterly-sparkline-title" id="quarterly-sparkline-title">近 8 季走勢</h4>
+              <span id="quarterly-yoy-badge" class="quarterly-yoy-badge" aria-live="polite"></span>
+            </div>
+            <div id="quarterly-sparkline-insufficient" class="quarterly-sparkline-insufficient" style="display:none">資料不足（需 ≥ 4 季歷史交易）</div>
+            <canvas id="quarterly-sparkline-chart" width="260" height="120" aria-label="季度中位數單價走勢圖" role="img"></canvas>
+            <p id="quarterly-sparkline-note" class="quarterly-sparkline-note"></p>
           </div>
 
           <!-- Price trend panel -->
@@ -4805,6 +4816,67 @@ const showBuyersMarket = !isStale && dataYear !== null;
     border-left: 3px solid #0d9488;
     border-radius: 4px;
   }
+
+  /* ── Quarterly price sparkline panel (issue #159) ── */
+  .quarterly-sparkline-panel {
+    margin: 8px 0;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+  }
+  .quarterly-sparkline-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .quarterly-sparkline-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #475569;
+    margin: 0;
+  }
+  .quarterly-yoy-badge {
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+    letter-spacing: 0.01em;
+  }
+  .quarterly-yoy-badge.badge-green {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #86efac;
+  }
+  .quarterly-yoy-badge.badge-red {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fca5a5;
+  }
+  .quarterly-yoy-badge.badge-grey {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+  }
+  .quarterly-sparkline-insufficient {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-align: center;
+    padding: 8px 0;
+  }
+  #quarterly-sparkline-chart {
+    display: block;
+    max-width: 100%;
+  }
+  .quarterly-sparkline-note {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    margin: 4px 0 0;
+    text-align: right;
+  }
   .site-footer {
     padding: 12px 16px;
     background: #f8fafc;
@@ -7223,6 +7295,177 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
   });
 
+  // ---- Quarterly price sparkline (issue #159) ---------------------------------
+  let _quarterlySparklineChart: any = null;
+  let _quarterlyRenderSeq = 0;
+
+  document.addEventListener("quarterly-price-trend", (e: Event) => {
+    const { quarterlyTrend } = (e as CustomEvent).detail as {
+      district: string;
+      quarterlyTrend: {
+        district: string;
+        points: Array<{ label: string; medianPerPing: number; count: number }>;
+        yoyPct: number | null;
+        trendColor: "green" | "red" | "grey";
+        yoyBadge: string;
+        sufficient: boolean;
+        isFallback: boolean;
+      };
+    };
+
+    const seq = ++_quarterlyRenderSeq;
+
+    const panel        = document.getElementById("quarterly-sparkline-panel") as HTMLDivElement | null;
+    const canvas       = document.getElementById("quarterly-sparkline-chart") as HTMLCanvasElement | null;
+    const badgeEl      = document.getElementById("quarterly-yoy-badge") as HTMLSpanElement | null;
+    const titleEl      = document.getElementById("quarterly-sparkline-title") as HTMLElement | null;
+    const noteEl       = document.getElementById("quarterly-sparkline-note") as HTMLParagraphElement | null;
+    const insuffEl     = document.getElementById("quarterly-sparkline-insufficient") as HTMLDivElement | null;
+    const buyersCtxEl  = document.getElementById("buyers-market-context") as HTMLParagraphElement | null;
+
+    if (!panel || !canvas) return;
+
+    panel.style.display = "block";
+
+    // Update title
+    if (titleEl) {
+      const n = quarterlyTrend.points.length;
+      titleEl.textContent = `近 ${n} 季走勢${quarterlyTrend.isFallback ? "（全台）" : ""}`;
+    }
+
+    // Dynamic buyers-market-context: replace hardcoded text with computed signal
+    if (buyersCtxEl) {
+      if (quarterlyTrend.yoyPct !== null) {
+        const color = quarterlyTrend.trendColor;
+        if (color === "green") {
+          // Falling prices — buyer advantage
+          buyersCtxEl.textContent = `📉 行情走跌 ${quarterlyTrend.yoyBadge} — 首購族議價空間擴大`;
+          buyersCtxEl.style.color        = "#15803d";
+          buyersCtxEl.style.background   = "#dcfce7";
+          buyersCtxEl.style.borderColor  = "#86efac";
+        } else if (color === "red") {
+          // Rising prices — caution
+          buyersCtxEl.textContent = `📈 行情走升 ${quarterlyTrend.yoyBadge} — 建議謹慎評估`;
+          buyersCtxEl.style.color        = "#dc2626";
+          buyersCtxEl.style.background   = "#fee2e2";
+          buyersCtxEl.style.borderColor  = "#fca5a5";
+        } else {
+          // Flat
+          buyersCtxEl.textContent = `➡️ 行情平盤 ${quarterlyTrend.yoyBadge} — 市場趨於穩定`;
+          buyersCtxEl.style.color        = "#475569";
+          buyersCtxEl.style.background   = "#f1f5f9";
+          buyersCtxEl.style.borderColor  = "#cbd5e1";
+        }
+        buyersCtxEl.style.display = "block";
+      }
+    }
+
+    // YoY badge
+    if (badgeEl) {
+      badgeEl.textContent = quarterlyTrend.yoyBadge || "";
+      badgeEl.className = "quarterly-yoy-badge";
+      if (quarterlyTrend.yoyBadge) {
+        badgeEl.classList.add(`badge-${quarterlyTrend.trendColor}`);
+      }
+    }
+
+    // Note
+    if (noteEl) {
+      noteEl.textContent = quarterlyTrend.isFallback && quarterlyTrend.district
+        ? `*${quarterlyTrend.district} 成交量不足，改用全台資料`
+        : "";
+    }
+
+    // Insufficient data
+    const sufficient = quarterlyTrend.sufficient;
+    if (insuffEl) insuffEl.style.display = sufficient ? "none" : "block";
+    canvas.style.display = sufficient ? "block" : "none";
+
+    if (!sufficient || seq !== _quarterlyRenderSeq) return;
+
+    // Destroy prior chart instance if any
+    if (_quarterlySparklineChart) {
+      _quarterlySparklineChart.destroy();
+      _quarterlySparklineChart = null;
+    }
+
+    const labels   = quarterlyTrend.points.map((p) => p.label);
+    const values   = quarterlyTrend.points.map((p) => p.medianPerPing);
+    const counts   = quarterlyTrend.points.map((p) => p.count);
+
+    // Determine bar color for each column based on trendColor
+    const colorMap: Record<string, string> = {
+      green: "rgba(21,128,61,0.75)",
+      red:   "rgba(220,38,38,0.75)",
+      grey:  "rgba(100,116,139,0.55)",
+    };
+    const barColor = colorMap[quarterlyTrend.trendColor] ?? colorMap["grey"]!;
+
+    const Chart = (window as any).Chart;
+    if (!Chart) return;
+
+    _quarterlySparklineChart = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "中位數單價 (萬/坪)",
+            data: values,
+            backgroundColor: values.map((_, i) => {
+              // Highlight the most-recent bar slightly more opaque
+              return i === values.length - 1
+                ? barColor.replace("0.75", "1").replace("0.55", "0.9")
+                : barColor;
+            }),
+            borderRadius: 3,
+            borderSkipped: "bottom",
+          },
+        ],
+      },
+      options: {
+        responsive: false,
+        animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => {
+                const v: number = ctx.raw;
+                const n = counts[ctx.dataIndex] ?? 0;
+                return `${v.toFixed(1)} 萬/坪（${n} 筆）`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              font: { size: 9 },
+              maxRotation: 45,
+              minRotation: 30,
+            },
+            grid: { display: false },
+          },
+          y: {
+            ticks: {
+              font: { size: 9 },
+              callback: (v: number) => `${v.toFixed(0)}萬`,
+              maxTicksLimit: 4,
+            },
+            grid: { color: "rgba(0,0,0,0.05)" },
+          },
+        },
+      },
+    });
+
+    // Accessible aria-label on each bar
+    canvas.setAttribute(
+      "aria-label",
+      `季度中位數單價走勢：${labels.map((l, i) => `${l} ${values[i]?.toFixed(1)}萬/坪`).join("，")}`,
+    );
+  });
+
   // ---- 青安貸款換約提醒 banner ----
   (function initQinganBanner(): void {
     // Use local-timezone construction (avoids UTC-parse skew with ISO string)
@@ -8637,7 +8880,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     var ch=btn.querySelector('.ia-section-chevron');if(ch)ch.textContent='▲';
     body.removeAttribute('hidden');body.classList.remove('ia-section-body-hidden');
   }
-  ['yoy-signal','stats-histogram','district-trend','district-price-trend'].forEach(function(ev){document.addEventListener(ev,function(){expandIaSection(3);});});
+  ['yoy-signal','stats-histogram','district-trend','district-price-trend','quarterly-price-trend'].forEach(function(ev){document.addEventListener(ev,function(){expandIaSection(3);});});
   document.addEventListener('district-similar',function(){expandIaSection(4);});
 
   document.addEventListener("district-buyer-timing", (e: Event) => {
