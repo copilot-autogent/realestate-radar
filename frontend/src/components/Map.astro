@@ -3940,8 +3940,10 @@
         const similarResult = computeSimilarDistricts(txDistrict, txCity || "", allProfiles);
         // Build mrtTierMap for alternatives panel (issue #163)
         const mrtTierMap: Record<string, { tier: string; noMrt: boolean }> = {};
-        for (const [k, v] of Object.entries(cachedMrtProximity)) {
-          mrtTierMap[k] = { tier: v.tier, noMrt: v.noMrt };
+        if (cachedMrtProximity) {
+          for (const [k, v] of Object.entries(cachedMrtProximity)) {
+            mrtTierMap[k] = { tier: v.tier, noMrt: v.noMrt };
+          }
         }
         document.dispatchEvent(new CustomEvent("district-similar", {
           detail: { district: txDistrict, city: txCity || "", result: similarResult, allProfiles, mrtTierMap },
@@ -4471,8 +4473,10 @@
       const similarResult = computeSimilarDistricts(district, clickedCity || "", allProfiles);
       // Build mrtTierMap for alternatives panel (issue #163)
       const mrtTierMap: Record<string, { tier: string; noMrt: boolean }> = {};
-      for (const [k, v] of Object.entries(cachedMrtProximity)) {
-        mrtTierMap[k] = { tier: v.tier, noMrt: v.noMrt };
+      if (cachedMrtProximity) {
+        for (const [k, v] of Object.entries(cachedMrtProximity)) {
+          mrtTierMap[k] = { tier: v.tier, noMrt: v.noMrt };
+        }
       }
       document.dispatchEvent(new CustomEvent("district-similar", {
         detail: { district, city: clickedCity || "", result: similarResult, allProfiles, mrtTierMap },

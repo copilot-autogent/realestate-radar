@@ -1411,6 +1411,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     document.dispatchEvent(new CustomEvent("mrt-filter-reset"));
     // Reset smart alternatives panel (issue #163)
     {
+      ++_altRenderSeq; // invalidate any in-flight district render
       const emptyEl   = document.getElementById("smart-alt-empty")   as HTMLElement | null;
       const contentEl = document.getElementById("smart-alt-content") as HTMLElement | null;
       if (emptyEl)   emptyEl.style.display   = "flex";
@@ -6413,13 +6414,18 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const prefix = city ? `${city} ` : "";
       labelEl.textContent = district ? ` — ${prefix}${district}` : "";
     }
+    // Clear stale results immediately so old data never shows under a new label
+    if (insuffEl) insuffEl.style.display = "none";
+    listEl.innerHTML = "";
 
     // Use the pure utility (same code path as tests → no drift between tests and production)
     let computeAlternatives: typeof import("../lib/alternativesUtils.js").computeAlternatives;
     try {
       ({ computeAlternatives } = await import("../lib/alternativesUtils.js"));
     } catch {
-      // Dynamic import failed — leave panel showing the label, no list
+      // Dynamic import failed — restore empty state
+      emptyEl.style.display   = "flex";
+      contentEl.style.display = "none";
       return;
     }
     // Guard: a newer district click superseded this one while we awaited the import
