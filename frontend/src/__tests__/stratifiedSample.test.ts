@@ -51,8 +51,7 @@ describe("stratifiedSample", () => {
   it("respects DISTRICT_MIN cap when a district has more records than the minimum", () => {
     const corpus = makeDistrict("台北市", "大安區", 100, 1);
     const result = stratifiedSample(corpus, { districtMin: 30, exportLimit: 10000 });
-    // Phase 1 = 30 records; no remaining (guaranteed == all phase1, fill budget = 100-30=70 more)
-    // Actually all 100 fit within exportLimit, so all should be included
+    // Phase 1 takes 30 most-recent; Phase 2 fills remaining 70 — all 100 fit within exportLimit.
     expect(result.length).toBe(100);
   });
 
@@ -64,6 +63,16 @@ describe("stratifiedSample", () => {
     ];
     const result = stratifiedSample(corpus, { districtMin: 10, exportLimit: 40 });
     expect(result.length).toBeLessThanOrEqual(40);
+  });
+
+  it("enforces exportLimit even when phase1 alone exceeds it", () => {
+    // 10 districts × 50 records → phase1 = 10×30 = 300 > exportLimit=50
+    const corpus: SampleItem[] = [];
+    for (let d = 0; d < 10; d++) {
+      corpus.push(...makeDistrict("台北市", `district${d}`, 50, d * 50 + 1));
+    }
+    const result = stratifiedSample(corpus, { districtMin: 30, exportLimit: 50 });
+    expect(result.length).toBe(50);
   });
 
   it("guarantees DISTRICT_MIN per district when exportLimit is large", () => {
@@ -79,15 +88,22 @@ describe("stratifiedSample", () => {
   });
 
   it("selects the most-recent records for phase-1 guarantee", () => {
-    // District with 10 records; dates go 2024-01, 2023-10, 2023-07, …
-    const features = makeDistrict("台南市", "東區", 10, 1);
-    // features[0] has newest date, features[9] has oldest
-    const result = stratifiedSample(features, { districtMin: 3, exportLimit: 10000 });
-    // All 10 fit; phase-1 took the 3 most-recent
-    const resultIds = result.map(f => f.properties.id);
-    expect(resultIds).toContain(1); // newest
-    expect(resultIds).toContain(2);
-    expect(resultIds).toContain(3);
+    // Build 10 features with strictly decreasing dates so newest = id 1001
+    const features: SampleItem[] = Array.from({ length: 10 }, (_, i) => ({
+      properties: {
+        id: 1001 + i,
+        city: "台南市",
+        district: "東區",
+        // 2024-10, 2024-09, …, 2024-01  (strictly newest-first)
+        date: `2024-${String(10 - i).padStart(2, "0")}-01`,
+      },
+    }));
+    // exportLimit=3 forces phase1 to be trimmed to exactly 3 records
+    const result = stratifiedSample(features, { districtMin: 10, exportLimit: 3 });
+    expect(result.length).toBe(3);
+    // Must be the 3 with the newest dates: ids 1001, 1002, 1003
+    const resultIds = result.map(f => f.properties.id).sort((a, b) => a - b);
+    expect(resultIds).toEqual([1001, 1002, 1003]);
   });
 
   it("handles an empty corpus gracefully", () => {

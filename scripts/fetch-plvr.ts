@@ -57,7 +57,8 @@ const BULK_DOWNLOAD_URL =
 
 const EXPORT_LIMIT = parseInt(process.env.EXPORT_LIMIT ?? "10000", 10);
 const MIN_FEATURES = parseInt(process.env.MIN_FEATURES ?? "100", 10);
-const DISTRICT_MIN = parseInt(process.env.DISTRICT_MIN ?? "30", 10);
+const DISTRICT_MIN_RAW = parseInt(process.env.DISTRICT_MIN ?? "30", 10);
+const DISTRICT_MIN = Number.isNaN(DISTRICT_MIN_RAW) ? 30 : DISTRICT_MIN_RAW;
 
 const REQUEST_HEADERS = {
   "User-Agent":
@@ -529,7 +530,7 @@ async function main(): Promise<void> {
       throw new Error(`Cannot read ${OUT_PATH}: ${(err as Error).message}`);
     }
     validateOutput(existing);
-    validateDistrictCoverage((existing as GeoJsonFeatureCollection).features);
+    validateDistrictCoverage((existing as GeoJsonFeatureCollection).features, DISTRICT_MIN);
     return;
   }
 
@@ -575,7 +576,9 @@ async function main(): Promise<void> {
 
   // Validate before writing
   validateOutput(geojson);
-  validateDistrictCoverage(exportFeatures);
+  // Per-district coverage check: warns (does not fail) if too many districts
+  // are sparse — intentionally non-fatal so the pipeline still writes output.
+  validateDistrictCoverage(exportFeatures, DISTRICT_MIN);
 
   // Atomic write: write to .tmp first, then rename to avoid partial-write corruption
   const tmpPath = OUT_PATH + ".tmp";
@@ -594,4 +597,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
 }
 
-export { parseCsv, buildCentroidMap, validateOutput, stratifiedSample, validateDistrictCoverage };
+export { parseCsv, buildCentroidMap, validateOutput };

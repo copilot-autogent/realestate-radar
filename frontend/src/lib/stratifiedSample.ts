@@ -64,10 +64,16 @@ export function stratifiedSample<T extends SampleItem>(
     .filter(f => !guaranteed.has(f.properties.id))
     .sort((a, b) => b.properties.date.localeCompare(a.properties.date));
 
-  return [
+  const combined = [
     ...phase1,
     ...remaining.slice(0, Math.max(0, exportLimit - phase1.length)),
   ];
+
+  // Apply hard cap: if phase1 alone exceeded exportLimit, trim by global recency.
+  // Sort the final set newest-first to preserve pre-existing ordering expectations.
+  return combined
+    .sort((a, b) => b.properties.date.localeCompare(a.properties.date))
+    .slice(0, exportLimit);
 }
 
 /**
