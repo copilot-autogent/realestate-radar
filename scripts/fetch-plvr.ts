@@ -17,6 +17,11 @@
  *   PLVR_URL      Override the download URL (default: 内政部 bulk CSV ZIP)
  *   EXPORT_LIMIT  Max features to export (default: 10000)
  *   MIN_FEATURES  Minimum required features for smoke test (default: 100)
+ *   DISTRICT_MIN  Minimum transactions guaranteed per (city, district) pair via
+ *                 stratified sampling (default: 30).  Ensures secondary-city
+ *                 districts (桃園中壢, 台中西屯, …) always have enough records
+ *                 for reliable median / YoY computation even though they appear
+ *                 less frequently in the national PLVR corpus than Taipei.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync } from "node:fs";
@@ -34,6 +39,10 @@ import {
   PLVR_COL_COUNT_LEGACY,
   PLVR_COL_COUNT_NEW,
 } from "../frontend/src/lib/plvrUtils.js";
+import {
+  stratifiedSample,
+  validateDistrictCoverage,
+} from "../frontend/src/lib/stratifiedSample.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -48,6 +57,7 @@ const BULK_DOWNLOAD_URL =
 
 const EXPORT_LIMIT = parseInt(process.env.EXPORT_LIMIT ?? "10000", 10);
 const MIN_FEATURES = parseInt(process.env.MIN_FEATURES ?? "100", 10);
+const DISTRICT_MIN = parseInt(process.env.DISTRICT_MIN ?? "30", 10);
 
 const REQUEST_HEADERS = {
   "User-Agent":
@@ -519,6 +529,7 @@ async function main(): Promise<void> {
       throw new Error(`Cannot read ${OUT_PATH}: ${(err as Error).message}`);
     }
     validateOutput(existing);
+    validateDistrictCoverage((existing as GeoJsonFeatureCollection).features);
     return;
   }
 
@@ -545,13 +556,16 @@ async function main(): Promise<void> {
     totalSkipped += skipped;
   }
 
-  // Trim to export limit and sort newest-first
-  const exportFeatures = allFeatures
-    .sort((a, b) => b.properties.date.localeCompare(a.properties.date))
-    .slice(0, EXPORT_LIMIT);
+  // Stratified sampling: guarantee DISTRICT_MIN records per (city, district),
+  // then fill remaining budget with globally most-recent.
+  const exportFeatures = stratifiedSample(allFeatures, {
+    districtMin: DISTRICT_MIN,
+    exportLimit: EXPORT_LIMIT,
+  });
 
   console.log(
-    `[pipeline] ${exportFeatures.length} features → output (${totalSkipped} skipped across all files)`,
+    `[pipeline] ${exportFeatures.length} features → output (${totalSkipped} skipped across all files, ` +
+    `DISTRICT_MIN=${DISTRICT_MIN})`,
   );
 
   const geojson: GeoJsonFeatureCollection = {
@@ -561,6 +575,7 @@ async function main(): Promise<void> {
 
   // Validate before writing
   validateOutput(geojson);
+  validateDistrictCoverage(exportFeatures);
 
   // Atomic write: write to .tmp first, then rename to avoid partial-write corruption
   const tmpPath = OUT_PATH + ".tmp";
@@ -579,4 +594,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
 }
 
-export { parseCsv, buildCentroidMap, validateOutput };
+export { parseCsv, buildCentroidMap, validateOutput, stratifiedSample, validateDistrictCoverage };
