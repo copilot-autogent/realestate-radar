@@ -73,12 +73,16 @@ export function computeAlternatives(
   mrtTierMap: Record<string, { tier: MrtTierValue; noMrt: boolean }> = {},
   maxResults: number = ALTERNATIVES_MAX_RESULTS,
 ): AlternativesResult {
+  // Clamp maxResults to a safe integer (guards against negative or fractional callers)
+  const limit = Math.max(0, Math.floor(maxResults));
   // Find the target profile
   const target = allProfiles.find(
     (p) => p.district === targetDistrict && p.city === targetCity,
   );
 
   if (!target || target.medianPricePing <= 0) {
+    // Both "district not in profiles" and "district has no price data" are treated as
+    // targetInsufficient because neither can serve as a price baseline for comparison.
     return { candidates: [], targetInsufficient: true };
   }
 
@@ -93,7 +97,7 @@ export function computeAlternatives(
         p.medianPricePing < targetPrice,
     )
     .sort((a, b) => a.medianPricePing - b.medianPricePing)
-    .slice(0, maxResults)
+    .slice(0, limit)
     .map((p) => {
       const key = `${p.city}:${p.district}`;
       const mrtEntry = mrtTierMap[key] ?? null;

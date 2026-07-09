@@ -153,4 +153,14 @@ describe("computeAlternatives", () => {
     const wenshan = candidates.find((c) => c.district === "文山區");
     expect(wenshan?.noMrtCoverage).toBe(true);
   });
+
+  it("clamps negative maxResults to 0 (returns empty candidates)", () => {
+    const { candidates } = computeAlternatives("大安區", "台北市", TAIPEI_PROFILES, {}, -1);
+    expect(candidates.length).toBe(0);
+  });
+
+  it("clamps fractional maxResults (floors to integer)", () => {
+    const { candidates } = computeAlternatives("大安區", "台北市", TAIPEI_PROFILES, {}, 1.9);
+    expect(candidates.length).toBeLessThanOrEqual(1);
+  });
 });

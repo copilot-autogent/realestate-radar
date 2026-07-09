@@ -6388,7 +6388,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
     remote:  "🔴 偏遠",
   };
 
-  async function renderSmartAlternatives(district: string, city: string, allProfiles: any[], mrtTierMap: Record<string, { tier: string; noMrt: boolean }>): Promise<void> {
+  /** Stale-event guard: incremented on each district-similar event; async renders check this. */
+  let _altRenderSeq = 0;
+
+  async function renderSmartAlternatives(seq: number, district: string, city: string, allProfiles: any[], mrtTierMap: Record<string, { tier: string; noMrt: boolean }>): Promise<void> {
     const emptyEl   = document.getElementById("smart-alt-empty")        as HTMLDivElement | null;
     const contentEl = document.getElementById("smart-alt-content")      as HTMLDivElement | null;
     const labelEl   = document.getElementById("smart-alt-label")        as HTMLSpanElement | null;
@@ -6412,7 +6415,16 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
 
     // Use the pure utility (same code path as tests → no drift between tests and production)
-    const { computeAlternatives } = await import("../lib/alternativesUtils.js");
+    let computeAlternatives: typeof import("../lib/alternativesUtils.js").computeAlternatives;
+    try {
+      ({ computeAlternatives } = await import("../lib/alternativesUtils.js"));
+    } catch {
+      // Dynamic import failed — leave panel showing the label, no list
+      return;
+    }
+    // Guard: a newer district click superseded this one while we awaited the import
+    if (seq !== _altRenderSeq) return;
+
     const { candidates, targetInsufficient } = computeAlternatives(
       district,
       city,
@@ -6469,13 +6481,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // Listen to district-similar event (which already carries allProfiles + mrtTierMap)
   document.addEventListener("district-similar", (e: Event) => {
+    const seq = ++_altRenderSeq;
     const raw = (e as CustomEvent).detail as {
       district: string;
       city: string;
       allProfiles: any[];
       mrtTierMap?: Record<string, { tier: string; noMrt: boolean }>;
     };
-    renderSmartAlternatives(raw.district, raw.city, raw.allProfiles ?? [], raw.mrtTierMap ?? {});
+    renderSmartAlternatives(seq, raw.district, raw.city, raw.allProfiles ?? [], raw.mrtTierMap ?? {})
+      .catch(() => { /* import or render error: leave panel in last-good state */ });
   });
 
   // ── Transit panel (MRT Proximity Score, issue #144) ─────────────────────────
