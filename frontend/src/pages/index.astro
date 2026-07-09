@@ -893,15 +893,28 @@ const showBuyersMarket = !isStale && dataYear !== null;
         </div><!-- /ia-section-3-body -->
       </div><!-- /ia-section-3 -->
 
-      <!-- IA Section 4: alternatives (collapsed) -->
+      <!-- IA Section 4: alternatives (expanded by default, issue #163) -->
       <div class="ia-section" id="ia-section-4">
-        <button class="ia-section-header" aria-expanded="false" aria-controls="ia-section-4-body" id="ia-section-4-btn">
+        <button class="ia-section-header" aria-expanded="true" aria-controls="ia-section-4-body" id="ia-section-4-btn">
           <span class="ia-section-title">④ 有沒有更便宜的替代方案？</span>
-          <span class="ia-section-chevron" aria-hidden="true">▼</span>
+          <span class="ia-section-chevron" aria-hidden="true">▲</span>
         </button>
-        <div class="ia-section-body ia-section-body-hidden" id="ia-section-4-body" hidden>
+        <div class="ia-section-body" id="ia-section-4-body">
 
-          <!-- Similar Districts Panel (issue #141) -->
+          <!-- Smart Alternatives Panel (issue #163) -->
+          <div id="smart-alternatives-panel" class="smart-alt-panel" aria-label="智慧替代方案推薦">
+            <div id="smart-alt-empty" class="smart-alt-empty">
+              <span class="smart-alt-empty-icon">🗺️</span>
+              <span>點擊地圖行政區，即可查看同縣市較便宜的替代地區</span>
+            </div>
+            <div id="smart-alt-content" class="smart-alt-content" style="display:none">
+              <h3 class="smart-alt-title">💡 智慧替代方案<span id="smart-alt-label" class="smart-alt-label"></span></h3>
+              <div id="smart-alt-insufficient" class="smart-alt-insufficient" style="display:none">
+                同縣市無更便宜的替代地區資料
+              </div>
+              <ul id="smart-alt-list" class="smart-alt-list" aria-label="替代地區清單"></ul>
+            </div>
+          </div>
           <div id="similar-districts-panel" class="similar-districts-panel" style="display:none" aria-label="相似地區推薦">
             <h3 class="similar-districts-title">🔍 相似地區推薦<span id="similar-districts-label" class="similar-districts-label"></span></h3>
             <div id="similar-districts-insufficient" class="similar-districts-insufficient" style="display:none">
@@ -1396,6 +1409,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const mrtLayerToggle = document.getElementById("mrt-layer-toggle") as HTMLInputElement | null;
     if (mrtLayerToggle) mrtLayerToggle.checked = true;
     document.dispatchEvent(new CustomEvent("mrt-filter-reset"));
+    // Reset smart alternatives panel (issue #163)
+    {
+      const emptyEl   = document.getElementById("smart-alt-empty")   as HTMLElement | null;
+      const contentEl = document.getElementById("smart-alt-content") as HTMLElement | null;
+      if (emptyEl)   emptyEl.style.display   = "flex";
+      if (contentEl) contentEl.style.display = "none";
+    }
     // Reset district options
     updateDistrictOptions("");
     // Reset preset active state
@@ -4548,6 +4568,117 @@ const showBuyersMarket = !isStale && dataYear !== null;
     margin-top: 4px;
   }
 
+  /* ── Smart Alternatives panel (issue #163) ── */
+  .smart-alt-panel {
+    margin-bottom: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .smart-alt-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    padding: 4px 0;
+  }
+  .smart-alt-empty-icon {
+    font-size: 1.1rem;
+  }
+  .smart-alt-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 8px;
+  }
+  .smart-alt-label {
+    font-weight: 400;
+    color: #64748b;
+    margin-left: 6px;
+    font-size: 0.82rem;
+  }
+  .smart-alt-insufficient {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    font-style: italic;
+    padding: 6px 0;
+  }
+  .smart-alt-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .smart-alt-item {
+    border: 1px solid #f1f5f9;
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: #f8fafc;
+  }
+  .smart-alt-item:hover {
+    background: #f0fff4;
+    border-color: #bbf7d0;
+  }
+  .smart-alt-row-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .smart-alt-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #1e293b;
+  }
+  .smart-alt-delta {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #16a34a;
+    background: #dcfce7;
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+  .smart-alt-row-bottom {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #475569;
+  }
+  .smart-alt-price {
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .smart-alt-mrt-badge {
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 0.72rem;
+  }
+  .smart-alt-mrt-walking { background: #dcfce7; color: #15803d; }
+  .smart-alt-mrt-nearby  { background: #fef9c3; color: #854d0e; }
+  .smart-alt-mrt-driving { background: #ffedd5; color: #9a3412; }
+  .smart-alt-mrt-remote  { background: #fee2e2; color: #991b1b; }
+  .smart-alt-mrt-none    { background: #f1f5f9; color: #64748b; }
+  .smart-alt-focus-btn {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-left: auto;
+  }
+  .smart-alt-focus-btn:hover {
+    background: #1d4ed8;
+  }
+
   /* ── Similar Districts panel (issue #141) ── */
   .similar-districts-panel {
     margin-top: 14px;
@@ -6241,6 +6372,128 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const result = csd(district, city, allProfiles, { sameCityOnly });
       renderSimilarDistrictsPanel({ district, city, result });
     } catch { /* import failure: leave panel as-is */ }
+  });
+
+  // ── Smart Alternatives panel (issue #163) ──────────────────────────────────
+
+  /** HTML-escape helper for alternatives panel (prevents XSS). */
+  function escAlt(s: string): string {
+    return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
+  }
+
+  const MRT_TIER_LABELS_ALT: Record<string, string> = {
+    walking: "🟢 步行圈",
+    nearby:  "🟡 生活圈",
+    driving: "🟠 需搭車",
+    remote:  "🔴 偏遠",
+  };
+
+  function renderSmartAlternatives(district: string, city: string, allProfiles: any[], mrtTierMap: Record<string, { tier: string; noMrt: boolean }>): void {
+    const emptyEl   = document.getElementById("smart-alt-empty")        as HTMLDivElement | null;
+    const contentEl = document.getElementById("smart-alt-content")      as HTMLDivElement | null;
+    const labelEl   = document.getElementById("smart-alt-label")        as HTMLSpanElement | null;
+    const insuffEl  = document.getElementById("smart-alt-insufficient") as HTMLDivElement | null;
+    const listEl    = document.getElementById("smart-alt-list")         as HTMLUListElement | null;
+    if (!emptyEl || !contentEl || !listEl) return;
+
+    if (!district) {
+      // No district selected — show helpful empty state
+      emptyEl.style.display   = "flex";
+      contentEl.style.display = "none";
+      return;
+    }
+
+    emptyEl.style.display   = "none";
+    contentEl.style.display = "block";
+
+    if (labelEl) {
+      const prefix = city ? `${city} ` : "";
+      labelEl.textContent = district ? ` — ${prefix}${district}` : "";
+    }
+
+    // Compute alternatives using the utility
+    // (avoids dynamic import overhead — simple enough to inline the logic via the imported module)
+    interface AltCandidate { district: string; city: string; medianPricePing: number; priceDeltaPct: number; mrtTier: string | null; noMrtCoverage: boolean; }
+    const target = (allProfiles as any[]).find(
+      (p: any) => p.district === district && p.city === city,
+    );
+
+    if (!target || !target.medianPricePing || target.medianPricePing <= 0) {
+      if (insuffEl) insuffEl.style.display = "block";
+      listEl.innerHTML = "";
+      return;
+    }
+
+    const targetPrice: number = target.medianPricePing;
+    const raw: AltCandidate[] = (allProfiles as any[])
+      .filter((p: any) =>
+        p.city === city &&
+        p.district !== district &&
+        p.medianPricePing > 0 &&
+        p.medianPricePing < targetPrice,
+      )
+      .sort((a: any, b: any) => a.medianPricePing - b.medianPricePing)
+      .slice(0, 5)
+      .map((p: any) => {
+        const key = `${p.city}:${p.district}`;
+        const mrtEntry = mrtTierMap[key] ?? null;
+        const priceDeltaPct = Math.round(((targetPrice - p.medianPricePing) / targetPrice) * 1000) / 10;
+        return {
+          district: p.district as string,
+          city: p.city as string,
+          medianPricePing: p.medianPricePing as number,
+          priceDeltaPct,
+          mrtTier: mrtEntry ? mrtEntry.tier : null,
+          noMrtCoverage: mrtEntry ? mrtEntry.noMrt : false,
+        };
+      });
+
+    if (insuffEl) insuffEl.style.display = raw.length === 0 ? "block" : "none";
+
+    listEl.innerHTML = raw.map((c: AltCandidate) => {
+      const priceWan = (c.medianPricePing / 10_000).toFixed(1);
+      const safeDist = escAlt(c.district);
+      const safeCity = escAlt(c.city);
+      let mrtHtml = "";
+      if (c.mrtTier && !c.noMrtCoverage) {
+        const mrtLabel = MRT_TIER_LABELS_ALT[c.mrtTier] ?? c.mrtTier;
+        const tierCls  = `smart-alt-mrt-${c.mrtTier}`;
+        mrtHtml = `<span class="smart-alt-mrt-badge ${tierCls}" title="捷運距離">${escAlt(mrtLabel)}</span>`;
+      } else if (c.noMrtCoverage) {
+        mrtHtml = `<span class="smart-alt-mrt-badge smart-alt-mrt-none" title="無捷運">無捷運</span>`;
+      }
+      return `<li class="smart-alt-item">
+        <div class="smart-alt-row-top">
+          <span class="smart-alt-name">${safeDist}</span>
+          <span class="smart-alt-delta">省 ${c.priceDeltaPct.toFixed(1)}%</span>
+        </div>
+        <div class="smart-alt-row-bottom">
+          <span class="smart-alt-price">${priceWan} 萬/坪</span>
+          ${mrtHtml}
+          <button class="smart-alt-focus-btn" data-district="${safeDist}" data-city="${safeCity}" aria-label="在地圖上查看 ${safeDist}">查看</button>
+        </div>
+      </li>`;
+    }).join("");
+
+    // Wire focus buttons
+    listEl.querySelectorAll(".smart-alt-focus-btn").forEach((btn) => {
+      (btn as HTMLButtonElement).addEventListener("click", () => {
+        const d = (btn as HTMLButtonElement).dataset.district ?? "";
+        const c = (btn as HTMLButtonElement).dataset.city ?? "";
+        document.dispatchEvent(new CustomEvent("district-focus", { detail: { district: d, city: c } }));
+      });
+    });
+  }
+
+  // Listen to district-similar event (which already carries allProfiles + mrtTierMap)
+  document.addEventListener("district-similar", (e: Event) => {
+    const raw = (e as CustomEvent).detail as {
+      district: string;
+      city: string;
+      allProfiles: any[];
+      mrtTierMap?: Record<string, { tier: string; noMrt: boolean }>;
+    };
+    renderSmartAlternatives(raw.district, raw.city, raw.allProfiles ?? [], raw.mrtTierMap ?? {});
   });
 
   // ── Transit panel (MRT Proximity Score, issue #144) ─────────────────────────
