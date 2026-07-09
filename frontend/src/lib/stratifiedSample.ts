@@ -40,8 +40,8 @@ export function stratifiedSample<T extends SampleItem>(
   opts: StratifiedSampleOptions,
 ): T[] {
   // Clamp opts defensively: negative or zero values would produce empty/unexpected results.
-  const districtMin = Math.max(1, opts.districtMin);
-  const exportLimit = Math.max(0, opts.exportLimit);
+  const districtMin = Number.isNaN(opts.districtMin) || opts.districtMin < 1 ? 1 : Math.floor(opts.districtMin);
+  const exportLimit = Number.isNaN(opts.exportLimit) || opts.exportLimit < 0 ? 0 : Math.floor(opts.exportLimit);
 
   // Group by (city, district). Use \0 as delimiter to avoid collisions for
   // names that themselves contain hyphens (e.g. "A-" + "B" vs "A" + "-B").
@@ -97,14 +97,15 @@ export function validateDistrictCoverage<T extends SampleItem>(
 ): void {
   const counts = new Map<string, number>();
   for (const f of features) {
-    const key = `${f.properties.city}-${f.properties.district}`;
+    // Use \0 as delimiter (same as stratifiedSample) to avoid hyphen collisions.
+    const key = `${f.properties.city}\0${f.properties.district}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
   const totalDistricts = counts.size;
   const sparseDistricts: string[] = [];
   for (const [key, n] of counts) {
-    if (n <= threshold) sparseDistricts.push(`${key}(${n})`);
+    if (n <= threshold) sparseDistricts.push(`${key.replace("\0", "-")}(${n})`);
   }
 
   const sparseFraction = totalDistricts > 0 ? sparseDistricts.length / totalDistricts : 0;

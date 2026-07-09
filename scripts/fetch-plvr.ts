@@ -55,11 +55,14 @@ const BULK_DOWNLOAD_URL =
   process.env.PLVR_URL ??
   "https://plvr.land.moi.gov.tw/Download?type=zip&fileName=lvr_landcsv.zip";
 
-const EXPORT_LIMIT = parseInt(process.env.EXPORT_LIMIT ?? "10000", 10);
+const EXPORT_LIMIT_RAW = parseInt(process.env.EXPORT_LIMIT ?? "10000", 10);
+const EXPORT_LIMIT = Number.isNaN(EXPORT_LIMIT_RAW) || EXPORT_LIMIT_RAW < 0 ? 10000 : EXPORT_LIMIT_RAW;
 const MIN_FEATURES = parseInt(process.env.MIN_FEATURES ?? "100", 10);
 const DISTRICT_MIN_RAW = parseInt(process.env.DISTRICT_MIN ?? "30", 10);
 // Clamp to ≥1: zero or negative would silently disable the per-district guarantee.
-const DISTRICT_MIN = Number.isNaN(DISTRICT_MIN_RAW) || DISTRICT_MIN_RAW < 1 ? 30 : DISTRICT_MIN_RAW;
+const DISTRICT_MIN = (Number.isNaN(DISTRICT_MIN_RAW) || DISTRICT_MIN_RAW < 1)
+  ? (() => { console.warn(`[config] Invalid DISTRICT_MIN value, using default 30`); return 30; })()
+  : DISTRICT_MIN_RAW;
 
 const REQUEST_HEADERS = {
   "User-Agent":
