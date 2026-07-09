@@ -6388,7 +6388,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
     remote:  "🔴 偏遠",
   };
 
-  function renderSmartAlternatives(district: string, city: string, allProfiles: any[], mrtTierMap: Record<string, { tier: string; noMrt: boolean }>): void {
+  async function renderSmartAlternatives(district: string, city: string, allProfiles: any[], mrtTierMap: Record<string, { tier: string; noMrt: boolean }>): Promise<void> {
     const emptyEl   = document.getElementById("smart-alt-empty")        as HTMLDivElement | null;
     const contentEl = document.getElementById("smart-alt-content")      as HTMLDivElement | null;
     const labelEl   = document.getElementById("smart-alt-label")        as HTMLSpanElement | null;
@@ -6411,46 +6411,28 @@ const showBuyersMarket = !isStale && dataYear !== null;
       labelEl.textContent = district ? ` — ${prefix}${district}` : "";
     }
 
-    // Compute alternatives using the utility
-    // (avoids dynamic import overhead — simple enough to inline the logic via the imported module)
-    interface AltCandidate { district: string; city: string; medianPricePing: number; priceDeltaPct: number; mrtTier: string | null; noMrtCoverage: boolean; }
-    const target = (allProfiles as any[]).find(
-      (p: any) => p.district === district && p.city === city,
+    // Use the pure utility (same code path as tests → no drift between tests and production)
+    const { computeAlternatives } = await import("../lib/alternativesUtils.js");
+    const { candidates, targetInsufficient } = computeAlternatives(
+      district,
+      city,
+      allProfiles as Parameters<typeof computeAlternatives>[2],
+      mrtTierMap as Parameters<typeof computeAlternatives>[3],
     );
 
-    if (!target || !target.medianPricePing || target.medianPricePing <= 0) {
-      if (insuffEl) insuffEl.style.display = "block";
-      listEl.innerHTML = "";
-      return;
+    if (insuffEl) {
+      if (targetInsufficient) {
+        insuffEl.textContent = "目前選定地區缺乏足夠成交資料";
+        insuffEl.style.display = "block";
+      } else if (candidates.length === 0) {
+        insuffEl.textContent = "同縣市無更便宜的替代地區資料";
+        insuffEl.style.display = "block";
+      } else {
+        insuffEl.style.display = "none";
+      }
     }
 
-    const targetPrice: number = target.medianPricePing;
-    const raw: AltCandidate[] = (allProfiles as any[])
-      .filter((p: any) =>
-        p.city === city &&
-        p.district !== district &&
-        p.medianPricePing > 0 &&
-        p.medianPricePing < targetPrice,
-      )
-      .sort((a: any, b: any) => a.medianPricePing - b.medianPricePing)
-      .slice(0, 5)
-      .map((p: any) => {
-        const key = `${p.city}:${p.district}`;
-        const mrtEntry = mrtTierMap[key] ?? null;
-        const priceDeltaPct = Math.round(((targetPrice - p.medianPricePing) / targetPrice) * 1000) / 10;
-        return {
-          district: p.district as string,
-          city: p.city as string,
-          medianPricePing: p.medianPricePing as number,
-          priceDeltaPct,
-          mrtTier: mrtEntry ? mrtEntry.tier : null,
-          noMrtCoverage: mrtEntry ? mrtEntry.noMrt : false,
-        };
-      });
-
-    if (insuffEl) insuffEl.style.display = raw.length === 0 ? "block" : "none";
-
-    listEl.innerHTML = raw.map((c: AltCandidate) => {
+    listEl.innerHTML = candidates.map((c) => {
       const priceWan = (c.medianPricePing / 10_000).toFixed(1);
       const safeDist = escAlt(c.district);
       const safeCity = escAlt(c.city);
