@@ -58,7 +58,8 @@ const BULK_DOWNLOAD_URL =
 const EXPORT_LIMIT = parseInt(process.env.EXPORT_LIMIT ?? "10000", 10);
 const MIN_FEATURES = parseInt(process.env.MIN_FEATURES ?? "100", 10);
 const DISTRICT_MIN_RAW = parseInt(process.env.DISTRICT_MIN ?? "30", 10);
-const DISTRICT_MIN = Number.isNaN(DISTRICT_MIN_RAW) ? 30 : DISTRICT_MIN_RAW;
+// Clamp to ≥1: zero or negative would silently disable the per-district guarantee.
+const DISTRICT_MIN = Number.isNaN(DISTRICT_MIN_RAW) || DISTRICT_MIN_RAW < 1 ? 30 : DISTRICT_MIN_RAW;
 
 const REQUEST_HEADERS = {
   "User-Agent":
@@ -530,7 +531,10 @@ async function main(): Promise<void> {
       throw new Error(`Cannot read ${OUT_PATH}: ${(err as Error).message}`);
     }
     validateOutput(existing);
-    validateDistrictCoverage((existing as GeoJsonFeatureCollection).features, DISTRICT_MIN);
+    // Per-district coverage check: threshold=10 (analytics minimum per spec).
+    // Uses 10 not DISTRICT_MIN — DISTRICT_MIN is the sampling guarantee floor,
+    // while 10 is the minimum for reliable analytics (sparkline, YoY, etc.).
+    validateDistrictCoverage((existing as GeoJsonFeatureCollection).features);
     return;
   }
 
@@ -576,9 +580,10 @@ async function main(): Promise<void> {
 
   // Validate before writing
   validateOutput(geojson);
-  // Per-district coverage check: warns (does not fail) if too many districts
-  // are sparse — intentionally non-fatal so the pipeline still writes output.
-  validateDistrictCoverage(exportFeatures, DISTRICT_MIN);
+  // Per-district coverage check: threshold=10 (analytics minimum per spec).
+  // DISTRICT_MIN is the sampling guarantee floor; 10 is the analytics minimum
+  // (sparkline, YoY, similar-district). Intentionally non-fatal — warns only.
+  validateDistrictCoverage(exportFeatures);
 
   // Atomic write: write to .tmp first, then rename to avoid partial-write corruption
   const tmpPath = OUT_PATH + ".tmp";

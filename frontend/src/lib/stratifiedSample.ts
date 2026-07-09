@@ -7,9 +7,12 @@
  *   Phase 2 – fill remaining budget up to `exportLimit` using globally
  *              most-recent transactions not already included in phase 1.
  *
- * This prevents high-volume cities (台北市, 新北市) from crowding out
- * secondary-city districts (桃園中壢, 台中西屯, …) that have real data
- * but fewer total transactions in any given quarter.
+ * Hard cap: when phase 1 alone exceeds `exportLimit` (e.g., many districts
+ * each needing `districtMin` records), the combined set is trimmed by global
+ * recency to `exportLimit`. This means the per-district guarantee is a
+ * best-effort when the budget is very tight; the hard cap always wins.
+ *
+ * The returned array is sorted newest-first.
  */
 
 export interface SampleItem {
@@ -36,12 +39,15 @@ export function stratifiedSample<T extends SampleItem>(
   allFeatures: T[],
   opts: StratifiedSampleOptions,
 ): T[] {
-  const { districtMin, exportLimit } = opts;
+  // Clamp opts defensively: negative or zero values would produce empty/unexpected results.
+  const districtMin = Math.max(1, opts.districtMin);
+  const exportLimit = Math.max(0, opts.exportLimit);
 
-  // Group by (city, district)
+  // Group by (city, district). Use \0 as delimiter to avoid collisions for
+  // names that themselves contain hyphens (e.g. "A-" + "B" vs "A" + "-B").
   const byDistrict = new Map<string, T[]>();
   for (const f of allFeatures) {
-    const key = `${f.properties.city}-${f.properties.district}`;
+    const key = `${f.properties.city}\0${f.properties.district}`;
     if (!byDistrict.has(key)) byDistrict.set(key, []);
     byDistrict.get(key)!.push(f);
   }
