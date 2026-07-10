@@ -9179,7 +9179,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (score === null) {
       timingBadge.textContent = isNational ? "—" : "資料不足";
       timingBadge.classList.add("buyer-timing-badge-empty");
-      timingRationale.textContent = isNational ? "選擇行政區以查看時機分析" : (rationale || "資料不足（需 ≥10 筆交易）");
+      // Use the event's rationale when provided so Tier-C national messages surface.
+      timingRationale.textContent = rationale || (isNational ? "選擇行政區以查看時機分析" : "資料不足（需 ≥10 筆交易）");
     } else {
       const bucketCls =
         score >= 70 ? "buyer-timing-badge-green" :
