@@ -630,7 +630,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <!-- National timing summary banner (issue #156: visible before district selection) -->
           <div id="national-timing-banner" class="national-timing-banner" aria-label="全台灣時機摘要" aria-live="polite">
             <div class="national-timing-banner-header">
-              <span class="national-timing-banner-title">📊 全台灣目前行情</span>
+              <span id="national-timing-banner-title" class="national-timing-banner-title">📊 全台灣目前行情</span>
               <span id="national-timing-verdict-badge" class="national-timing-verdict-badge national-timing-verdict-loading">載入中…</span>
             </div>
             <div id="national-timing-summary-text" class="national-timing-summary-text"></div>
@@ -5736,6 +5736,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
   .national-timing-metric {
     white-space: nowrap;
   }
+  .national-timing-metric-note {
+    font-style: italic;
+    color: #94a3b8;
+  }
   @media (max-width: 480px) {
     .national-timing-metrics {
       flex-direction: column;
@@ -9176,31 +9180,61 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // Clear timing card when district filter is cleared
   document.addEventListener("district-cleared", () => {
-    if (timingBadge) {
-      timingBadge.className = "buyer-timing-badge buyer-timing-badge-empty";
-      timingBadge.textContent = "—";
+    // Try to restore national buyer score from banner data attributes (set by
+    // the national timing script after rawdata-loaded fires — issue #165).
+    const ntbEl = document.getElementById("national-timing-banner");
+    const nationalScoreRaw = ntbEl?.getAttribute("data-national-buyer-score") ?? null;
+    const nationalScore = nationalScoreRaw !== null ? parseInt(nationalScoreRaw, 10) : NaN;
+
+    if (!isNaN(nationalScore) && ntbEl) {
+      const emoji     = ntbEl.getAttribute("data-national-verdict-emoji") ?? "";
+      const label     = ntbEl.getAttribute("data-national-verdict-label") ?? "";
+      const rationale = ntbEl.getAttribute("data-national-rationale")    ?? "";
+      if (timingBadge) {
+        timingBadge.className = "buyer-timing-badge";
+        const bucketCls =
+          nationalScore >= 70 ? "buyer-timing-badge-green" :
+          nationalScore >= 40 ? "buyer-timing-badge-yellow" :
+                                "buyer-timing-badge-red";
+        timingBadge.classList.add(bucketCls);
+        timingBadge.textContent = `${emoji} ${label} ${nationalScore}/100`;
+      }
+      if (timingRationale) timingRationale.textContent = rationale;
+    } else {
+      if (timingBadge) {
+        timingBadge.className = "buyer-timing-badge buyer-timing-badge-empty";
+        timingBadge.textContent = "—";
+      }
+      if (timingRationale) timingRationale.textContent = "選擇行政區以查看時機分析";
     }
-    if (timingRationale) timingRationale.textContent = "選擇行政區以查看時機分析";
   });
 </script>
 
 <script>
-  // ── National Timing Banner — issue #156 ──────────────────────────────────────
+  // ── National Timing Banner — issue #156 / #165 ───────────────────────────────
   import {
     computeNationalTimingSummary,
     formatYoY,
   } from "../lib/nationalTimingUtils.js";
 
-  const ntbBanner      = document.getElementById("national-timing-banner")      as HTMLElement | null;
+  const ntbBanner      = document.getElementById("national-timing-banner")       as HTMLElement | null;
+  const ntbTitle       = document.getElementById("national-timing-banner-title")  as HTMLElement | null;
   const ntbBadge       = document.getElementById("national-timing-verdict-badge") as HTMLElement | null;
-  const ntbSummaryText = document.getElementById("national-timing-summary-text") as HTMLElement | null;
-  const ntbMetrics     = document.getElementById("national-timing-metrics")      as HTMLElement | null;
+  const ntbSummaryText = document.getElementById("national-timing-summary-text")  as HTMLElement | null;
+  const ntbMetrics     = document.getElementById("national-timing-metrics")       as HTMLElement | null;
 
   function ntbRender(features: any[]): void {
     if (!ntbBanner || !ntbBadge || !ntbSummaryText || !ntbMetrics) return;
     const summary = computeNationalTimingSummary(features);
 
-    // Update badge
+    // Update banner title — append qualifier for Tier B ("（近期資料）")
+    if (ntbTitle) {
+      ntbTitle.textContent = summary.dataQualifier
+        ? `📊 全台灣目前行情${summary.dataQualifier}`
+        : "📊 全台灣目前行情";
+    }
+
+    // Update verdict badge
     ntbBadge.className = "national-timing-verdict-badge";
     const verdictCls =
       summary.verdict === "green" ? "national-timing-verdict-green" :
@@ -9212,21 +9246,68 @@ const showBuyersMarket = !isStale && dataYear !== null;
     // Update summary text
     ntbSummaryText.textContent = summary.verdictSummary;
 
-    // Update metric pills
+    // Update metric pills — available for Tier A and B (sufficient = true)
     ntbMetrics.innerHTML = "";
-    if (summary.sufficient) {
-      if (summary.yoyPriceChange !== null) {
+    if (summary.tier !== "C") {
+      // Tier A: show full YoY price change
+      if (summary.tier === "A" && summary.yoyPriceChange !== null) {
         const m = document.createElement("span");
         m.className = "national-timing-metric";
         m.textContent = `中位數單價 ${formatYoY(summary.yoyPriceChange)} YoY`;
         ntbMetrics.appendChild(m);
       }
+      // Tier B: show short-term 6mo price change
+      if (summary.tier === "B" && summary.shortTermPriceChange !== null) {
+        const m = document.createElement("span");
+        m.className = "national-timing-metric";
+        const stFormatted = Math.abs(summary.shortTermPriceChange) < 0.05
+          ? "持平"
+          : summary.shortTermPriceChange < 0
+          ? `▼${Math.abs(summary.shortTermPriceChange).toFixed(1)}%`
+          : `▲${Math.abs(summary.shortTermPriceChange).toFixed(1)}%`;
+        m.textContent = `近6個月均價 ${stFormatted}`;
+        ntbMetrics.appendChild(m);
+      }
+      // Both tiers: buyer advantage ratio
       if (summary.buyerAdvantageRatio !== null) {
         const m = document.createElement("span");
         m.className = "national-timing-metric";
         m.textContent = `買方優勢月比例 ${summary.buyerAdvantageRatio}%`;
         ntbMetrics.appendChild(m);
       }
+      // Tier B caveat note
+      if (summary.tier === "B") {
+        const note = document.createElement("span");
+        note.className = "national-timing-metric national-timing-metric-note";
+        note.textContent = "YoY資料尚不完整，以近期走勢為準";
+        ntbMetrics.appendChild(note);
+      }
+    }
+
+    // Store national buyer score in banner data attributes so district-cleared
+    // can restore it without cross-script module coupling.
+    if (summary.nationalBuyerScore !== null) {
+      ntbBanner.setAttribute("data-national-buyer-score",   String(summary.nationalBuyerScore));
+      ntbBanner.setAttribute("data-national-verdict-emoji", summary.verdictEmoji);
+      ntbBanner.setAttribute("data-national-verdict-label", summary.verdictLabel + (summary.dataQualifier ? `\u00a0${summary.dataQualifier}` : ""));
+      ntbBanner.setAttribute("data-national-rationale",     summary.verdictSummary);
+      // Dispatch initial national buyer timing so the buyer-timing card shows a score
+      // before any district is selected.
+      document.dispatchEvent(new CustomEvent("district-buyer-timing", {
+        detail: {
+          score:      summary.nationalBuyerScore,
+          label:      summary.verdictLabel + (summary.dataQualifier ? `\u00a0${summary.dataQualifier}` : ""),
+          emoji:      summary.verdictEmoji,
+          rationale:  summary.verdictSummary,
+          isNational: true,
+        },
+      }));
+    } else {
+      // Remove stale attributes if data becomes insufficient
+      ntbBanner.removeAttribute("data-national-buyer-score");
+      ntbBanner.removeAttribute("data-national-verdict-emoji");
+      ntbBanner.removeAttribute("data-national-verdict-label");
+      ntbBanner.removeAttribute("data-national-rationale");
     }
   }
 
