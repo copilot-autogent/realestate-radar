@@ -156,7 +156,19 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
   const dataMonths = monthPrices.size;
   if (!latestMonth || dataMonths < 12) return tierC(dataMonths);
 
-  const tier: "A" | "B" = dataMonths >= 24 ? "A" : "B";
+  // Tier is determined by how many distinct months fall within the most-recent
+  // 24-month window anchored at latestMonth, not by the total distinct-month count.
+  // This avoids misclassifying sparse old data as Tier A/B when recent coverage is thin.
+  const window24Start = subtractMonths(latestMonth, 23);
+  const window12Start = subtractMonths(latestMonth, 11);
+  let recentMonths24 = 0;
+  let recentMonths12 = 0;
+  for (const month of monthPrices.keys()) {
+    if (month >= window24Start) { recentMonths24++; }
+    if (month >= window12Start) { recentMonths12++; }
+  }
+  if (recentMonths12 < 12) return tierC(dataMonths);
+  const tier: "A" | "B" = recentMonths24 >= 24 ? "A" : "B";
 
   // ── Step 2a: Short-term price change — trailing 6mo vs prior 6mo ─────────────
   // Always computed when ≥12 months available (used for Tier B verdict and score).
@@ -314,11 +326,14 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
   // ── Step 5: National buyer timing score ──────────────────────────────────────
   // Composite of price-direction signal (50%) + buyer-advantage ratio (50%).
   // Uses best available price signal: full YoY for Tier A, 6mo trend for Tier B.
+  // Neutral 50 is used for a missing component so the score stays non-null when
+  // at least one signal is available (contract: null only when tier is "C").
   let nationalBuyerScore: number | null = null;
-  if (buyerAdvantageRatio !== null) {
-    const priceForScore = yoyPriceChange ?? shortTermPriceChange;
+  const priceForScore = yoyPriceChange ?? shortTermPriceChange;
+  if (priceForScore !== null || buyerAdvantageRatio !== null) {
     const priceSignal = priceForScore !== null ? pctToScore(priceForScore) : 50;
-    nationalBuyerScore = Math.round(0.5 * priceSignal + 0.5 * buyerAdvantageRatio);
+    const buyerSignal = buyerAdvantageRatio !== null ? buyerAdvantageRatio : 50;
+    nationalBuyerScore = Math.round(0.5 * priceSignal + 0.5 * buyerSignal);
   }
 
   const dataQualifier = tier === "B" ? "（近期資料）" : "";

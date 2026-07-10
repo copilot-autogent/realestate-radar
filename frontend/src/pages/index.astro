@@ -9151,22 +9151,35 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   document.addEventListener("district-buyer-timing", (e: Event) => {
     expandIaSection(2);
-    const { score, label, emoji, rationale } = (e as CustomEvent<{
+    const detail = (e as CustomEvent<{
       score: number | null;
       label: string;
       emoji: string;
       rationale: string;
+      isNational?: boolean;
     }>).detail;
+    const { score, label, emoji, rationale, isNational } = detail;
 
     if (!timingBadge || !timingRationale) return;
+
+    // Track whether a real district is currently selected so the national timing
+    // script can guard against clobbering a district score on re-renders.
+    const ntbEl = document.getElementById("national-timing-banner");
+    if (ntbEl) {
+      if (isNational) {
+        ntbEl.removeAttribute("data-district-active");
+      } else {
+        ntbEl.setAttribute("data-district-active", "1");
+      }
+    }
 
     // Remove prior badge classes
     timingBadge.className = "buyer-timing-badge";
 
     if (score === null) {
-      timingBadge.textContent = "資料不足";
+      timingBadge.textContent = isNational ? "—" : "資料不足";
       timingBadge.classList.add("buyer-timing-badge-empty");
-      timingRationale.textContent = rationale || "資料不足（需 ≥10 筆交易）";
+      timingRationale.textContent = isNational ? "選擇行政區以查看時機分析" : (rationale || "資料不足（需 ≥10 筆交易）");
     } else {
       const bucketCls =
         score >= 70 ? "buyer-timing-badge-green" :
@@ -9180,9 +9193,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // Clear timing card when district filter is cleared
   document.addEventListener("district-cleared", () => {
+    // Mark district as inactive in banner so subsequent national re-renders dispatch
+    const ntbEl = document.getElementById("national-timing-banner");
+    if (ntbEl) ntbEl.removeAttribute("data-district-active");
+
     // Try to restore national buyer score from banner data attributes (set by
     // the national timing script after rawdata-loaded fires — issue #165).
-    const ntbEl = document.getElementById("national-timing-banner");
     const nationalScoreRaw = ntbEl?.getAttribute("data-national-buyer-score") ?? null;
     const nationalScore = nationalScoreRaw !== null ? parseInt(nationalScoreRaw, 10) : NaN;
 
@@ -9291,23 +9307,32 @@ const showBuyersMarket = !isStale && dataYear !== null;
       ntbBanner.setAttribute("data-national-verdict-emoji", summary.verdictEmoji);
       ntbBanner.setAttribute("data-national-verdict-label", summary.verdictLabel + (summary.dataQualifier ? `\u00a0${summary.dataQualifier}` : ""));
       ntbBanner.setAttribute("data-national-rationale",     summary.verdictSummary);
-      // Dispatch initial national buyer timing so the buyer-timing card shows a score
-      // before any district is selected.
-      document.dispatchEvent(new CustomEvent("district-buyer-timing", {
-        detail: {
-          score:      summary.nationalBuyerScore,
-          label:      summary.verdictLabel + (summary.dataQualifier ? `\u00a0${summary.dataQualifier}` : ""),
-          emoji:      summary.verdictEmoji,
-          rationale:  summary.verdictSummary,
-          isNational: true,
-        },
-      }));
+      // Only dispatch the national buyer timing if no district is currently selected.
+      // A district selection sets data-district-active on the banner; district-cleared removes it.
+      // This prevents a re-render (e.g. data reload) from clobbering a selected district's score.
+      if (!ntbBanner.hasAttribute("data-district-active")) {
+        document.dispatchEvent(new CustomEvent("district-buyer-timing", {
+          detail: {
+            score:      summary.nationalBuyerScore,
+            label:      summary.verdictLabel + (summary.dataQualifier ? `\u00a0${summary.dataQualifier}` : ""),
+            emoji:      summary.verdictEmoji,
+            rationale:  summary.verdictSummary,
+            isNational: true,
+          },
+        }));
+      }
     } else {
-      // Remove stale attributes if data becomes insufficient
+      // Tier C — no usable data: remove stale attributes and reset buyer timing card
+      // if it is currently showing national data (i.e. no district is selected).
       ntbBanner.removeAttribute("data-national-buyer-score");
       ntbBanner.removeAttribute("data-national-verdict-emoji");
       ntbBanner.removeAttribute("data-national-verdict-label");
       ntbBanner.removeAttribute("data-national-rationale");
+      if (!ntbBanner.hasAttribute("data-district-active")) {
+        document.dispatchEvent(new CustomEvent("district-buyer-timing", {
+          detail: { score: null, label: "數據不足", emoji: "🟡", rationale: "全國歷史數據不足（< 12個月），請選擇行政區查看詳細分析", isNational: true },
+        }));
+      }
     }
   }
 
