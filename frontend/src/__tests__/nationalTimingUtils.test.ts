@@ -83,24 +83,94 @@ describe("formatYoY", () => {
 // ── computeNationalTimingSummary ──────────────────────────────────────────────
 
 describe("computeNationalTimingSummary", () => {
-  it("returns sufficient=false for empty features", () => {
+  it("returns tier=C, sufficient=false for empty features", () => {
     const result = computeNationalTimingSummary([]);
+    expect(result.tier).toBe("C");
     expect(result.sufficient).toBe(false);
     expect(result.yoyPriceChange).toBeNull();
     expect(result.buyerAdvantageRatio).toBeNull();
+    expect(result.nationalBuyerScore).toBeNull();
   });
 
-  it("returns sufficient=false when < 24 months of data", () => {
-    const features = makeMonthlyFeatures("2024-01", 12, 3);
+  it("returns tier=C when < 12 months of data", () => {
+    const features = makeMonthlyFeatures("2024-01", 6, 3);
     const result = computeNationalTimingSummary(features);
+    expect(result.tier).toBe("C");
     expect(result.sufficient).toBe(false);
+    expect(result.yoyPriceChange).toBeNull();
+    expect(result.nationalBuyerScore).toBeNull();
+  });
+
+  it("returns tier=B with partial signals when 12–23 months of data", () => {
+    const features = makeMonthlyFeatures("2024-01", 18, 3);
+    const result = computeNationalTimingSummary(features);
+    expect(result.tier).toBe("B");
+    expect(result.sufficient).toBe(true);
+    expect(result.yoyPriceChange).toBeNull(); // no full YoY
+    expect(result.dataQualifier).toBe("（近期資料）");
+  });
+
+  it("returns tier=A, sufficient=true when ≥ 24 months of data", () => {
+    const features = makeMonthlyFeatures("2023-01", 24, 3);
+    const result = computeNationalTimingSummary(features);
+    expect(result.tier).toBe("A");
+    expect(result.sufficient).toBe(true);
+    expect(result.dataQualifier).toBe("");
+  });
+
+  it("tier=B: computes shortTermPriceChange correctly — falling prices", () => {
+    // Trailing 6 months (2025-07 to 2025-12): price = 200000
+    // Prior 6 months (2025-01 to 2025-06): price = 250000
+    // 6mo change = (200000 - 250000) / 250000 * 100 = -20%
+    const trailing = makeMonthlyFeatures("2025-07", 6, 3, 200000);
+    const prior    = makeMonthlyFeatures("2025-01", 6, 3, 250000);
+    // Only 12 months total → Tier B
+    const result = computeNationalTimingSummary([...trailing, ...prior]);
+    expect(result.tier).toBe("B");
+    expect(result.shortTermPriceChange).not.toBeNull();
+    expect(result.shortTermPriceChange!).toBeCloseTo(-20, 0);
     expect(result.yoyPriceChange).toBeNull();
   });
 
-  it("returns sufficient=true when ≥ 24 months of data", () => {
-    const features = makeMonthlyFeatures("2023-01", 24, 3);
-    const result = computeNationalTimingSummary(features);
-    expect(result.sufficient).toBe(true);
+  it("tier=B: assigns green verdict when short-term prices falling", () => {
+    const trailing = makeMonthlyFeatures("2025-07", 6, 3, 230000);
+    const prior    = makeMonthlyFeatures("2025-01", 6, 3, 250000); // -8% short-term
+    const result = computeNationalTimingSummary([...trailing, ...prior]);
+    expect(result.tier).toBe("B");
+    expect(result.verdict).toBe("green");
+    expect(result.verdictLabel).toBe("買方有利");
+  });
+
+  it("tier=B: assigns red verdict when short-term prices rising with low buyer advantage", () => {
+    // High volume throughout (no buyer advantage months), rising prices
+    const trailing: any[] = [];
+    const prior: any[] = [];
+    // Prior 6 months: 10/month, lower price
+    for (let mo = 1; mo <= 6; mo++) {
+      const date = `2025-${String(mo).padStart(2, "0")}-15`;
+      for (let c = 0; c < 10; c++) prior.push(makeFeature(date, 250000));
+    }
+    // Trailing 6 months: 10/month, higher price
+    for (let mo = 7; mo <= 12; mo++) {
+      const date = `2025-${String(mo).padStart(2, "0")}-15`;
+      for (let c = 0; c < 10; c++) trailing.push(makeFeature(date, 290000));
+    }
+    const result = computeNationalTimingSummary([...trailing, ...prior]);
+    expect(result.tier).toBe("B");
+    expect(result.verdict).toBe("red");
+  });
+
+  it("tier=B: nationalBuyerScore is non-null when buyerAdvantageRatio is computable", () => {
+    const trailing = makeMonthlyFeatures("2025-07", 6, 3, 230000);
+    const prior    = makeMonthlyFeatures("2025-01", 6, 3, 250000);
+    const result = computeNationalTimingSummary([...trailing, ...prior]);
+    expect(result.tier).toBe("B");
+    // 12 months present, buyer advantage computable
+    if (result.buyerAdvantageRatio !== null) {
+      expect(result.nationalBuyerScore).not.toBeNull();
+      expect(result.nationalBuyerScore!).toBeGreaterThanOrEqual(0);
+      expect(result.nationalBuyerScore!).toBeLessThanOrEqual(100);
+    }
   });
 
   it("computes yoyPriceChange correctly — falling prices give negative value", () => {
@@ -110,6 +180,7 @@ describe("computeNationalTimingSummary", () => {
     const trailing = makeMonthlyFeatures("2024-01", 12, 3, 200000);
     const prior    = makeMonthlyFeatures("2023-01", 12, 3, 250000);
     const result = computeNationalTimingSummary([...trailing, ...prior]);
+    expect(result.tier).toBe("A");
     expect(result.sufficient).toBe(true);
     expect(result.yoyPriceChange).not.toBeNull();
     expect(result.yoyPriceChange!).toBeCloseTo(-20, 0);
@@ -122,6 +193,7 @@ describe("computeNationalTimingSummary", () => {
     const trailing = makeMonthlyFeatures("2024-01", 12, 3, 330000);
     const prior    = makeMonthlyFeatures("2023-01", 12, 3, 300000);
     const result = computeNationalTimingSummary([...trailing, ...prior]);
+    expect(result.tier).toBe("A");
     expect(result.sufficient).toBe(true);
     expect(result.yoyPriceChange).not.toBeNull();
     expect(result.yoyPriceChange!).toBeCloseTo(10, 0);
@@ -235,5 +307,80 @@ describe("computeNationalTimingSummary", () => {
       expect(result.buyerAdvantageRatio).toBeGreaterThanOrEqual(0);
       expect(result.buyerAdvantageRatio).toBeLessThanOrEqual(100);
     }
+  });
+
+  it("tier=A: nationalBuyerScore is non-null and within 0–100", () => {
+    const trailing = makeMonthlyFeatures("2024-01", 12, 5, 280000);
+    const prior    = makeMonthlyFeatures("2023-01", 12, 5, 300000);
+    const result = computeNationalTimingSummary([...trailing, ...prior]);
+    expect(result.tier).toBe("A");
+    if (result.buyerAdvantageRatio !== null) {
+      expect(result.nationalBuyerScore).not.toBeNull();
+      expect(result.nationalBuyerScore!).toBeGreaterThanOrEqual(0);
+      expect(result.nationalBuyerScore!).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("tier=A: shortTermPriceChange is computed alongside yoyPriceChange", () => {
+    const features = makeMonthlyFeatures("2023-01", 24, 3, 300000);
+    const result = computeNationalTimingSummary(features);
+    expect(result.tier).toBe("A");
+    expect(result.yoyPriceChange).not.toBeNull();
+    expect(result.shortTermPriceChange).not.toBeNull(); // both computed for Tier A
+  });
+
+  it("unpriced transactions do not shift price windows or tier classification", () => {
+    // 24 months of priced data → Tier A; then add an unpriced row dated 3 months
+    // AFTER the last priced month. Without the latestPricedMonth anchor, the later
+    // unpriced row would shift all price windows forward and produce empty trailing
+    // windows for a dataset that is actually Tier A.
+    const priced = makeMonthlyFeatures("2023-01", 24, 3, 300000);
+    // Unpriced rows dated 3 months after the last priced month (2025-03 → 2025-06)
+    const unpricedFuture = [
+      { type: "Feature", geometry: null, properties: { date: "2025-06-15" } }, // no unitPrice
+      { type: "Feature", geometry: null, properties: { date: "2025-06-15", unitPrice: null } },
+      { type: "Feature", geometry: null, properties: { date: "2025-06-15", unitPrice: 0 } },
+    ];
+    const result = computeNationalTimingSummary([...priced, ...unpricedFuture]);
+    // Should still classify as Tier A — unpriced rows must not demote it to B or C
+    expect(result.tier).toBe("A");
+    expect(result.yoyPriceChange).not.toBeNull();
+    expect(result.shortTermPriceChange).not.toBeNull();
+  });
+
+  it("nationalBuyerScore is non-null for normal Tier A dataset with both signals computable", () => {
+    // Standard 24-month dataset; both yoyPriceChange and buyerAdvantageRatio should
+    // be non-null, so nationalBuyerScore must also be non-null and in 0–100 range.
+    const trailing = makeMonthlyFeatures("2024-01", 12, 3, 280000);
+    const prior    = makeMonthlyFeatures("2023-01", 12, 3, 300000);
+    const result = computeNationalTimingSummary([...trailing, ...prior]);
+    expect(result.tier).toBe("A");
+    expect(result.yoyPriceChange).not.toBeNull();
+    expect(result.buyerAdvantageRatio).not.toBeNull();
+    expect(result.nationalBuyerScore).not.toBeNull();
+    expect(result.nationalBuyerScore!).toBeGreaterThanOrEqual(0);
+    expect(result.nationalBuyerScore!).toBeLessThanOrEqual(100);
+  });
+
+  it("nationalBuyerScore formula: flat price market yields score dominated by buyerAdvantageRatio", () => {
+    // 24 months of flat-price data: yoyPriceChange ≈ 0 → pctToScore(0) = 50 (price component).
+    // All months have identical volume (5 txns) → no month is < 70% of peak → buyerAdvantageRatio ≈ 0.
+    // Expected score ≈ 0.5*50 + 0.5*(0*100) = 25.
+    //
+    // NOTE: The neutral-50 fallback for a null price signal in nationalBuyerScore is defensive
+    // dead-code for Tier A/B: recentMonths12 ≥ 12 implies ≥12 priced months → shortTermPriceChange
+    // is always computable for those tiers. This test exercises the normal (both-signals) path.
+    const features = makeMonthlyFeatures("2023-01", 24, 5, 300000);
+    const result = computeNationalTimingSummary(features);
+    expect(result.tier).toBe("A");
+    // yoyPriceChange must be ~0 for flat prices
+    expect(result.yoyPriceChange).not.toBeNull();
+    expect(Math.abs(result.yoyPriceChange!)).toBeLessThan(2);
+    // nationalBuyerScore must be computed and in valid range
+    expect(result.nationalBuyerScore).not.toBeNull();
+    expect(result.nationalBuyerScore!).toBeGreaterThanOrEqual(0);
+    expect(result.nationalBuyerScore!).toBeLessThanOrEqual(100);
+    // Flat market → low buyer-advantage → score in lower half
+    expect(result.nationalBuyerScore!).toBeLessThan(55);
   });
 });
