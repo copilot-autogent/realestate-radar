@@ -52,8 +52,15 @@ export interface NationalTimingSummary {
    */
   nationalBuyerScore: number | null;
   /**
-   * true when tier is "A" or "B" (≥12 months of usable data).
-   * @deprecated Prefer `tier !== "C"` for clarity; kept for backward compatibility.
+   * `true` when tier is "A" or "B" (≥ 12 months of usable priced data in the
+   * most-recent 12-month window).  `false` only for Tier C.
+   *
+   * **Breaking change from the original #156 contract:** was previously `true`
+   * only when the full 24-month YoY window was available.  It is now `true` for
+   * Tier B (12–23 months) as well, where `yoyPriceChange` remains `null`.
+   * Use `tier === "A"` to guard YoY-dependent code paths.
+   *
+   * @deprecated Prefer explicit `tier !== "C"` checks in new code.
    */
   sufficient: boolean;
 }
@@ -132,10 +139,14 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
   if (!Array.isArray(features) || features.length === 0) return tierC();
 
   // ── Step 1: Accumulate per-month unit prices and transaction counts ──────────
-  // monthCounts uses ALL transactions (not just priced) for volume signal accuracy
+  // monthCounts uses ALL transactions (not just priced) for volume signal accuracy.
+  // latestPricedMonth is tracked separately from latestMonth so that lone unpriced
+  // transactions (e.g. a listing with no recorded price) cannot shift the price-window
+  // anchors and produce empty trailing windows despite valid priced history.
   const monthPrices = new Map<string, number[]>();
   const monthCounts = new Map<string, number>();
   let latestMonth = "";
+  let latestPricedMonth = "";
 
   for (const f of features) {
     const p = f?.properties;
@@ -148,19 +159,25 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
     // Prices only for priced transactions
     const up = Number(p.unitPrice);
     if (isFinite(up) && up > 0) {
+      if (monthKey > latestPricedMonth) latestPricedMonth = monthKey;
       if (!monthPrices.has(monthKey)) monthPrices.set(monthKey, []);
       monthPrices.get(monthKey)!.push(up);
     }
   }
 
+  // All price-window anchors use latestPricedMonth; volume/buyer-advantage can
+  // use latestMonth (which may be slightly newer) but we unify at latestPricedMonth
+  // so all windows are consistent with the actual priced data coverage.
+  const anchorMonth = latestPricedMonth;
+
   const dataMonths = monthPrices.size;
-  if (!latestMonth || dataMonths < 12) return tierC(dataMonths);
+  if (!anchorMonth || dataMonths < 12) return tierC(dataMonths);
 
   // Tier is determined by how many distinct months fall within the most-recent
-  // 24-month window anchored at latestMonth, not by the total distinct-month count.
+  // 24-month window anchored at anchorMonth, not by the total distinct-month count.
   // This avoids misclassifying sparse old data as Tier A/B when recent coverage is thin.
-  const window24Start = subtractMonths(latestMonth, 23);
-  const window12Start = subtractMonths(latestMonth, 11);
+  const window24Start = subtractMonths(anchorMonth, 23);
+  const window12Start = subtractMonths(anchorMonth, 11);
   let recentMonths24 = 0;
   let recentMonths12 = 0;
   for (const month of monthPrices.keys()) {
@@ -172,15 +189,15 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
 
   // ── Step 2a: Short-term price change — trailing 6mo vs prior 6mo ─────────────
   // Always computed when ≥12 months available (used for Tier B verdict and score).
-  const trailing6Start = subtractMonths(latestMonth, 5);
-  const prior6End      = subtractMonths(latestMonth, 6);
-  const prior6Start    = subtractMonths(latestMonth, 11);
+  const trailing6Start = subtractMonths(anchorMonth, 5);
+  const prior6End      = subtractMonths(anchorMonth, 6);
+  const prior6Start    = subtractMonths(anchorMonth, 11);
 
   const trailing6Prices: number[] = [];
   const prior6Prices: number[] = [];
 
   for (const [month, prices] of monthPrices) {
-    if (month >= trailing6Start && month <= latestMonth) {
+    if (month >= trailing6Start && month <= anchorMonth) {
       trailing6Prices.push(...prices);
     } else if (month >= prior6Start && month <= prior6End) {
       prior6Prices.push(...prices);
@@ -197,9 +214,9 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
   }
 
   // ── Step 2b: Full YoY price change — trailing 12mo vs prior 12mo (Tier A only) ─
-  const trailing12Start = subtractMonths(latestMonth, 11);
-  const prior12End      = subtractMonths(latestMonth, 12);
-  const prior12Start    = subtractMonths(latestMonth, 23);
+  const trailing12Start = subtractMonths(anchorMonth, 11);
+  const prior12End      = subtractMonths(anchorMonth, 12);
+  const prior12Start    = subtractMonths(anchorMonth, 23);
 
   let yoyPriceChange: number | null = null;
   if (tier === "A") {
@@ -207,7 +224,7 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
     const priorPrices: number[] = [];
 
     for (const [month, prices] of monthPrices) {
-      if (month >= trailing12Start && month <= latestMonth) {
+      if (month >= trailing12Start && month <= anchorMonth) {
         trailingPrices.push(...prices);
       } else if (month >= prior12Start && month <= prior12End) {
         priorPrices.push(...prices);
@@ -233,11 +250,11 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
     yearPeaks.set(year, Math.max(yearPeaks.get(year) ?? 0, count));
   }
 
-  // Build ordered list of last 12 months ending at latestMonth
+  // Build ordered list of last 12 months ending at anchorMonth (latest priced month)
   const last12Months: string[] = [];
   {
-    let y = parseInt(latestMonth.slice(0, 4), 10);
-    let mo = parseInt(latestMonth.slice(5, 7), 10);
+    let y = parseInt(anchorMonth.slice(0, 4), 10);
+    let mo = parseInt(anchorMonth.slice(5, 7), 10);
     for (let i = 0; i < 12; i++) {
       last12Months.unshift(`${y}-${String(mo).padStart(2, "0")}`);
       mo--;
@@ -292,7 +309,7 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
         verdict = "red"; verdictEmoji = "🔴"; verdictLabel = "賣方主導";
         verdictSummary = `近12個月成交量維持高水位，賣方議價力強（${yoyClause}）`;
       } else {
-        verdictSummary = `全台行情 ${formatYoY(yoyPriceChange)} YoY，買方優勢月比例 ${buyerAdvantageRatio}%`;
+        verdictSummary = `全台行情 ${formatYoY(primaryPriceChange)} YoY，買方優勢月比例 ${buyerAdvantageRatio}%`;
       }
     } else {
       // Tier B verdict logic — based on 6mo short-term trend
@@ -314,9 +331,11 @@ export function computeNationalTimingSummary(features: any[]): NationalTimingSum
       }
     }
   } else if (primaryPriceChange !== null) {
+    // primaryPriceChange is the narrowed non-null value; use it directly to avoid
+    // TypeScript narrowing not flowing back to yoyPriceChange/shortTermPriceChange.
     verdictSummary = tier === "A"
-      ? `全台行情 ${formatYoY(yoyPriceChange)} YoY`
-      : `近6個月均價 ${formatYoY(shortTermPriceChange)}`;
+      ? `全台行情 ${formatYoY(primaryPriceChange)} YoY`
+      : `近6個月均價 ${formatYoY(primaryPriceChange)}`;
   } else if (buyerAdvantageRatio !== null) {
     verdictSummary = `買方優勢月比例 ${buyerAdvantageRatio}%，建議選擇行政區查看詳細分析`;
   } else {
