@@ -9150,7 +9150,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
   document.addEventListener('district-similar',function(){expandIaSection(4);});
 
   document.addEventListener("district-buyer-timing", (e: Event) => {
-    expandIaSection(2);
     const detail = (e as CustomEvent<{
       score: number | null;
       label: string;
@@ -9159,6 +9158,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
       isNational?: boolean;
     }>).detail;
     const { score, label, emoji, rationale, isNational } = detail;
+
+    // Only auto-expand the buyer-timing IA section when an actual district is
+    // selected, not on the initial national cold-start render.
+    if (!isNational) expandIaSection(2);
 
     if (!timingBadge || !timingRationale) return;
 

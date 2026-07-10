@@ -362,22 +362,25 @@ describe("computeNationalTimingSummary", () => {
     expect(result.nationalBuyerScore!).toBeLessThanOrEqual(100);
   });
 
-  it("nationalBuyerScore uses neutral-50 for price signal when only buyerAdvantageRatio is available", () => {
-    // Simulate a dataset where monthPrices.size satisfies Tier B/A, but the 6-month windows
-    // both have prices in only ONE half (trailing has data, prior-6mo window is empty because
-    // data only covers the 6 most recent months of a 12-month window).
-    // Use makeMonthlyFeatures for 12 months but only put priced data in the 6 trailing months;
-    // the prior 6 months only have unpriced transactions so shortTermPriceChange stays null.
-    // We can't easily get yoyPriceChange with ≥24 months of sparse data in this test helper,
-    // so instead verify the score formula clamping via extreme values.
-    const features = makeMonthlyFeatures("2023-01", 24, 5, 300000); // all same price
+  it("nationalBuyerScore formula: flat price market yields score dominated by buyerAdvantageRatio", () => {
+    // 24 months of flat-price data: yoyPriceChange ≈ 0 → pctToScore(0) = 50 (price component).
+    // All months have identical volume (5 txns) → no month is < 70% of peak → buyerAdvantageRatio ≈ 0.
+    // Expected score ≈ 0.5*50 + 0.5*(0*100) = 25.
+    //
+    // NOTE: The neutral-50 fallback for a null price signal in nationalBuyerScore is defensive
+    // dead-code for Tier A/B: recentMonths12 ≥ 12 implies ≥12 priced months → shortTermPriceChange
+    // is always computable for those tiers. This test exercises the normal (both-signals) path.
+    const features = makeMonthlyFeatures("2023-01", 24, 5, 300000);
     const result = computeNationalTimingSummary(features);
     expect(result.tier).toBe("A");
-    // Flat price → yoyPriceChange ≈ 0 → pctToScore(0) ≈ 50
-    // buyerAdvantageRatio: with constant volume, no month is < 70% of peak → ratio ≈ 0
-    // score ≈ 0.5*50 + 0.5*0 = 25 (approximately)
+    // yoyPriceChange must be ~0 for flat prices
+    expect(result.yoyPriceChange).not.toBeNull();
+    expect(Math.abs(result.yoyPriceChange!)).toBeLessThan(2);
+    // nationalBuyerScore must be computed and in valid range
     expect(result.nationalBuyerScore).not.toBeNull();
     expect(result.nationalBuyerScore!).toBeGreaterThanOrEqual(0);
     expect(result.nationalBuyerScore!).toBeLessThanOrEqual(100);
+    // Flat market → low buyer-advantage → score in lower half
+    expect(result.nationalBuyerScore!).toBeLessThan(55);
   });
 });
