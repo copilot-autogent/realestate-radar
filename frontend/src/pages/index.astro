@@ -6832,7 +6832,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
       // Persist results (including needsRelax for restored display)
       const hub = COMMUTE_HUBS.find((h) => h.id === params.commuteHub);
-      localStorage.setItem(WIZARD_RESULTS_KEY, JSON.stringify({ matches, needsRelax, hub: hub?.label ?? params.commuteHub }));
+      // Save both id (stable) and label (display fallback for old saves)
+      localStorage.setItem(WIZARD_RESULTS_KEY, JSON.stringify({ matches, needsRelax, hub: hub?.label ?? params.commuteHub, hubId: hub?.id ?? params.commuteHub }));
 
       relaxHint.hidden = !needsRelax;
       if (matches.length === 0) {
@@ -7031,10 +7032,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
         if (poiRes.ok) {
           const poiRaw = await poiRes.json() as Record<string, PoiCounts>;
           _facilitiesScores = computeAllFacilitiesScores(poiRaw);
+        } else {
+          _facilitiesScores = {};  // static file — empty is better than perpetual null
         }
-        // On error: leave _facilitiesScores null so next load retries
       } catch {
-        // Same: leave null to retry on next scorecard refresh
+        _facilitiesScores = {};
       }
     }
 
@@ -7256,7 +7258,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
       if (savedRaw) {
         try {
-          const saved = JSON.parse(savedRaw) as { matches?: any[]; hub?: string };
+          const saved = JSON.parse(savedRaw) as { matches?: any[]; hub?: string; hubId?: string };
           if (Array.isArray(saved.matches)) {
             saved.matches.forEach((m: any) => {
               if (m.city && m.district) {
@@ -7266,7 +7268,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
               }
             });
           }
-          if (typeof saved.hub === "string") hubLabel = saved.hub;
+          // Prefer stable id lookup; fall back to label for pre-#171 saves
+          if (typeof saved.hubId === "string") {
+            const h = COMMUTE_HUBS.find(x => x.id === saved.hubId);
+            hubLabel = h?.label ?? saved.hub;
+          } else if (typeof saved.hub === "string") {
+            hubLabel = saved.hub;
+          }
         } catch { /* ignore */ }
       }
 
