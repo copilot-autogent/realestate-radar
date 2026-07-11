@@ -61,14 +61,35 @@ export interface WizardOutput {
 
 // ── Static data ───────────────────────────────────────────────────────────────
 
-/** Major commute hubs with approximate coordinates. */
+/**
+ * Major commute hubs with approximate coordinates.
+ * Covers MRT, TRA, and HSR nodes for the 3 target cities (台北/新北/桃園).
+ * Updated in issue #171 to support tunable anchor commute scoring.
+ */
 export const COMMUTE_HUBS: CommuteHub[] = [
-  { id: "taipei-main",   label: "台北車站",   lat: 25.0478, lng: 121.5170 },
-  { id: "xinyi",         label: "信義區",     lat: 25.0330, lng: 121.5655 },
-  { id: "banqiao",       label: "板橋",       lat: 25.0142, lng: 121.4633 },
-  { id: "hsinchu",       label: "新竹市",     lat: 24.8036, lng: 120.9716 },
-  { id: "taichung-main", label: "台中火車站", lat: 24.1367, lng: 120.6842 },
-  { id: "kaohsiung-mrt", label: "高雄捷運",   lat: 22.6273, lng: 120.3014 },
+  // ── 台北市 ──────────────────────────────────────────────────────────────────
+  { id: "taipei-main",    label: "台北車站 (MRT/TRA/HSR)", lat: 25.0478, lng: 121.5170 },
+  { id: "xinyi",          label: "信義區 (安和站)",         lat: 25.0330, lng: 121.5655 },
+  { id: "zhongshan",      label: "中山站",                   lat: 25.0525, lng: 121.5200 },
+  { id: "songshan",       label: "松山站 (MRT/TRA)",         lat: 25.0499, lng: 121.5780 },
+  { id: "nangang",        label: "南港站 (MRT/TRA/HSR)",     lat: 25.0524, lng: 121.6070 },
+  { id: "daan",           label: "大安站",                   lat: 25.0263, lng: 121.5433 },
+  { id: "zhongxiao-fuxing", label: "忠孝復興站",             lat: 25.0415, lng: 121.5468 },
+  // ── 新北市 ──────────────────────────────────────────────────────────────────
+  { id: "banqiao",        label: "板橋站 (MRT/TRA/HSR)",     lat: 25.0142, lng: 121.4633 },
+  { id: "xindian",        label: "新店站",                   lat: 24.9594, lng: 121.5345 },
+  { id: "xinzhuang",      label: "新莊站",                   lat: 25.0365, lng: 121.4449 },
+  { id: "tamsui",         label: "淡水站 (MRT)",             lat: 25.1676, lng: 121.4422 },
+  { id: "shulin-tra",     label: "樹林站 (TRA)",             lat: 24.9915, lng: 121.4235 },
+  { id: "xizhi-tra",      label: "汐止站 (TRA)",             lat: 25.0676, lng: 121.6593 },
+  // ── 桃園市 ──────────────────────────────────────────────────────────────────
+  { id: "taoyuan-main",   label: "桃園站 (TRA)",             lat: 24.9891, lng: 121.3139 },
+  { id: "zhongli-tra",    label: "中壢站 (TRA)",             lat: 24.9549, lng: 121.2245 },
+  { id: "hsr-taoyuan",    label: "高鐵桃園站",               lat: 24.9978, lng: 121.2333 },
+  // ── 其他 (backward compat) ──────────────────────────────────────────────────
+  { id: "hsinchu",        label: "新竹市",                   lat: 24.8036, lng: 120.9716 },
+  { id: "taichung-main",  label: "台中火車站",               lat: 24.1367, lng: 120.6842 },
+  { id: "kaohsiung-mrt",  label: "高雄捷運",                 lat: 22.6273, lng: 120.3014 },
 ];
 
 /**

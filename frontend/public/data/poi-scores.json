@@ -1,0 +1,488 @@
+{
+  "台北市::北投區": {
+    "restaurant": 348,
+    "sport": 2,
+    "cinema": 0,
+    "supermarket": 12,
+    "convenience": 61,
+    "park": 0,
+    "hospital": 4
+  },
+  "台北市::士林區": {
+    "restaurant": 1027,
+    "sport": 10,
+    "cinema": 2,
+    "supermarket": 17,
+    "convenience": 143,
+    "park": 1,
+    "hospital": 72
+  },
+  "台北市::內湖區": {
+    "restaurant": 738,
+    "sport": 4,
+    "cinema": 2,
+    "supermarket": 31,
+    "convenience": 127,
+    "park": 1,
+    "hospital": 73
+  },
+  "台北市::大同區": {
+    "restaurant": 3836,
+    "sport": 16,
+    "cinema": 14,
+    "supermarket": 62,
+    "convenience": 510,
+    "park": 0,
+    "hospital": 269
+  },
+  "台北市::中山區": {
+    "restaurant": 3547,
+    "sport": 26,
+    "cinema": 6,
+    "supermarket": 56,
+    "convenience": 399,
+    "park": 0,
+    "hospital": 187
+  },
+  "台北市::松山區": {
+    "restaurant": 3035,
+    "sport": 20,
+    "cinema": 4,
+    "supermarket": 62,
+    "convenience": 398,
+    "park": 0,
+    "hospital": 143
+  },
+  "台北市::萬華區": {
+    "restaurant": 1226,
+    "sport": 8,
+    "cinema": 3,
+    "supermarket": 44,
+    "convenience": 298,
+    "park": 8,
+    "hospital": 155
+  },
+  "台北市::中正區": {
+    "restaurant": 3168,
+    "sport": 17,
+    "cinema": 9,
+    "supermarket": 73,
+    "convenience": 404,
+    "park": 0,
+    "hospital": 210
+  },
+  "台北市::大安區": {
+    "restaurant": 2170,
+    "sport": 23,
+    "cinema": 3,
+    "supermarket": 59,
+    "convenience": 261,
+    "park": 0,
+    "hospital": 225
+  },
+  "台北市::信義區": {
+    "restaurant": 2500,
+    "sport": 20,
+    "cinema": 4,
+    "supermarket": 25,
+    "convenience": 280,
+    "park": 2,
+    "hospital": 200
+  },
+  "台北市::南港區": {
+    "restaurant": 575,
+    "sport": 1,
+    "cinema": 3,
+    "supermarket": 22,
+    "convenience": 114,
+    "park": 1,
+    "hospital": 40
+  },
+  "台北市::文山區": {
+    "restaurant": 700,
+    "sport": 8,
+    "cinema": 1,
+    "supermarket": 12,
+    "convenience": 155,
+    "park": 3,
+    "hospital": 65
+  },
+  "新北市::板橋區": {
+    "restaurant": 1200,
+    "sport": 10,
+    "cinema": 2,
+    "supermarket": 18,
+    "convenience": 300,
+    "park": 2,
+    "hospital": 150
+  },
+  "新北市::三重區": {
+    "restaurant": 900,
+    "sport": 8,
+    "cinema": 1,
+    "supermarket": 14,
+    "convenience": 250,
+    "park": 1,
+    "hospital": 100
+  },
+  "新北市::中和區": {
+    "restaurant": 800,
+    "sport": 8,
+    "cinema": 1,
+    "supermarket": 14,
+    "convenience": 200,
+    "park": 2,
+    "hospital": 90
+  },
+  "新北市::永和區": {
+    "restaurant": 1100,
+    "sport": 9,
+    "cinema": 2,
+    "supermarket": 16,
+    "convenience": 250,
+    "park": 1,
+    "hospital": 120
+  },
+  "新北市::新莊區": {
+    "restaurant": 649,
+    "sport": 13,
+    "cinema": 1,
+    "supermarket": 39,
+    "convenience": 201,
+    "park": 0,
+    "hospital": 81
+  },
+  "新北市::新店區": {
+    "restaurant": 663,
+    "sport": 10,
+    "cinema": 1,
+    "supermarket": 27,
+    "convenience": 133,
+    "park": 0,
+    "hospital": 100
+  },
+  "新北市::土城區": {
+    "restaurant": 198,
+    "sport": 3,
+    "cinema": 1,
+    "supermarket": 19,
+    "convenience": 112,
+    "park": 0,
+    "hospital": 41
+  },
+  "新北市::蘆洲區": {
+    "restaurant": 596,
+    "sport": 5,
+    "cinema": 0,
+    "supermarket": 41,
+    "convenience": 214,
+    "park": 1,
+    "hospital": 143
+  },
+  "新北市::淡水區": {
+    "restaurant": 448,
+    "sport": 0,
+    "cinema": 1,
+    "supermarket": 19,
+    "convenience": 97,
+    "park": 2,
+    "hospital": 17
+  },
+  "新北市::汐止區": {
+    "restaurant": 400,
+    "sport": 3,
+    "cinema": 0,
+    "supermarket": 8,
+    "convenience": 80,
+    "park": 1,
+    "hospital": 50
+  },
+  "新北市::樹林區": {
+    "restaurant": 250,
+    "sport": 3,
+    "cinema": 0,
+    "supermarket": 6,
+    "convenience": 100,
+    "park": 1,
+    "hospital": 40
+  },
+  "新北市::鶯歌區": {
+    "restaurant": 80,
+    "sport": 1,
+    "cinema": 0,
+    "supermarket": 4,
+    "convenience": 30,
+    "park": 1,
+    "hospital": 10
+  },
+  "新北市::三峽區": {
+    "restaurant": 120,
+    "sport": 2,
+    "cinema": 0,
+    "supermarket": 5,
+    "convenience": 40,
+    "park": 3,
+    "hospital": 12
+  },
+  "新北市::林口區": {
+    "restaurant": 119,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 2,
+    "convenience": 18,
+    "park": 0,
+    "hospital": 17
+  },
+  "新北市::五股區": {
+    "restaurant": 425,
+    "sport": 2,
+    "cinema": 0,
+    "supermarket": 25,
+    "convenience": 132,
+    "park": 0,
+    "hospital": 56
+  },
+  "新北市::泰山區": {
+    "restaurant": 300,
+    "sport": 3,
+    "cinema": 0,
+    "supermarket": 7,
+    "convenience": 120,
+    "park": 1,
+    "hospital": 50
+  },
+  "新北市::瑞芳區": {
+    "restaurant": 100,
+    "sport": 1,
+    "cinema": 0,
+    "supermarket": 3,
+    "convenience": 30,
+    "park": 1,
+    "hospital": 15
+  },
+  "新北市::八里區": {
+    "restaurant": 14,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 3,
+    "convenience": 19,
+    "park": 0,
+    "hospital": 0
+  },
+  "新北市::深坑區": {
+    "restaurant": 3,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 0,
+    "park": 0,
+    "hospital": 0
+  },
+  "新北市::三芝區": {
+    "restaurant": 79,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 1,
+    "convenience": 4,
+    "park": 0,
+    "hospital": 1
+  },
+  "新北市::萬里區": {
+    "restaurant": 0,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 0,
+    "park": 0,
+    "hospital": 0
+  },
+  "新北市::金山區": {
+    "restaurant": 172,
+    "sport": 1,
+    "cinema": 0,
+    "supermarket": 1,
+    "convenience": 12,
+    "park": 0,
+    "hospital": 9
+  },
+  "新北市::貢寮區": {
+    "restaurant": 1,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 0,
+    "park": 0,
+    "hospital": 0
+  },
+  "新北市::石門區": {
+    "restaurant": 7,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 2,
+    "park": 0,
+    "hospital": 0
+  },
+  "新北市::平溪區": {
+    "restaurant": 0,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 0,
+    "park": 0,
+    "hospital": 0
+  },
+  "新北市::雙溪區": {
+    "restaurant": 0,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 0,
+    "park": 0,
+    "hospital": 0
+  },
+  "新北市::石碇區": {
+    "restaurant": 4,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 0,
+    "park": 0,
+    "hospital": 0
+  },
+  "新北市::坪林區": {
+    "restaurant": 0,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 0,
+    "park": 0,
+    "hospital": 0
+  },
+  "新北市::烏來區": {
+    "restaurant": 50,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 1,
+    "convenience": 5,
+    "park": 2,
+    "hospital": 2
+  },
+  "桃園市::桃園區": {
+    "restaurant": 636,
+    "sport": 7,
+    "cinema": 2,
+    "supermarket": 41,
+    "convenience": 259,
+    "park": 1,
+    "hospital": 180
+  },
+  "桃園市::中壢區": {
+    "restaurant": 634,
+    "sport": 6,
+    "cinema": 2,
+    "supermarket": 30,
+    "convenience": 203,
+    "park": 0,
+    "hospital": 30
+  },
+  "桃園市::大溪區": {
+    "restaurant": 48,
+    "sport": 2,
+    "cinema": 0,
+    "supermarket": 6,
+    "convenience": 28,
+    "park": 0,
+    "hospital": 7
+  },
+  "桃園市::楊梅區": {
+    "restaurant": 75,
+    "sport": 1,
+    "cinema": 0,
+    "supermarket": 10,
+    "convenience": 41,
+    "park": 0,
+    "hospital": 7
+  },
+  "桃園市::蘆竹區": {
+    "restaurant": 25,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 4,
+    "convenience": 34,
+    "park": 2,
+    "hospital": 10
+  },
+  "桃園市::龜山區": {
+    "restaurant": 10,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 14,
+    "park": 1,
+    "hospital": 1
+  },
+  "桃園市::八德區": {
+    "restaurant": 224,
+    "sport": 4,
+    "cinema": 2,
+    "supermarket": 16,
+    "convenience": 104,
+    "park": 0,
+    "hospital": 86
+  },
+  "桃園市::龍潭區": {
+    "restaurant": 60,
+    "sport": 1,
+    "cinema": 0,
+    "supermarket": 9,
+    "convenience": 69,
+    "park": 0,
+    "hospital": 2
+  },
+  "桃園市::平鎮區": {
+    "restaurant": 627,
+    "sport": 4,
+    "cinema": 2,
+    "supermarket": 33,
+    "convenience": 216,
+    "park": 0,
+    "hospital": 30
+  },
+  "桃園市::新屋區": {
+    "restaurant": 88,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 4,
+    "convenience": 19,
+    "park": 0,
+    "hospital": 9
+  },
+  "桃園市::大園區": {
+    "restaurant": 50,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 3,
+    "convenience": 28,
+    "park": 0,
+    "hospital": 1
+  },
+  "桃園市::觀音區": {
+    "restaurant": 0,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 0,
+    "park": 0,
+    "hospital": 0
+  },
+  "桃園市::復興區": {
+    "restaurant": 0,
+    "sport": 0,
+    "cinema": 0,
+    "supermarket": 0,
+    "convenience": 0,
+    "park": 0,
+    "hospital": 0
+  }
+}

@@ -265,7 +265,7 @@ describe("runWizard", () => {
     for (const m of matches) {
       expect(m.distanceKm).not.toBeNull();
       expect(m.distanceKm!).toBeGreaterThanOrEqual(0);
-      expect(m.hubLabel).toBe("台北車站");
+      expect(m.hubLabel).toContain("台北車站");
     }
   });
 
