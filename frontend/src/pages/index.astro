@@ -6498,10 +6498,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (tableViewContainer) tableViewContainer.style.display = "none";
     if (mainSidebar)        mainSidebar.style.display        = "";
 
-    // Update drilldown label and back button
+    // Only show the drilldown bar when navigating to a specific district
     const bar   = document.getElementById("map-drilldown-bar")   as HTMLElement | null;
     const label = document.getElementById("map-drilldown-label") as HTMLElement | null;
-    if (bar)   bar.style.display   = "";
+    if (bar)   bar.style.display   = district ? "" : "none";
     if (label) label.textContent   = district && city ? `${city} ${district}` : "";
 
     if (viewToggleBtn) {
@@ -6528,7 +6528,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (scorecardContainer) scorecardContainer.style.display = "";
     if (mapViewContainer)   mapViewContainer.style.display   = "none";
     if (tableViewContainer) tableViewContainer.style.display = "none";
-    if (mainSidebar)        mainSidebar.style.display        = "none";
+
+    // Close sidebar properly: clear overflow lock + backdrop in case it was open
+    document.body.style.overflow = "";
+    document.getElementById("sidebar-backdrop")?.classList.remove("open");
+    if (mainSidebar) {
+      mainSidebar.classList.remove("open");
+      mainSidebar.style.display = "none";
+    }
 
     if (viewToggleBtn) {
       viewToggleBtn.textContent = "🗺 地圖";
@@ -7007,11 +7014,18 @@ const showBuyersMarket = !isStale && dataYear !== null;
     return parts.slice(0, 2).join("　·　");
   }
 
-  function renderScorecard(rows: ScorecardRow[], matchDistricts: Set<string>, hubLabel?: string): void {
+  function renderScorecard(rows: ScorecardRow[], matchDistricts: Set<string>, hubLabel?: string, matchOrder?: string[]): void {
     if (!scorecardList) return;
 
-    // Sort: wizard matches first (by index), then rest by timingScore desc then price asc
-    const matchRows = rows.filter(r => matchDistricts.has(`${r.city}::${r.district}`));
+    // Sort: wizard matches first (preserving wizard's ranked order), then rest by timingScore desc then price asc
+    const orderMap = new Map<string, number>(matchOrder?.map((key, i) => [key, i]));
+    const matchRows = rows
+      .filter(r => matchDistricts.has(`${r.city}::${r.district}`))
+      .sort((a, b) => {
+        const ia = orderMap.get(`${a.city}::${a.district}`) ?? 999;
+        const ib = orderMap.get(`${b.city}::${b.district}`) ?? 999;
+        return ia - ib;
+      });
     const otherRows = rows
       .filter(r => !matchDistricts.has(`${r.city}::${r.district}`))
       .sort((a, b) => {
@@ -7140,6 +7154,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       // Check for saved wizard results
       const savedRaw = localStorage.getItem(WIZARD_RESULTS_KEY_SC);
       let matchDistricts = new Set<string>();
+      let matchOrder: string[] = [];
       let hubLabel: string | undefined;
 
       if (savedRaw) {
@@ -7147,7 +7162,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
           const saved = JSON.parse(savedRaw) as { matches?: any[]; hub?: string };
           if (Array.isArray(saved.matches)) {
             saved.matches.forEach((m: any) => {
-              if (m.city && m.district) matchDistricts.add(`${m.city}::${m.district}`);
+              if (m.city && m.district) {
+                const key = `${m.city}::${m.district}`;
+                matchDistricts.add(key);
+                matchOrder.push(key);
+              }
             });
           }
           if (typeof saved.hub === "string") hubLabel = saved.hub;
@@ -7164,7 +7183,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         scorecardResultsDesc.textContent = `配對到 ${matchDistricts.size} 個行政區${hubLabel ? "（" + hubLabel + "方向）" : ""}，排行榜已更新`;
       }
 
-      renderScorecard(rows, matchDistricts, hubLabel);
+      renderScorecard(rows, matchDistricts, hubLabel, matchOrder);
     } catch (err) {
       if (scorecardLoading) {
         scorecardLoading.textContent = "❌ 資料載入失敗，請重新整理頁面";
@@ -7174,35 +7193,47 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // Wire wizard CTA and redo buttons
   scorecardOpenWizardBtn?.addEventListener("click", () => {
+    // Use the wizard's openWizard function (first visit or re-open)
     const overlay = document.getElementById("wizard-overlay") as HTMLElement | null;
-    if (overlay) {
-      overlay.hidden = false;
-      overlay.focus();
-      document.body.style.overflow = "hidden";
+    if (!overlay) return;
+    overlay.hidden = false;
+    overlay.focus();
+    document.body.style.overflow = "hidden";
+    // Show step 1 (fresh start)
+    for (let i = 1; i <= 3; i++) {
+      const el = document.getElementById(`wizard-step-${i}`) as HTMLElement | null;
+      if (el) el.hidden = i !== 1;
     }
+    const results = document.getElementById("wizard-results") as HTMLElement | null;
+    if (results) results.hidden = true;
+    document.querySelectorAll(".wizard-step-dot").forEach((dot, idx) => {
+      dot.classList.toggle("active", idx === 0);
+      dot.classList.remove("done");
+    });
   });
 
   scorecardRedoBtn?.addEventListener("click", () => {
     const overlay = document.getElementById("wizard-overlay") as HTMLElement | null;
-    if (overlay) {
-      overlay.hidden = false;
-      overlay.focus();
-      document.body.style.overflow = "hidden";
-      // Reset to step 1
-      const step1 = document.getElementById("wizard-step-1");
-      const step2 = document.getElementById("wizard-step-2");
-      const step3 = document.getElementById("wizard-step-3");
-      const results = document.getElementById("wizard-results");
-      if (step1) step1.hidden = false;
-      if (step2) step2.hidden = true;
-      if (step3) step3.hidden = true;
-      if (results) results.hidden = true;
+    if (!overlay) return;
+    overlay.hidden = false;
+    overlay.focus();
+    document.body.style.overflow = "hidden";
+    // Reset to step 1
+    for (let i = 1; i <= 3; i++) {
+      const el = document.getElementById(`wizard-step-${i}`) as HTMLElement | null;
+      if (el) el.hidden = i !== 1;
     }
+    const results = document.getElementById("wizard-results") as HTMLElement | null;
+    if (results) results.hidden = true;
+    document.querySelectorAll(".wizard-step-dot").forEach((dot, idx) => {
+      dot.classList.toggle("active", idx === 0);
+      dot.classList.remove("done");
+    });
   });
 
-  // Refresh scorecard when wizard completes
+  // Refresh scorecard render when wizard completes (data is cached; only re-render)
   document.addEventListener("wizard-results-updated", () => {
-    _cachedRows = null; // clear cache to pick up fresh data
+    // Don't clear _cachedRows — transaction data didn't change, only wizard prefs did
     initScorecard();
   });
 
