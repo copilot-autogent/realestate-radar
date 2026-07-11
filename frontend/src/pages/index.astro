@@ -7860,10 +7860,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
         },
       ];
     } else {
-      // All cities — single stack per city, two datasets per city for color split
-      const cityList = Object.keys(cities);
+      // All cities — filter to target cities only (permits.json may contain more cities)
+      const cityList = Object.keys(cities).filter(c => CITY_COLORS[c] !== undefined);
       datasets = cityList.flatMap((city) => {
-        const color = CITY_COLORS[city] ?? "#6366f1";
+        const color = CITY_COLORS[city]!;
         const op = cities[city].occupancy_permits;
         return [
           {
