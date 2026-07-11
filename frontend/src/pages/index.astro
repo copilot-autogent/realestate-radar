@@ -736,8 +736,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
         <p class="wizard-step-desc">主要通勤目的地（可選捷運、台鐵、高鐵站）？</p>
         <select id="wizard-hub-select" class="wizard-select" aria-label="主要通勤目的地">
           <optgroup label="🏙 台北市">
-            <option value="taipei-main">台北車站 (MRT/TRA/HSR)</option>
-            <option value="xinyi">信義區 (安和站)</option>
+            <option value="taipei-main">台北車站</option>
+            <option value="xinyi">信義區</option>
             <option value="zhongshan">中山站</option>
             <option value="songshan">松山站 (MRT/TRA)</option>
             <option value="nangang">南港站 (MRT/TRA/HSR)</option>
@@ -745,7 +745,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
             <option value="zhongxiao-fuxing">忠孝復興站</option>
           </optgroup>
           <optgroup label="🏘 新北市">
-            <option value="banqiao">板橋站 (MRT/TRA/HSR)</option>
+            <option value="banqiao">板橋</option>
             <option value="xindian">新店站</option>
             <option value="xinzhuang">新莊站</option>
             <option value="tamsui">淡水站 (MRT)</option>
@@ -7031,11 +7031,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
         if (poiRes.ok) {
           const poiRaw = await poiRes.json() as Record<string, PoiCounts>;
           _facilitiesScores = computeAllFacilitiesScores(poiRaw);
-        } else {
-          _facilitiesScores = {};
         }
+        // On error: leave _facilitiesScores null so next load retries
       } catch {
-        _facilitiesScores = {};
+        // Same: leave null to retry on next scorecard refresh
       }
     }
 
@@ -7094,7 +7093,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
       parts.push("生活機能優，餐廳超商醫療密集");
     } else if (row.facilitiesScore !== null && row.facilitiesScore < 25) {
       parts.push("生活機能較不足，建議確認日常所需");
-    } else if (row.txCount12mo !== null && row.txCount12mo > 0) {
+    }
+    // txCount as fallback — always eligible, trimmed by slice(0,2) if earlier parts fill up
+    if (row.txCount12mo !== null && row.txCount12mo > 0) {
       parts.push(`近 12 月成交 ${row.txCount12mo} 筆`);
     }
     return parts.slice(0, 2).join("　·　");
