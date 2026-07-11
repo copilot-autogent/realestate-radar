@@ -3349,6 +3349,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
   }
   /* Nudge map content down below drilldown bar */
   .map-container { position: relative; overflow: hidden; }
+  .map-container.has-drilldown-bar > :not(.map-drilldown-bar) {
+    /* Push all map children (Map, alerts, controls) below the ~42px drilldown bar */
+    margin-top: 42px;
+  }
 
   /* ── Shortlist Badge + Comparison Panel (issue #145) ── */
   .shortlist-badge {
@@ -6503,6 +6507,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const label = document.getElementById("map-drilldown-label") as HTMLElement | null;
     if (bar)   bar.style.display   = district ? "" : "none";
     if (label) label.textContent   = district && city ? `${city} ${district}` : "";
+    // Toggle padding class so map content renders below the bar
+    mapViewContainer?.classList.toggle("has-drilldown-bar", !!district);
 
     if (viewToggleBtn) {
       viewToggleBtn.textContent = "🏘 排行榜";
@@ -6820,7 +6826,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   // ── Event wiring ─────────
 
-  closeBtn.addEventListener("click", closeWizard);
+  closeBtn.addEventListener("click", () => {
+    // If user closes while results are showing, still refresh the scorecard
+    const resultsEl = document.getElementById("wizard-results") as HTMLElement | null;
+    const resultsVisible = resultsEl && !resultsEl.hidden;
+    closeWizard();
+    if (resultsVisible) {
+      document.dispatchEvent(new CustomEvent("wizard-results-updated"));
+    }
+  });
   reopenBtn.addEventListener("click", () => openWizard(true)); // show saved results if available
   runBtn.addEventListener("click", runMatching);
   doneBtn.addEventListener("click", () => {
