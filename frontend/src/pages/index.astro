@@ -7860,8 +7860,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
         },
       ];
     } else {
-      // All cities — filter to target cities only (permits.json may contain more cities)
-      const cityList = Object.keys(cities).filter(c => CITY_COLORS[c] !== undefined);
+      // All cities — use CITY_COLORS as the authoritative city list (permits.json may include
+      // more cities; only those in CITY_COLORS represent our target scope).
+      const cityList = Object.keys(CITY_COLORS);
       datasets = cityList.flatMap((city) => {
         const color = CITY_COLORS[city]!;
         const op = cities[city].occupancy_permits;

@@ -289,8 +289,9 @@ function parseCsv(
 
   const normalizedCity = normalizeCityName(city);
   if (!TARGET_CITIES.has(normalizedCity)) {
-    // skipped:0 is intentional — we skip the file entirely before parsing any rows,
-    // so there are no individually-counted skipped records to report.
+    // skipped:0 is intentional — we skip the entire file before row-level parse.
+    // CITY_CODES values already use 台 (not 臺), so normalizeCityName is a defensive
+    // no-op here; normalizedCity === city in all current cases.
     console.log(`[parse] ${filename}: city "${normalizedCity}" not in TARGET_CITIES — skipping`);
     return { features: [], skipped: 0 };
   }
