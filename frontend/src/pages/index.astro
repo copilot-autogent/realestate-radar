@@ -2307,6 +2307,25 @@ const showBuyersMarket = !isStale && dataYear !== null;
     line-height: 1.4;
   }
 
+  /* Alert banner (overlaid on map) */
+  .ss-alert-banner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: #fffbeb;
+    border-bottom: 2px solid #f59e0b;
+  }
+  .ss-alert-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    color: #92400e;
+  }
+
   /* ---- Transaction List Panel ---- */
   .transaction-list-panel {
     margin-top: 12px;
@@ -5295,6 +5314,9 @@ const showBuyersMarket = !isStale && dataYear !== null;
         insuffEl.style.display = "block";
       }
       if (canvas) canvas.style.display = "none";
+      // Still set scope so that when data arrives it renders in global mode
+      _heatmapActiveScope = "global";
+      updateHeatmapScopeButtons();
       return;
     }
     _heatmapActiveScope = "global";
