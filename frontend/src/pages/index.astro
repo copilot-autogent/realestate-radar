@@ -643,10 +643,10 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </div>
 
       <!-- Ranked list -->
+      <div class="scorecard-loading-state" id="scorecard-loading">
+        <span>⌛ 載入行政區資料中…</span>
+      </div>
       <div id="scorecard-district-list" class="scorecard-district-list">
-        <div class="scorecard-loading-state" id="scorecard-loading">
-          <span>⌛ 載入行政區資料中…</span>
-        </div>
       </div>
     </div>
 
@@ -1206,9 +1206,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const scorecardEl = document.getElementById("scorecard-view-container");
       if (scorecardEl && scorecardEl.style.display !== "none") {
         switchToMap();
+        // Open sidebar after view transition completes to avoid toggle conflict
+        requestAnimationFrame(() => openSidebar());
+        return;
       }
     }
-    openSidebar();
+    // In map/table view: toggle the sidebar
+    if (sidebar?.classList.contains("open")) closeSidebar();
+    else openSidebar();
   });
   document.getElementById("sidebar-close-btn")?.addEventListener("click", closeSidebar);
   backdrop?.addEventListener("click", closeSidebar);
@@ -6906,10 +6911,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
     localStorage.removeItem(WIZARD_KEY_LEGACY);
   }
 
+  // Expose openWizard so other script blocks (scorecard CTA) can call the real function
+  (window as any).__rrOpenWizard = openWizard;
+
   const dismissed = localStorage.getItem(WIZARD_KEY);
   if (!dismissed) {
-    // First visit — open wizard immediately (it's now the primary entry point)
-    openWizard();
+    // First visit — defer slightly so module scripts and scorecard can initialize first
+    setTimeout(() => openWizard(), 50);
   }
   // Returning visitors: saved results are shown in the scorecard automatically
 </script>
@@ -7205,44 +7213,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
     }
   }
 
-  // Wire wizard CTA and redo buttons
+  // Wire wizard CTA and redo buttons — delegate to the wizard's own openWizard()
   scorecardOpenWizardBtn?.addEventListener("click", () => {
-    // Use the wizard's openWizard function (first visit or re-open)
-    const overlay = document.getElementById("wizard-overlay") as HTMLElement | null;
-    if (!overlay) return;
-    overlay.hidden = false;
-    overlay.focus();
-    document.body.style.overflow = "hidden";
-    // Show step 1 (fresh start)
-    for (let i = 1; i <= 3; i++) {
-      const el = document.getElementById(`wizard-step-${i}`) as HTMLElement | null;
-      if (el) el.hidden = i !== 1;
-    }
-    const results = document.getElementById("wizard-results") as HTMLElement | null;
-    if (results) results.hidden = true;
-    document.querySelectorAll(".wizard-step-dot").forEach((dot, idx) => {
-      dot.classList.toggle("active", idx === 0);
-      dot.classList.remove("done");
-    });
+    const openWizardFn = (window as any).__rrOpenWizard;
+    if (typeof openWizardFn === "function") openWizardFn(false); // fresh start
   });
 
   scorecardRedoBtn?.addEventListener("click", () => {
-    const overlay = document.getElementById("wizard-overlay") as HTMLElement | null;
-    if (!overlay) return;
-    overlay.hidden = false;
-    overlay.focus();
-    document.body.style.overflow = "hidden";
-    // Reset to step 1
-    for (let i = 1; i <= 3; i++) {
-      const el = document.getElementById(`wizard-step-${i}`) as HTMLElement | null;
-      if (el) el.hidden = i !== 1;
-    }
-    const results = document.getElementById("wizard-results") as HTMLElement | null;
-    if (results) results.hidden = true;
-    document.querySelectorAll(".wizard-step-dot").forEach((dot, idx) => {
-      dot.classList.toggle("active", idx === 0);
-      dot.classList.remove("done");
-    });
+    const openWizardFn = (window as any).__rrOpenWizard;
+    if (typeof openWizardFn === "function") openWizardFn(false); // reset to step 1
   });
 
   // Refresh scorecard render when wizard completes (data is cached; only re-render)
