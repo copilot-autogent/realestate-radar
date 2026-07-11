@@ -733,11 +733,30 @@ const showBuyersMarket = !isStale && dataYear !== null;
       <div id="wizard-step-2" class="wizard-step" hidden aria-label="步驟二：通勤">
         <h2 class="wizard-step-title">🚇 通勤設定</h2>
         <p class="wizard-step-subtitle">步驟 2 / 3 — 通勤</p>
-        <p class="wizard-step-desc">主要通勤目的地？</p>
+        <p class="wizard-step-desc">主要通勤目的地（可選捷運、台鐵、高鐵站）？</p>
         <select id="wizard-hub-select" class="wizard-select" aria-label="主要通勤目的地">
-          <option value="taipei-main">台北車站</option>
-          <option value="xinyi">信義區</option>
-          <option value="banqiao">板橋</option>
+          <optgroup label="🏙 台北市">
+            <option value="taipei-main">台北車站</option>
+            <option value="xinyi">信義區</option>
+            <option value="zhongshan">中山站</option>
+            <option value="songshan">松山站 (MRT/TRA)</option>
+            <option value="nangang">南港站 (MRT/TRA/HSR)</option>
+            <option value="daan">大安站</option>
+            <option value="zhongxiao-fuxing">忠孝復興站</option>
+          </optgroup>
+          <optgroup label="🏘 新北市">
+            <option value="banqiao">板橋</option>
+            <option value="xindian">新店站</option>
+            <option value="xinzhuang">新莊站</option>
+            <option value="tamsui">淡水站 (MRT)</option>
+            <option value="shulin-tra">樹林站 (TRA)</option>
+            <option value="xizhi-tra">汐止站 (TRA)</option>
+          </optgroup>
+          <optgroup label="🌆 桃園市">
+            <option value="taoyuan-main">桃園站 (TRA)</option>
+            <option value="zhongli-tra">中壢站 (TRA)</option>
+            <option value="hsr-taoyuan">高鐵桃園站</option>
+          </optgroup>
         </select>
         <p class="wizard-step-desc" style="margin-top:16px">可接受通勤時間？</p>
         <div class="wizard-radio-group" role="radiogroup" aria-label="可接受通勤時間">
@@ -3293,6 +3312,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
   .sc-badge.timing-high  { background: #f0fdf4; color: #15803d; }
   .sc-badge.timing-mid   { background: #fefce8; color: #92400e; }
   .sc-badge.timing-low   { background: #fff1f2; color: #be123c; }
+  /* Facilities score badge tiers (#171) */
+  .sc-badge.sc-badge-fac-excellent { background: #f0fdf4; color: #15803d; }
+  .sc-badge.sc-badge-fac-good      { background: #fefce8; color: #854d0e; }
+  .sc-badge.sc-badge-fac-fair      { background: #fff7ed; color: #9a3412; }
+  .sc-badge.sc-badge-fac-poor      { background: #fef2f2; color: #991b1b; }
+  /* Commute score badge (#171) */
+  .sc-badge.sc-badge-commute { background: #eff6ff; color: #1d4ed8; }
   .sc-summary {
     font-size: 0.73rem;
     color: #64748b;
@@ -6806,7 +6832,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
       // Persist results (including needsRelax for restored display)
       const hub = COMMUTE_HUBS.find((h) => h.id === params.commuteHub);
-      localStorage.setItem(WIZARD_RESULTS_KEY, JSON.stringify({ matches, needsRelax, hub: hub?.label ?? params.commuteHub }));
+      // Save both id (stable) and label (display fallback for old saves)
+      localStorage.setItem(WIZARD_RESULTS_KEY, JSON.stringify({ matches, needsRelax, hub: hub?.label ?? params.commuteHub, hubId: hub?.id ?? params.commuteHub }));
 
       relaxHint.hidden = !needsRelax;
       if (matches.length === 0) {
@@ -6933,6 +6960,18 @@ const showBuyersMarket = !isStale && dataYear !== null;
     COMMUTE_HUBS,
     type DistrictInput,
   } from "../lib/wizardUtils.js";
+  import {
+    computeAllFacilitiesScores,
+    facilitiesBadge,
+    facilitiesTier,
+    type PoiCounts,
+  } from "../lib/facilitiesUtils.js";
+  import {
+    computeAnchorCommuteScore,
+    TRANSIT_HUBS,
+    commuteScoreLabel,
+    type TransitHub,
+  } from "../lib/commuteUtils.js";
 
   const WIZARD_RESULTS_KEY_SC = "rr-wizard-results";
   const BASE_URL_SC = import.meta.env.BASE_URL;
@@ -6949,9 +6988,12 @@ const showBuyersMarket = !isStale && dataYear !== null;
     yoyPct: number | null;
     txCount12mo: number;
     sparkline6mo: (number | null)[];
+    facilitiesScore: number | null;  // 0–100 normalized POI facilities score (#171)
   }
 
   let _cachedRows: ScorecardRow[] | null = null;
+  // Cached normalized facilities scores: city::district → 0–100
+  let _facilitiesScores: Record<string, number> | null = null;
 
   async function loadScorecardData(): Promise<ScorecardRow[]> {
     if (_cachedRows) return _cachedRows;
@@ -6983,8 +7025,24 @@ const showBuyersMarket = !isStale && dataYear !== null;
       })
     );
 
+    // Load POI facilities scores (#171)
+    if (!_facilitiesScores) {
+      try {
+        const poiRes = await fetch(`${BASE_URL_SC}data/poi-scores.json`);
+        if (poiRes.ok) {
+          const poiRaw = await poiRes.json() as Record<string, PoiCounts>;
+          _facilitiesScores = computeAllFacilitiesScores(poiRaw);
+        } else {
+          _facilitiesScores = {};  // static file — empty is better than perpetual null
+        }
+      } catch {
+        _facilitiesScores = {};
+      }
+    }
+
     _cachedRows = rows.map(row => {
       const centroid = centroidMap.get(`${row.city}::${row.district}`);
+      const key = `${row.city}::${row.district}`;
       return {
         district: row.district,
         city: row.city,
@@ -6995,6 +7053,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
         buyerTimingScore: row.buyerTimingScore,
         lat: centroid?.lat ?? 0,
         lng: centroid?.lng ?? 0,
+        facilitiesScore: _facilitiesScores?.[key] ?? null,
       };
     }).filter(r => r.lat !== 0);
 
@@ -7032,7 +7091,15 @@ const showBuyersMarket = !isStale && dataYear !== null;
     if (distKm !== null && distKm !== undefined && hub) {
       parts.push(`距 ${hub} 約 ${distKm} km`);
     }
-    if (row.txCount12mo > 0) parts.push(`近 12 月成交 ${row.txCount12mo} 筆`);
+    if (row.facilitiesScore !== null && row.facilitiesScore >= 75) {
+      parts.push("生活機能優，餐廳超商醫療密集");
+    } else if (row.facilitiesScore !== null && row.facilitiesScore < 25) {
+      parts.push("生活機能較不足，建議確認日常所需");
+    }
+    // txCount as fallback — always eligible, trimmed by slice(0,2) if earlier parts fill up
+    if (row.txCount12mo !== null && row.txCount12mo > 0) {
+      parts.push(`近 12 月成交 ${row.txCount12mo} 筆`);
+    }
     return parts.slice(0, 2).join("　·　");
   }
 
@@ -7064,11 +7131,17 @@ const showBuyersMarket = !isStale && dataYear !== null;
         ? `<span title="${MEDALS[matchIdx] ?? ""}">${MEDALS[matchIdx] ?? ""}</span>`
         : `<span class="sc-rank-num">${globalRank}</span>`;
 
+      // Look up anchor hub from wizard-saved label (COMMUTE_HUBS) or TRANSIT_HUBS
       const hub = hubLabel
-        ? COMMUTE_HUBS.find(h => h.label === hubLabel)
+        ? (COMMUTE_HUBS.find(h => h.label === hubLabel) ?? TRANSIT_HUBS.find(h => h.label === hubLabel) ?? null)
         : null;
       const distKm = hub
         ? Math.round(haversineKm(row.lat, row.lng, hub.lat, hub.lng) * 10) / 10
+        : null;
+
+      // Commute score from anchor (Phase 1: proximity proxy, #171)
+      const commuteScore = hub
+        ? computeAnchorCommuteScore(row.lat, row.lng, hub)
         : null;
 
       const priceBadge = row.medianPriceWan !== null
@@ -7080,7 +7153,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
         : "";
 
       const distBadge = distKm !== null
-        ? `<span class="sc-badge">🚉 ${distKm} km</span>`
+        ? `<span class="sc-badge sc-badge-commute" title="${commuteScore !== null ? commuteScoreLabel(commuteScore) : ""}">🚉 ${distKm} km${commuteScore !== null ? ` (通勤 ${commuteScore})` : ""}</span>`
+        : "";
+
+      const facilitiesBadgeHtml = row.facilitiesScore !== null
+        ? `<span class="sc-badge sc-badge-facilities sc-badge-fac-${facilitiesTier(row.facilitiesScore)}">${facilitiesBadge(row.facilitiesScore)}</span>`
         : "";
 
       const txBadge = row.txCount12mo > 0
@@ -7099,7 +7176,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
             <div class="sc-district">${escSc(row.district)}</div>
           </div>
           <div class="sc-badges">
-            ${priceBadge}${timingBadge}${distBadge}${txBadge}
+            ${priceBadge}${timingBadge}${distBadge}${facilitiesBadgeHtml}${txBadge}
           </div>
           ${summary ? `<div class="sc-summary">${escSc(summary)}</div>` : ""}
           <div class="sc-actions">
@@ -7181,7 +7258,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
       if (savedRaw) {
         try {
-          const saved = JSON.parse(savedRaw) as { matches?: any[]; hub?: string };
+          const saved = JSON.parse(savedRaw) as { matches?: any[]; hub?: string; hubId?: string };
           if (Array.isArray(saved.matches)) {
             saved.matches.forEach((m: any) => {
               if (m.city && m.district) {
@@ -7191,7 +7268,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
               }
             });
           }
-          if (typeof saved.hub === "string") hubLabel = saved.hub;
+          // Prefer stable id lookup; fall back to label for pre-#171 saves
+          if (typeof saved.hubId === "string") {
+            const h = COMMUTE_HUBS.find(x => x.id === saved.hubId);
+            hubLabel = h?.label ?? saved.hub;
+          } else if (typeof saved.hub === "string") {
+            hubLabel = saved.hub;
+          }
         } catch { /* ignore */ }
       }
 
