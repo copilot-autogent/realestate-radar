@@ -5266,8 +5266,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
     if (isInitialGlobal) {
       _heatmapGlobalData = heatmap;
-      // Show global view on initial load (no district selected yet)
-      if (!_heatmapDistrictData) {
+      // Render global view if: no district is selected yet, OR user pre-clicked the global button
+      if (!_heatmapDistrictData || _heatmapActiveScope === "global") {
         _heatmapActiveScope = "global";
         updateHeatmapScopeButtons();
         renderHeatmapCanvas(heatmap);
