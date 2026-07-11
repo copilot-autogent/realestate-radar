@@ -85,8 +85,8 @@ export function rawFacilitiesScore(counts: PoiCounts): number {
  */
 export function normalizeScores(rawScores: number[]): number[] {
   if (rawScores.length === 0) return [];
-  const min = Math.min(...rawScores);
-  const max = Math.max(...rawScores);
+  const min = rawScores.reduce((a, b) => Math.min(a, b), rawScores[0]);
+  const max = rawScores.reduce((a, b) => Math.max(a, b), rawScores[0]);
   if (max === min) return rawScores.map(() => 50);
   return rawScores.map(s => Math.round(((s - min) / (max - min)) * 100));
 }

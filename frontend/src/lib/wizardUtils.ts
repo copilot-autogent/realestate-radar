@@ -68,15 +68,15 @@ export interface WizardOutput {
  */
 export const COMMUTE_HUBS: CommuteHub[] = [
   // ── 台北市 ──────────────────────────────────────────────────────────────────
-  { id: "taipei-main",    label: "台北車站 (MRT/TRA/HSR)", lat: 25.0478, lng: 121.5170 },
-  { id: "xinyi",          label: "信義區 (安和站)",         lat: 25.0330, lng: 121.5655 },
+  { id: "taipei-main",    label: "台北車站",   lat: 25.0478, lng: 121.5170 },  // keep original label for localStorage compat
+  { id: "xinyi",          label: "信義區",     lat: 25.0330, lng: 121.5655 },  // keep original label for localStorage compat
   { id: "zhongshan",      label: "中山站",                   lat: 25.0525, lng: 121.5200 },
   { id: "songshan",       label: "松山站 (MRT/TRA)",         lat: 25.0499, lng: 121.5780 },
   { id: "nangang",        label: "南港站 (MRT/TRA/HSR)",     lat: 25.0524, lng: 121.6070 },
   { id: "daan",           label: "大安站",                   lat: 25.0263, lng: 121.5433 },
   { id: "zhongxiao-fuxing", label: "忠孝復興站",             lat: 25.0415, lng: 121.5468 },
   // ── 新北市 ──────────────────────────────────────────────────────────────────
-  { id: "banqiao",        label: "板橋站 (MRT/TRA/HSR)",     lat: 25.0142, lng: 121.4633 },
+  { id: "banqiao",        label: "板橋",       lat: 25.0142, lng: 121.4633 },  // keep original label for localStorage compat
   { id: "xindian",        label: "新店站",                   lat: 24.9594, lng: 121.5345 },
   { id: "xinzhuang",      label: "新莊站",                   lat: 25.0365, lng: 121.4449 },
   { id: "tamsui",         label: "淡水站 (MRT)",             lat: 25.1676, lng: 121.4422 },

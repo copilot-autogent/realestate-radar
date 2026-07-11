@@ -7094,6 +7094,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
       parts.push("生活機能優，餐廳超商醫療密集");
     } else if (row.facilitiesScore !== null && row.facilitiesScore < 25) {
       parts.push("生活機能較不足，建議確認日常所需");
+    } else if (row.txCount12mo !== null && row.txCount12mo > 0) {
+      parts.push(`近 12 月成交 ${row.txCount12mo} 筆`);
     }
     return parts.slice(0, 2).join("　·　");
   }
@@ -7136,7 +7138,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
       // Commute score from anchor (Phase 1: proximity proxy, #171)
       const commuteScore = hub
-        ? computeAnchorCommuteScore(row.lat, row.lng, hub as TransitHub)
+        ? computeAnchorCommuteScore(row.lat, row.lng, hub)
         : null;
 
       const priceBadge = row.medianPriceWan !== null

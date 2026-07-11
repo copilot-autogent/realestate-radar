@@ -15,7 +15,7 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** Rail transit type for display. */
-export type TransitType = "mrt" | "tra" | "hsr";
+export type TransitType = "mrt" | "tra" | "hsr" | "bus";
 
 /** A tunable anchor or transit station with coordinates. */
 export interface TransitHub {
@@ -39,7 +39,7 @@ export const TRANSIT_HUBS: TransitHub[] = [
   { id: "zhongshan",     label: "中山站",                  lat: 25.0525, lng: 121.5200, type: "mrt",  city: "台北市" },
   { id: "nanjing-sanmin",label: "南京三民站",              lat: 25.0519, lng: 121.5589, type: "mrt",  city: "台北市" },
   { id: "songshan",      label: "松山站 (MRT/TRA)",        lat: 25.0499, lng: 121.5780, type: "mrt",  city: "台北市" },
-  { id: "nangang",       label: "南港站 (MRT/TRA/HSR)",    lat: 25.0524, lng: 121.6070, type: "hsr",  city: "台北市" },
+  { id: "nangang",       label: "南港站 (MRT/TRA/HSR)",    lat: 25.0524, lng: 121.6070, type: "mrt",  city: "台北市" },
   { id: "daan",          label: "大安站",                  lat: 25.0263, lng: 121.5433, type: "mrt",  city: "台北市" },
   { id: "zhongxiao-fuxing", label: "忠孝復興站",           lat: 25.0415, lng: 121.5468, type: "mrt",  city: "台北市" },
   { id: "xindian",       label: "新店站",                  lat: 24.9594, lng: 121.5345, type: "mrt",  city: "新北市" },
@@ -52,14 +52,14 @@ export const TRANSIT_HUBS: TransitHub[] = [
   { id: "shulin-tra",    label: "樹林站 (TRA)",            lat: 24.9915, lng: 121.4235, type: "tra",  city: "新北市" },
   { id: "xizhi-tra",     label: "汐止站 (TRA)",            lat: 25.0676, lng: 121.6593, type: "tra",  city: "新北市" },
   { id: "yingge-tra",    label: "鶯歌站 (TRA)",            lat: 24.9627, lng: 121.3448, type: "tra",  city: "新北市" },
-  { id: "sanxia-tra",    label: "大溪站 (TRA/鶯歌往)",    lat: 24.9441, lng: 121.3694, type: "tra",  city: "新北市" },
+  { id: "sanxia-tra",    label: "三峽近鶯歌 (TRA)",       lat: 24.9441, lng: 121.3694, type: "tra",  city: "新北市" },
   { id: "ruifang-tra",   label: "瑞芳站 (TRA)",            lat: 25.1047, lng: 121.8025, type: "tra",  city: "新北市" },
   // ── Taoyuan TRA / MRT ───────────────────────────────────────────────────────
   { id: "taoyuan-main",  label: "桃園站 (TRA)",            lat: 24.9891, lng: 121.3139, type: "tra",  city: "桃園市" },
   { id: "zhongli-tra",   label: "中壢站 (TRA)",            lat: 24.9549, lng: 121.2245, type: "tra",  city: "桃園市" },
   { id: "yangmei-tra",   label: "楊梅站 (TRA)",            lat: 24.9140, lng: 121.1415, type: "tra",  city: "桃園市" },
-  { id: "dasi-bus",      label: "大溪市中心",              lat: 24.8785, lng: 121.2894, type: "tra",  city: "桃園市" },
-  { id: "a18-mrt",       label: "機場捷運 A18 高鐵桃園", lat: 25.0099, lng: 121.2323, type: "hsr",  city: "桃園市" },
+  { id: "dasi-bus",      label: "大溪市中心 (客運)",      lat: 24.8785, lng: 121.2894, type: "bus",  city: "桃園市" },
+  { id: "a18-mrt",       label: "機場捷運 A18 高鐵桃園", lat: 25.0099, lng: 121.2323, type: "mrt",  city: "桃園市" },
   // ── HSR ────────────────────────────────────────────────────────────────────
   { id: "hsr-taoyuan",   label: "高鐵桃園站",              lat: 24.9978, lng: 121.2333, type: "hsr",  city: "桃園市" },
 ];
@@ -96,7 +96,7 @@ function toRad(deg: number): number {
 export function computeAnchorCommuteScore(
   districtLat: number,
   districtLng: number,
-  anchor: TransitHub,
+  anchor: { lat: number; lng: number },
 ): number {
   const km = haversineKm(districtLat, districtLng, anchor.lat, anchor.lng);
   const HALF_LIFE_KM = 8;
@@ -152,6 +152,7 @@ export const TRANSIT_TYPE_EMOJI: Record<TransitType, string> = {
   mrt: "🚇",
   tra: "🚂",
   hsr: "🚄",
+  bus: "🚌",
 };
 
 /**
