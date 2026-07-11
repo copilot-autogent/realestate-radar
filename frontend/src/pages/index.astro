@@ -622,7 +622,40 @@ const showBuyersMarket = !isStale && dataYear !== null;
       </div><!-- /ia-section-4 -->
     </aside>
 
-    <div class="map-container" id="map-view-container">
+    <!-- ── Ranked District Scorecard (primary hero view, #170) ── -->
+    <div class="scorecard-container" id="scorecard-view-container">
+      <!-- Wizard CTA (shown when no wizard results saved) -->
+      <div id="scorecard-wizard-cta" class="scorecard-wizard-cta">
+        <div class="swc-body">
+          <span class="swc-icon">🧭</span>
+          <div class="swc-text">
+            <p class="swc-title">首購族地區配對精靈</p>
+            <p class="swc-subtitle">回答 3 個問題，找到最適合您的行政區排名</p>
+          </div>
+          <button id="scorecard-open-wizard-btn" class="scorecard-open-wizard-btn">開始配對 →</button>
+        </div>
+      </div>
+
+      <!-- Results header (shown after wizard has run) -->
+      <div id="scorecard-results-bar" class="scorecard-results-bar" style="display:none">
+        <span id="scorecard-results-desc" class="srb-desc"></span>
+        <button id="scorecard-redo-btn" class="scorecard-redo-btn">🔄 重新配對</button>
+      </div>
+
+      <!-- Ranked list -->
+      <div id="scorecard-district-list" class="scorecard-district-list">
+        <div class="scorecard-loading-state" id="scorecard-loading">
+          <span>⌛ 載入行政區資料中…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map drill-down (hidden by default, shown when a district row is clicked) -->
+    <div class="map-container" id="map-view-container" style="display:none">
+      <div id="map-drilldown-bar" class="map-drilldown-bar">
+        <button id="map-back-btn" class="map-back-btn">← 返回排行榜</button>
+        <span id="map-drilldown-label" class="map-drilldown-label"></span>
+      </div>
       <div id="ss-alert-banner" class="ss-alert-banner" style="display:none"></div>
       <Map />
     </div>
@@ -630,8 +663,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
       <DistrictTable />
     </div>
   </main>
-  <button id="view-mode-toggle" class="view-mode-toggle" aria-pressed="false" title="切換至排行表">
-    📊 排行表
+  <button id="view-mode-toggle" class="view-mode-toggle" aria-pressed="false" title="切換至地圖">
+    🗺 地圖
   </button>
   <button id="filter-toggle-btn" class="filter-toggle-btn" aria-label="開啟篩選">☰ 篩選</button>
   <footer class="site-footer">
@@ -1166,7 +1199,17 @@ const showBuyersMarket = !isStale && dataYear !== null;
     document.body.style.overflow = "";
   }
 
-  document.getElementById("filter-toggle-btn")?.addEventListener("click", openSidebar);
+  document.getElementById("filter-toggle-btn")?.addEventListener("click", () => {
+    // If in scorecard view, switch to map first (sidebar is hidden in scorecard mode)
+    const switchToMap = (window as any).__rrSwitchToMap;
+    if (typeof switchToMap === "function") {
+      const scorecardEl = document.getElementById("scorecard-view-container");
+      if (scorecardEl && scorecardEl.style.display !== "none") {
+        switchToMap();
+      }
+    }
+    openSidebar();
+  });
   document.getElementById("sidebar-close-btn")?.addEventListener("click", closeSidebar);
   backdrop?.addEventListener("click", closeSidebar);
 
@@ -3071,6 +3114,242 @@ const showBuyersMarket = !isStale && dataYear !== null;
     min-height: 0;
   }
 
+  /* ── Scorecard container (hero view, #170) ── */
+  .scorecard-container {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Wizard CTA banner */
+  .scorecard-wizard-cta {
+    background: linear-gradient(135deg, #1a6b45 0%, #0d9488 100%);
+    color: #fff;
+    padding: 16px 24px;
+    flex-shrink: 0;
+  }
+  .swc-body {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    max-width: 900px;
+  }
+  .swc-icon { font-size: 2rem; flex-shrink: 0; }
+  .swc-text { flex: 1; }
+  .swc-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .swc-subtitle {
+    font-size: 0.82rem;
+    opacity: 0.88;
+  }
+  .scorecard-open-wizard-btn {
+    padding: 10px 20px;
+    background: #fff;
+    color: #1a6b45;
+    border: none;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: opacity 0.15s;
+  }
+  .scorecard-open-wizard-btn:hover { opacity: 0.88; }
+
+  /* Results header bar (after wizard run) */
+  .scorecard-results-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 24px;
+    background: #f0fdf4;
+    border-bottom: 1px solid #bbf7d0;
+    flex-shrink: 0;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .srb-desc {
+    font-size: 0.85rem;
+    color: #166534;
+    font-weight: 600;
+  }
+  .scorecard-redo-btn {
+    padding: 6px 14px;
+    background: #fff;
+    color: #1a6b45;
+    border: 1.5px solid #1a6b45;
+    border-radius: 16px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .scorecard-redo-btn:hover { background: #f0fdf4; }
+
+  /* Ranked district list */
+  .scorecard-district-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+  }
+  .scorecard-loading-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  /* Section label (e.g. "配對結果" vs "其他行政區") */
+  .scorecard-section-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #64748b;
+    padding: 8px 4px 4px;
+    margin-top: 8px;
+  }
+  .scorecard-section-label:first-child { margin-top: 0; }
+
+  /* District row card */
+  .scorecard-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: box-shadow 0.15s, border-color 0.15s;
+    flex-wrap: wrap;
+  }
+  .scorecard-row:hover {
+    box-shadow: 0 2px 10px rgba(37,99,235,0.12);
+    border-color: #93c5fd;
+  }
+  .scorecard-row.is-match {
+    border-color: #4caf82;
+    background: #f0fdf7;
+  }
+  .scorecard-row.is-match:hover {
+    border-color: #1a6b45;
+    box-shadow: 0 2px 10px rgba(26,107,69,0.16);
+  }
+
+  .sc-rank {
+    font-size: 1.1rem;
+    min-width: 32px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .sc-name {
+    flex: 1;
+    min-width: 100px;
+  }
+  .sc-city {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-bottom: 1px;
+  }
+  .sc-district {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .sc-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    flex: 2;
+    min-width: 180px;
+  }
+  .sc-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.75rem;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: #f1f5f9;
+    color: #475569;
+    white-space: nowrap;
+  }
+  .sc-badge.timing-high  { background: #f0fdf4; color: #15803d; }
+  .sc-badge.timing-mid   { background: #fefce8; color: #92400e; }
+  .sc-badge.timing-low   { background: #fff1f2; color: #be123c; }
+  .sc-summary {
+    font-size: 0.73rem;
+    color: #64748b;
+    flex-basis: 100%;
+    padding-left: 42px;
+    line-height: 1.4;
+    margin-top: 2px;
+  }
+  .sc-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .sc-map-btn {
+    padding: 6px 12px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .sc-map-btn:hover { background: #1d4ed8; }
+
+  /* Map drill-down header bar */
+  .map-drilldown-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+  }
+  .map-back-btn {
+    padding: 6px 14px;
+    background: #f1f5f9;
+    color: #1e293b;
+    border: 1px solid #cbd5e1;
+    border-radius: 16px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .map-back-btn:hover { background: #e2e8f0; }
+  .map-drilldown-label {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  /* Nudge map content down below drilldown bar */
+  .map-container { position: relative; overflow: hidden; }
+
   /* ── Shortlist Badge + Comparison Panel (issue #145) ── */
   .shortlist-badge {
     position: fixed;
@@ -3775,6 +4054,24 @@ const showBuyersMarket = !isStale && dataYear !== null;
     .sidebar-wizard-cta {
       padding: 12px 14px;
       font-size: 0.92rem;
+    }
+    /* Mobile scorecard */
+    .swc-body {
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .scorecard-open-wizard-btn {
+      width: 100%;
+    }
+    .sc-badges {
+      min-width: 0;
+      flex: 1 0 100%;
+    }
+    .sc-summary {
+      padding-left: 0;
+    }
+    .scorecard-row {
+      gap: 8px;
     }
   }
 
@@ -6181,58 +6478,101 @@ const showBuyersMarket = !isStale && dataYear !== null;
 </script>
 
 <script>
-  // ── View mode toggle: map ↔ table ──
+  // ── View state manager: scorecard ↔ map ↔ table (#170) ──
 
-  const viewToggleBtn = document.getElementById("view-mode-toggle") as HTMLButtonElement | null;
-  const mapViewContainer   = document.getElementById("map-view-container")   as HTMLElement | null;
-  const tableViewContainer = document.getElementById("table-view-container") as HTMLElement | null;
+  type ViewName = "scorecard" | "map" | "table";
 
-  let isTableView = false;
+  const viewToggleBtn      = document.getElementById("view-mode-toggle")      as HTMLButtonElement | null;
+  const scorecardContainer = document.getElementById("scorecard-view-container") as HTMLElement | null;
+  const mapViewContainer   = document.getElementById("map-view-container")    as HTMLElement | null;
+  const tableViewContainer = document.getElementById("table-view-container")  as HTMLElement | null;
+  const mainSidebar        = document.querySelector(".sidebar")                as HTMLElement | null;
 
-  function switchToMapView(): void {
-    isTableView = false;
+  let currentView: ViewName = "scorecard";
+
+  /** Show map for a specific district (drill-down from scorecard). */
+  function switchToMapView(district?: string, city?: string): void {
+    currentView = "map";
+    if (scorecardContainer) scorecardContainer.style.display = "none";
     if (mapViewContainer)   mapViewContainer.style.display   = "";
     if (tableViewContainer) tableViewContainer.style.display = "none";
+    if (mainSidebar)        mainSidebar.style.display        = "";
+
+    // Update drilldown label and back button
+    const bar   = document.getElementById("map-drilldown-bar")   as HTMLElement | null;
+    const label = document.getElementById("map-drilldown-label") as HTMLElement | null;
+    if (bar)   bar.style.display   = "";
+    if (label) label.textContent   = district && city ? `${city} ${district}` : "";
+
     if (viewToggleBtn) {
-      viewToggleBtn.textContent = "📊 排行表";
+      viewToggleBtn.textContent = "🏘 排行榜";
       viewToggleBtn.setAttribute("aria-pressed", "false");
-      viewToggleBtn.title = "切換至排行表";
+      viewToggleBtn.title = "返回排行榜";
     }
+
     // Resize map canvas after reveal — MapLibre doesn't auto-resize after display:none
     requestAnimationFrame(() => {
       document.dispatchEvent(new CustomEvent("map-view-restored"));
+      if (district && city) {
+        requestAnimationFrame(() => {
+          document.dispatchEvent(
+            new CustomEvent("district-focus", { detail: { district, city } })
+          );
+        });
+      }
     });
+  }
+
+  function switchToScorecardView(): void {
+    currentView = "scorecard";
+    if (scorecardContainer) scorecardContainer.style.display = "";
+    if (mapViewContainer)   mapViewContainer.style.display   = "none";
+    if (tableViewContainer) tableViewContainer.style.display = "none";
+    if (mainSidebar)        mainSidebar.style.display        = "none";
+
+    if (viewToggleBtn) {
+      viewToggleBtn.textContent = "🗺 地圖";
+      viewToggleBtn.setAttribute("aria-pressed", "false");
+      viewToggleBtn.title = "切換至地圖";
+    }
   }
 
   function switchToTableView(): void {
-    isTableView = true;
+    currentView = "table";
+    if (scorecardContainer) scorecardContainer.style.display = "none";
     if (mapViewContainer)   mapViewContainer.style.display   = "none";
     if (tableViewContainer) tableViewContainer.style.display = "";
+    if (mainSidebar)        mainSidebar.style.display        = "";
+
     if (viewToggleBtn) {
-      viewToggleBtn.textContent = "🗺 地圖";
+      viewToggleBtn.textContent = "🏘 排行榜";
       viewToggleBtn.setAttribute("aria-pressed", "true");
-      viewToggleBtn.title = "切換至地圖";
+      viewToggleBtn.title = "返回排行榜";
     }
-    // Notify DistrictTable to load data if not yet loaded
     document.dispatchEvent(new CustomEvent("table-view-activated"));
   }
 
+  // Default: scorecard view
+  switchToScorecardView();
+
   viewToggleBtn?.addEventListener("click", () => {
-    if (isTableView) switchToMapView();
-    else switchToTableView();
+    if (currentView === "scorecard") switchToMapView();
+    else switchToScorecardView();
   });
 
-  // ── Row click from DistrictTable: switch to map and focus district ──
+  // "← 返回排行榜" from map drilldown bar
+  document.getElementById("map-back-btn")?.addEventListener("click", switchToScorecardView);
+
+  // Row click from DistrictTable: switch to map and focus district
   document.addEventListener("district-table-row-click", (e: Event) => {
     const { district, city } = (e as CustomEvent<{ district: string; city: string }>).detail;
-    switchToMapView();
-    // Give Map a tick to re-attach, then fire district-focus
-    requestAnimationFrame(() => {
-      document.dispatchEvent(
-        new CustomEvent("district-focus", { detail: { district, city } })
-      );
-    });
+    switchToMapView(district, city);
   });
+
+  // Expose for other script blocks
+  (window as any).__rrSwitchToMap        = switchToMapView;
+  (window as any).__rrSwitchToScorecard  = switchToScorecardView;
+
 </script>
 
 <script>
@@ -6427,21 +6767,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
         const district = btn.dataset.district!;
         const city     = btn.dataset.city!;
         closeWizard();
-        // Switch to map view then fly to district
-        const mapContainer   = document.getElementById("map-view-container");
-        const tableContainer = document.getElementById("table-view-container");
-        if (tableContainer?.style.display !== "none") {
-          if (mapContainer)   mapContainer.style.display = "";
-          if (tableContainer) tableContainer.style.display = "none";
-          const vBtn = document.getElementById("view-mode-toggle") as HTMLButtonElement | null;
-          if (vBtn) { vBtn.textContent = "📊 排行表"; vBtn.setAttribute("aria-pressed", "false"); }
-          document.dispatchEvent(new CustomEvent("map-view-restored"));
+        // Use shared view manager exposed from the view-state script
+        const switchToMap = (window as any).__rrSwitchToMap;
+        if (typeof switchToMap === "function") {
+          switchToMap(district, city);
         }
-        requestAnimationFrame(() => {
-          document.dispatchEvent(
-            new CustomEvent("district-focus", { detail: { district, city } })
-          );
-        });
       });
     });
   }
@@ -6486,7 +6816,11 @@ const showBuyersMarket = !isStale && dataYear !== null;
   closeBtn.addEventListener("click", closeWizard);
   reopenBtn.addEventListener("click", () => openWizard(true)); // show saved results if available
   runBtn.addEventListener("click", runMatching);
-  doneBtn.addEventListener("click", closeWizard);
+  doneBtn.addEventListener("click", () => {
+    closeWizard();
+    // Trigger scorecard to refresh with new wizard results
+    document.dispatchEvent(new CustomEvent("wizard-results-updated"));
+  });
   restartBtn.addEventListener("click", () => { showStep(1); });
 
   // Next/Back buttons (delegated)
@@ -6553,17 +6887,331 @@ const showBuyersMarket = !isStale && dataYear !== null;
 
   const dismissed = localStorage.getItem(WIZARD_KEY);
   if (!dismissed) {
-    // First visit — show wizard after map has a chance to initialise
-    setTimeout(() => {
-      // Re-check: user may have already dismissed before the timer fires
-      if (!localStorage.getItem(WIZARD_KEY)) openWizard();
-    }, 800);
+    // First visit — open wizard immediately (it's now the primary entry point)
+    openWizard();
   }
-  // Returning visitors: saved results load on demand when they click 重新配對
+  // Returning visitors: saved results are shown in the scorecard automatically
 </script>
 
 <script>
-  // ── District Watchlist sidebar panel (issue #110) ────────────────────────────
+  // ── Ranked District Scorecard (#170) ─────────────────────────────────────────
+  import {
+    computeDistrictRows,
+  } from "../lib/districtTableUtils.js";
+  import {
+    polygonCentroid,
+    haversineKm,
+    COMMUTE_HUBS,
+    type DistrictInput,
+  } from "../lib/wizardUtils.js";
+
+  const WIZARD_RESULTS_KEY_SC = "rr-wizard-results";
+  const BASE_URL_SC = import.meta.env.BASE_URL;
+
+  const scorecardList     = document.getElementById("scorecard-district-list") as HTMLElement | null;
+  const scorecardLoading  = document.getElementById("scorecard-loading")       as HTMLElement | null;
+  const scorecardWizardCta= document.getElementById("scorecard-wizard-cta")    as HTMLElement | null;
+  const scorecardResultsBar= document.getElementById("scorecard-results-bar")  as HTMLElement | null;
+  const scorecardResultsDesc= document.getElementById("scorecard-results-desc")as HTMLElement | null;
+  const scorecardOpenWizardBtn = document.getElementById("scorecard-open-wizard-btn") as HTMLButtonElement | null;
+  const scorecardRedoBtn  = document.getElementById("scorecard-redo-btn")      as HTMLButtonElement | null;
+
+  interface ScorecardRow extends DistrictInput {
+    yoyPct: number | null;
+    txCount12mo: number;
+    sparkline6mo: (number | null)[];
+  }
+
+  let _cachedRows: ScorecardRow[] | null = null;
+
+  async function loadScorecardData(): Promise<ScorecardRow[]> {
+    if (_cachedRows) return _cachedRows;
+
+    const txRes = await fetch(`${BASE_URL_SC}data/transactions.json`);
+    if (!txRes.ok) throw new Error("資料載入失敗");
+    const txData = await txRes.json() as { features: any[] };
+    const rows = computeDistrictRows(txData.features, 5);
+
+    // Load centroids
+    const geojsonFiles = [
+      "taipei-districts.geojson",
+      "xinbei-districts.geojson",
+      "taoyuan-districts.geojson",
+    ];
+    const centroidMap = new Map<string, { lat: number; lng: number }>();
+    await Promise.all(
+      geojsonFiles.map(async (file) => {
+        try {
+          const res = await fetch(`${BASE_URL_SC}data/${file}`);
+          if (!res.ok) return;
+          const gj = await res.json() as { features: any[] };
+          for (const feat of gj.features) {
+            const { district, city } = feat.properties;
+            const c = polygonCentroid(feat.geometry);
+            if (c) centroidMap.set(`${city}::${district}`, c);
+          }
+        } catch { /* skip */ }
+      })
+    );
+
+    _cachedRows = rows.map(row => {
+      const centroid = centroidMap.get(`${row.city}::${row.district}`);
+      return {
+        district: row.district,
+        city: row.city,
+        medianPriceWan: row.medianPriceWan,
+        yoyPct: row.yoyPct,
+        txCount12mo: row.txCount12mo,
+        sparkline6mo: row.sparkline6mo,
+        buyerTimingScore: row.buyerTimingScore,
+        lat: centroid?.lat ?? 0,
+        lng: centroid?.lng ?? 0,
+      };
+    }).filter(r => r.lat !== 0);
+
+    return _cachedRows;
+  }
+
+  function escSc(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function timingClass(score: number | null): string {
+    if (score === null) return "";
+    if (score >= 70) return "timing-high";
+    if (score >= 40) return "timing-mid";
+    return "timing-low";
+  }
+
+  function timingEmoji(score: number | null): string {
+    if (score === null) return "⬜";
+    if (score >= 70) return "🟢";
+    if (score >= 40) return "🟡";
+    return "🔴";
+  }
+
+  function buildSummary(row: ScorecardRow, hub?: string, distKm?: number | null): string {
+    const parts: string[] = [];
+    if (row.yoyPct !== null) {
+      if (row.yoyPct <= -5) parts.push(`均價近年下跌 ${Math.abs(row.yoyPct).toFixed(1)}%，議價空間較大`);
+      else if (row.yoyPct >= 10) parts.push(`均價近年上漲 ${row.yoyPct.toFixed(1)}%，行情偏熱`);
+    }
+    if (row.buyerTimingScore !== null) {
+      if (row.buyerTimingScore >= 70) parts.push("買方時機分高，成交量縮、價格整理中");
+      else if (row.buyerTimingScore < 40) parts.push("市場仍活絡，需謹慎議價");
+    }
+    if (distKm !== null && distKm !== undefined && hub) {
+      parts.push(`距 ${hub} 約 ${distKm} km`);
+    }
+    if (row.txCount12mo > 0) parts.push(`近 12 月成交 ${row.txCount12mo} 筆`);
+    return parts.slice(0, 2).join("　·　");
+  }
+
+  function renderScorecard(rows: ScorecardRow[], matchDistricts: Set<string>, hubLabel?: string): void {
+    if (!scorecardList) return;
+
+    // Sort: wizard matches first (by index), then rest by timingScore desc then price asc
+    const matchRows = rows.filter(r => matchDistricts.has(`${r.city}::${r.district}`));
+    const otherRows = rows
+      .filter(r => !matchDistricts.has(`${r.city}::${r.district}`))
+      .sort((a, b) => {
+        const sa = a.buyerTimingScore ?? -1;
+        const sb = b.buyerTimingScore ?? -1;
+        if (sb !== sa) return sb - sa;
+        return (a.medianPriceWan ?? 999) - (b.medianPriceWan ?? 999);
+      });
+
+    const MEDALS = ["🥇", "🥈", "🥉"];
+
+    function renderRow(row: ScorecardRow, globalRank: number, isMatch: boolean, matchIdx?: number): string {
+      const rankDisplay = isMatch && matchIdx !== undefined
+        ? `<span title="${MEDALS[matchIdx] ?? ""}">${MEDALS[matchIdx] ?? ""}</span>`
+        : `<span class="sc-rank-num">${globalRank}</span>`;
+
+      const hub = hubLabel
+        ? COMMUTE_HUBS.find(h => h.label === hubLabel)
+        : null;
+      const distKm = hub
+        ? Math.round(haversineKm(row.lat, row.lng, hub.lat, hub.lng) * 10) / 10
+        : null;
+
+      const priceBadge = row.medianPriceWan !== null
+        ? `<span class="sc-badge">💰 ${row.medianPriceWan.toFixed(1)} 萬/坪${row.yoyPct !== null ? ` ${row.yoyPct >= 0 ? "▲" : "▼"}${Math.abs(row.yoyPct).toFixed(1)}%` : ""}</span>`
+        : "";
+
+      const timingBadge = row.buyerTimingScore !== null
+        ? `<span class="sc-badge ${timingClass(row.buyerTimingScore)}">${timingEmoji(row.buyerTimingScore)} 時機分 ${row.buyerTimingScore}</span>`
+        : "";
+
+      const distBadge = distKm !== null
+        ? `<span class="sc-badge">🚉 ${distKm} km</span>`
+        : "";
+
+      const txBadge = row.txCount12mo > 0
+        ? `<span class="sc-badge">📋 ${row.txCount12mo} 筆/年</span>`
+        : "";
+
+      const summary = buildSummary(row, hubLabel, distKm);
+
+      return `
+        <div class="scorecard-row${isMatch ? " is-match" : ""}"
+          data-district="${escSc(row.district)}"
+          data-city="${escSc(row.city)}">
+          <div class="sc-rank">${rankDisplay}</div>
+          <div class="sc-name">
+            <div class="sc-city">${escSc(row.city)}</div>
+            <div class="sc-district">${escSc(row.district)}</div>
+          </div>
+          <div class="sc-badges">
+            ${priceBadge}${timingBadge}${distBadge}${txBadge}
+          </div>
+          ${summary ? `<div class="sc-summary">${escSc(summary)}</div>` : ""}
+          <div class="sc-actions">
+            <button class="sc-map-btn"
+              data-district="${escSc(row.district)}"
+              data-city="${escSc(row.city)}"
+              aria-label="查看 ${escSc(row.city)} ${escSc(row.district)} 地圖">
+              🗺 地圖
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    let html = "";
+    let globalRank = 1;
+
+    if (matchRows.length > 0) {
+      html += `<div class="scorecard-section-label">✨ 配對結果（${hubLabel ? hubLabel + "方向" : "依您的偏好"}）</div>`;
+      matchRows.forEach((row, i) => {
+        html += renderRow(row, i + 1, true, i);
+        globalRank++;
+      });
+    }
+
+    if (otherRows.length > 0) {
+      if (matchRows.length > 0) {
+        html += `<div class="scorecard-section-label">其他行政區</div>`;
+        globalRank = 1;
+      } else {
+        html += `<div class="scorecard-section-label">行政區排行（依買方時機分）</div>`;
+      }
+      otherRows.forEach(row => {
+        html += renderRow(row, globalRank, false);
+        globalRank++;
+      });
+    }
+
+    if (!html) {
+      html = `<div class="scorecard-loading-state">暫無行政區資料</div>`;
+    }
+
+    scorecardList.innerHTML = html;
+
+    // Wire row clicks
+    scorecardList.querySelectorAll<HTMLElement>(".scorecard-row").forEach(rowEl => {
+      const d = rowEl.dataset.district!;
+      const c = rowEl.dataset.city!;
+      rowEl.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).classList.contains("sc-map-btn")) return;
+        const switchToMap = (window as any).__rrSwitchToMap;
+        if (typeof switchToMap === "function") switchToMap(d, c);
+      });
+    });
+
+    // Wire map buttons
+    scorecardList.querySelectorAll<HTMLButtonElement>(".sc-map-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const d = btn.dataset.district!;
+        const c = btn.dataset.city!;
+        const switchToMap = (window as any).__rrSwitchToMap;
+        if (typeof switchToMap === "function") switchToMap(d, c);
+      });
+    });
+  }
+
+  async function initScorecard(): Promise<void> {
+    if (scorecardLoading) scorecardLoading.style.display = "";
+
+    try {
+      const rows = await loadScorecardData();
+
+      // Check for saved wizard results
+      const savedRaw = localStorage.getItem(WIZARD_RESULTS_KEY_SC);
+      let matchDistricts = new Set<string>();
+      let hubLabel: string | undefined;
+
+      if (savedRaw) {
+        try {
+          const saved = JSON.parse(savedRaw) as { matches?: any[]; hub?: string };
+          if (Array.isArray(saved.matches)) {
+            saved.matches.forEach((m: any) => {
+              if (m.city && m.district) matchDistricts.add(`${m.city}::${m.district}`);
+            });
+          }
+          if (typeof saved.hub === "string") hubLabel = saved.hub;
+        } catch { /* ignore */ }
+      }
+
+      if (scorecardLoading) scorecardLoading.style.display = "none";
+
+      // Show/hide wizard CTA vs results bar
+      const hasResults = matchDistricts.size > 0;
+      if (scorecardWizardCta) scorecardWizardCta.style.display = hasResults ? "none" : "";
+      if (scorecardResultsBar) scorecardResultsBar.style.display = hasResults ? "" : "none";
+      if (scorecardResultsDesc && hasResults) {
+        scorecardResultsDesc.textContent = `配對到 ${matchDistricts.size} 個行政區${hubLabel ? "（" + hubLabel + "方向）" : ""}，排行榜已更新`;
+      }
+
+      renderScorecard(rows, matchDistricts, hubLabel);
+    } catch (err) {
+      if (scorecardLoading) {
+        scorecardLoading.textContent = "❌ 資料載入失敗，請重新整理頁面";
+      }
+    }
+  }
+
+  // Wire wizard CTA and redo buttons
+  scorecardOpenWizardBtn?.addEventListener("click", () => {
+    const overlay = document.getElementById("wizard-overlay") as HTMLElement | null;
+    if (overlay) {
+      overlay.hidden = false;
+      overlay.focus();
+      document.body.style.overflow = "hidden";
+    }
+  });
+
+  scorecardRedoBtn?.addEventListener("click", () => {
+    const overlay = document.getElementById("wizard-overlay") as HTMLElement | null;
+    if (overlay) {
+      overlay.hidden = false;
+      overlay.focus();
+      document.body.style.overflow = "hidden";
+      // Reset to step 1
+      const step1 = document.getElementById("wizard-step-1");
+      const step2 = document.getElementById("wizard-step-2");
+      const step3 = document.getElementById("wizard-step-3");
+      const results = document.getElementById("wizard-results");
+      if (step1) step1.hidden = false;
+      if (step2) step2.hidden = true;
+      if (step3) step3.hidden = true;
+      if (results) results.hidden = true;
+    }
+  });
+
+  // Refresh scorecard when wizard completes
+  document.addEventListener("wizard-results-updated", () => {
+    _cachedRows = null; // clear cache to pick up fresh data
+    initScorecard();
+  });
+
+  // Start loading scorecard data
+  initScorecard();
+
+</script>
+
+<script>
   import {
     formatDelta,
     computeDeltaPct,
