@@ -88,9 +88,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <option value="台北市">台北市</option>
           <option value="新北市">新北市</option>
           <option value="桃園市">桃園市</option>
-          <option value="台中市">台中市</option>
-          <option value="台南市">台南市</option>
-          <option value="高雄市">高雄市</option>
         </select>
       </div>
 
@@ -727,9 +724,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
                 <option value="台北市">台北市</option>
                 <option value="新北市">新北市</option>
                 <option value="桃園市">桃園市</option>
-                <option value="台中市">台中市</option>
-                <option value="台南市">台南市</option>
-                <option value="高雄市">高雄市</option>
               </select>
             </div>
             <div class="completion-chart-wrap">
@@ -1019,8 +1013,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
           <option value="taipei-main">台北車站</option>
           <option value="xinyi">信義區</option>
           <option value="banqiao">板橋</option>
-          <option value="taichung-main">台中火車站</option>
-          <option value="kaohsiung-mrt">高雄捷運</option>
         </select>
         <p class="wizard-step-desc" style="margin-top:16px">可接受通勤時間？</p>
         <div class="wizard-radio-group" role="radiogroup" aria-label="可接受通勤時間">
@@ -1139,9 +1131,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
     "台北市": ["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
     "新北市": ["板橋區","三重區","中和區","永和區","新莊區","新店區","土城區","蘆洲區","樹林區","汐止區","鶯歌區","三峽區","淡水區","林口區","五股區","泰山區","瑞芳區","八里區","深坑區","三芝區","萬里區","金山區","貢寮區","石門區","平溪區","雙溪區","石碇區","坪林區","烏來區"],
     "桃園市": ["桃園區","中壢區","大溪區","楊梅區","蘆竹區","大園區","龜山區","八德區","龍潭區","平鎮區","新屋區","觀音區","復興區"],
-    "台中市": ["中區","東區","南區","西區","北區","北屯區","西屯區","南屯區","太平區","大里區","霧峰區","烏日區","豐原區","后里區","石岡區","東勢區","和平區","新社區","潭子區","大雅區","神岡區","大肚區","沙鹿區","龍井區","梧棲區","清水區","大甲區","外埔區","大安區"],
-    "台南市": ["中西區","東區","南區","北區","安平區","安南區","永康區","歸仁區","新化區","左鎮區","玉井區","楠西區","南化區","仁德區","關廟區","龍崎區","官田區","麻豆區","佳里區","西港區","七股區","將軍區","學甲區","北門區","新營區","後壁區","白河區","東山區","六甲區","下營區","柳營區","鹽水區","善化區","大內區","山上區","新市區","安定區"],
-    "高雄市": ["楠梓區","左營區","鼓山區","三民區","鹽埕區","前金區","新興區","苓雅區","前鎮區","旗津區","小港區","鳳山區","林園區","大寮區","大樹區","大社區","仁武區","鳥松區","岡山區","橋頭區","燕巢區","田寮區","阿蓮區","路竹區","湖內區","茄萣區","永安區","彌陀區","梓官區","旗山區","美濃區","六龜區","甲仙區","杉林區","內門區","茂林區","桃源區","那瑪夏區"],
   };
 
   // ---- Dynamic district dropdown ----
@@ -7793,9 +7782,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
     "台北市": "#1d4ed8",
     "新北市": "#0891b2",
     "桃園市": "#16a34a",
-    "台中市": "#ca8a04",
-    "台南市": "#ea580c",
-    "高雄市": "#dc2626",
   };
 
   let permitsData: {
@@ -8355,9 +8341,6 @@ const showBuyersMarket = !isStale && dataYear !== null;
       "taipei-districts.geojson",
       "xinbei-districts.geojson",
       "taoyuan-districts.geojson",
-      "taichung-districts.geojson",
-      "tainan-districts.geojson",
-      "kaohsiung-districts.geojson",
     ];
 
     const centroidMap = new Map<string, { lat: number; lng: number }>();

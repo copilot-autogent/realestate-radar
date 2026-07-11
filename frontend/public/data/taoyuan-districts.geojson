@@ -50,6 +50,21 @@
       "type": "Feature",
       "properties": { "district": "新屋區", "city": "桃園市" },
       "geometry": { "type": "Polygon", "coordinates": [[[121.072,24.958],[121.148,24.958],[121.148,25.012],[121.072,25.012],[121.072,24.958]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "大園區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.192,25.040],[121.243,25.040],[121.243,25.088],[121.192,25.088],[121.192,25.040]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "觀音區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.048,24.988],[121.118,24.988],[121.118,25.045],[121.048,25.045],[121.048,24.988]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "復興區", "city": "桃園市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.278,24.712],[121.388,24.712],[121.388,24.822],[121.278,24.822],[121.278,24.712]]] }
     }
   ]
 }

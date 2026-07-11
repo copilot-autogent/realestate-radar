@@ -50,6 +50,101 @@
       "type": "Feature",
       "properties": { "district": "汐止區", "city": "新北市" },
       "geometry": { "type": "Polygon", "coordinates": [[[121.640,25.060],[121.710,25.060],[121.710,25.108],[121.640,25.108],[121.640,25.060]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "樹林區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.415,24.885],[121.465,24.885],[121.465,24.935],[121.415,24.935],[121.415,24.885]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "鶯歌區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.339,24.865],[121.395,24.865],[121.395,24.905],[121.339,24.905],[121.339,24.865]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "三峽區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.352,24.840],[121.425,24.840],[121.425,24.910],[121.352,24.910],[121.352,24.840]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "林口區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.373,25.075],[121.440,25.075],[121.440,25.120],[121.373,25.120],[121.373,25.075]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "五股區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.433,25.075],[121.483,25.075],[121.483,25.120],[121.433,25.120],[121.433,25.075]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "泰山區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.432,25.048],[121.482,25.048],[121.482,25.082],[121.432,25.082],[121.432,25.048]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "瑞芳區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.793,25.090],[121.843,25.090],[121.843,25.130],[121.793,25.130],[121.793,25.090]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "八里區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.380,25.140],[121.430,25.140],[121.430,25.185],[121.380,25.185],[121.380,25.140]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "深坑區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.600,24.958],[121.655,24.958],[121.655,24.998],[121.600,24.998],[121.600,24.958]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "三芝區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.492,25.218],[121.548,25.218],[121.548,25.268],[121.492,25.268],[121.492,25.218]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "萬里區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.640,25.118],[121.690,25.118],[121.690,25.168],[121.640,25.168],[121.640,25.118]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "金山區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.612,25.198],[121.667,25.198],[121.667,25.238],[121.612,25.238],[121.612,25.198]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "貢寮區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.880,24.998],[121.930,24.998],[121.930,25.038],[121.880,25.038],[121.880,24.998]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "石門區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.548,25.268],[121.608,25.268],[121.608,25.308],[121.548,25.308],[121.548,25.268]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "平溪區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.738,24.988],[121.798,24.988],[121.798,25.028],[121.738,25.028],[121.738,24.988]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "雙溪區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.838,24.988],[121.878,24.988],[121.878,25.028],[121.838,25.028],[121.838,24.988]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "石碇區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.648,24.935],[121.695,24.935],[121.695,24.975],[121.648,24.975],[121.648,24.935]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "坪林區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.705,24.875],[121.745,24.875],[121.745,24.928],[121.705,24.928],[121.705,24.875]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "district": "烏來區", "city": "新北市" },
+      "geometry": { "type": "Polygon", "coordinates": [[[121.532,24.808],[121.598,24.808],[121.598,24.878],[121.532,24.878],[121.532,24.808]]] }
     }
   ]
 }
