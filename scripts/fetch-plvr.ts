@@ -102,6 +102,10 @@ const CITY_CODES: Record<string, string> = {
   U: "花蓮縣", V: "台東縣", W: "金門縣", X: "澎湖縣", Z: "連江縣",
 };
 
+// Only ingest transactions for the three target cities (n=1 matcher scope).
+// Records from other cities are skipped early without geocoding overhead.
+const TARGET_CITIES = new Set(["台北市", "新北市", "桃園市"]);
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface GeoJsonPoint {
@@ -280,6 +284,15 @@ function parseCsv(
   const city = cityFromFilename(filename);
   if (!city) {
     console.warn(`[parse] Cannot determine city from filename: ${filename}`);
+    return { features: [], skipped: 0 };
+  }
+
+  const normalizedCity = normalizeCityName(city);
+  if (!TARGET_CITIES.has(normalizedCity)) {
+    // skipped:0 is intentional — we skip the entire file before row-level parse.
+    // CITY_CODES values already use 台 (not 臺), so normalizeCityName is a defensive
+    // no-op here; normalizedCity === city in all current cases.
+    console.log(`[parse] ${filename}: city "${normalizedCity}" not in TARGET_CITIES — skipping`);
     return { features: [], skipped: 0 };
   }
 
