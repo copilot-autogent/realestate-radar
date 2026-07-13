@@ -288,7 +288,24 @@ export function computeWeightedScores(
   const normNewness  = minMaxNormalize(rawNewness, true);  // higher new-unit fraction → better
 
 
-  const totalWeight = weights.cost + weights.commute + weights.space + weights.newness + weights.facilities;
+  // Determine which dimensions have ANY non-null data across the cohort.
+  // Dimensions where ALL districts have null are excluded from the denominator
+  // (no data → dimension is neutral, not a penalty).
+  const hasDimData = {
+    cost:       normCost.some(v => v !== null),
+    commute:    normCommute.some(v => v !== null),
+    space:      normSpace.some(v => v !== null),
+    newness:    normNewness.some(v => v !== null),
+    facilities: normFacilities.some(v => v !== null),
+  };
+
+  // Effective denominator: sum of weights for dimensions that have at least some cohort data
+  const effectiveTotalWeight =
+    (hasDimData.cost       ? weights.cost       : 0) +
+    (hasDimData.commute    ? weights.commute     : 0) +
+    (hasDimData.space      ? weights.space       : 0) +
+    (hasDimData.newness    ? weights.newness     : 0) +
+    (hasDimData.facilities ? weights.facilities  : 0);
 
   const results: WeightedDistrictScore[] = districts.map((d, i) => {
     const scores: DimensionScores = {
@@ -300,7 +317,7 @@ export function computeWeightedScores(
     };
 
     let composite = 0;
-    if (totalWeight > 0) {
+    if (effectiveTotalWeight > 0) {
       let weightedSum = 0;
       const dims: [keyof DimensionScores, keyof PriorityWeights][] = [
         ["cost", "cost"],
@@ -312,13 +329,13 @@ export function computeWeightedScores(
       for (const [dim, wKey] of dims) {
         const s = scores[dim];
         const w = weights[wKey];
-        if (w > 0) {
-          // Null dimension treated as 0 to prevent missing-data districts from outranking complete ones.
-          // Only active (weight > 0) dimensions contribute to the total weight denominator.
+        // Include dimension if it has cohort data (weight > 0 AND some district has data).
+        // Null for this specific district → treated as 0 (district penalized if peers have data).
+        if (w > 0 && hasDimData[dim]) {
           weightedSum += w * (s ?? 0);
         }
       }
-      composite = Math.round(weightedSum / totalWeight);
+      composite = Math.round(weightedSum / effectiveTotalWeight);
     }
 
     return {

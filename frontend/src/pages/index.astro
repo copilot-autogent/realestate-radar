@@ -7376,7 +7376,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
       const v = parseInt(budgetInput.value, 10);
       if (!Number.isFinite(v) || v < 100) {
         budgetInput.value = "100";
-        if (budgetSlider) budgetSlider.value = "300";
+        if (budgetSlider) budgetSlider.value = "100";
       } else if (v > 9999) {
         budgetInput.value = "9999";
         if (budgetSlider) budgetSlider.value = "5000";
@@ -7576,14 +7576,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
       return (b.buyerTimingScore ?? -1) - (a.buyerTimingScore ?? -1);
     });
 
-    // Preserve wizard match ordering for highlighted rows
-    const orderMap = new Map<string, number>(matchOrder?.map((key, i) => [key, i]));
-    const matchRows = sortedRows.filter(r => matchDistricts.has(`${r.city}::${r.district}`))
-      .sort((a, b) => {
-        const ia = orderMap.get(`${a.city}::${a.district}`) ?? 999;
-        const ib = orderMap.get(`${b.city}::${b.district}`) ?? 999;
-        return ia - ib;
-      });
+    // Sort matched rows by weighted composite so changing weights re-ranks them live
+    const matchRows = sortedRows.filter(r => matchDistricts.has(`${r.city}::${r.district}`));
     const otherRows = sortedRows.filter(r => !matchDistricts.has(`${r.city}::${r.district}`));
 
     const MEDALS = ["🥇", "🥈", "🥉"];
