@@ -200,7 +200,7 @@ export function rawNewnessValue(features: any[], district: string, city: string)
   for (const f of features) {
     const p = f?.properties ?? f;
     if (p.district !== district) continue;
-    if (city && p.city !== city) continue;
+    if (p.city !== city) continue; // always filter by city to avoid cross-city same-name districts
 
     const raw = p.buildYear ?? p.buildingCompletionYear ?? null;
     if (raw === null) continue;
@@ -218,11 +218,11 @@ export function rawNewnessValue(features: any[], district: string, city: string)
       continue;
     }
 
-    if (n >= 100_000) {
-      year = Math.floor(n / 10_000) + 1911; // ROC YYMMDD or YYYMMDD
-    } else if (n >= 10_000_000) {
-      // 8-digit Gregorian YYYYMMDD (e.g. 20180512)
+    if (n >= 10_000_000) {
+      // 8-digit Gregorian YYYYMMDD (e.g. 20180512) — check BEFORE the 6-digit ROC branch
       year = Math.floor(n / 10_000);
+    } else if (n >= 100_000) {
+      year = Math.floor(n / 10_000) + 1911; // ROC YYMMDD or YYYMMDD
     } else if (n < 200) {
       year = n + 1911; // plain ROC year
     } else if (n >= 1900 && n <= 2200) {
@@ -275,18 +275,19 @@ export function computeWeightedScores(
   const rawNewness = districts.map((d) =>
     rawNewnessValue(allFeatures, d.district, d.city),
   );
-  // Facilities is already 0–100 normalized by facilitiesUtils, use directly
-  const rawFacilities = districts.map((d) => d.facilitiesScore);
+  // Facilities: pre-computed 0–100 by facilitiesUtils (absolute semantics preserved).
+  // Do NOT re-normalize within the cohort — that destroys the absolute scale and
+  // turns e.g. [80, 85, 90] into [0, 50, 100], making all districts appear equally spread.
+  // Use the raw 0–100 values directly for the "why" breakdown and composite.
+  const normFacilities: (number | null)[] = districts.map((d) => d.facilitiesScore);
 
-  // Step 2: Normalize each dimension to 0–100 across the cohort
-  const normCost = minMaxNormalize(rawCost, true);        // lower price → higher raw → higher score
-  const normCommute = minMaxNormalize(rawCommute, true);  // already directional (0–100 decay score)
-  const normSpace = minMaxNormalize(rawSpace, true);      // more 坪 → better
-  const normNewness = minMaxNormalize(rawNewness, true);  // newer fraction → better
-  // Facilities: already 0–100, but re-normalize within cohort for same scale
-  const normFacilities = minMaxNormalize(rawFacilities, true);
+  // Step 2: Normalize the other 4 dimensions to 0–100 across the cohort (min-max)
+  const normCost     = minMaxNormalize(rawCost, true);     // more transactions within budget → better
+  const normCommute  = minMaxNormalize(rawCommute, true);  // closer to anchor → better
+  const normSpace    = minMaxNormalize(rawSpace, true);    // more 坪 for the money → better
+  const normNewness  = minMaxNormalize(rawNewness, true);  // higher new-unit fraction → better
 
-  // Step 3: Compute weighted composites
+
   const totalWeight = weights.cost + weights.commute + weights.space + weights.newness + weights.facilities;
 
   const results: WeightedDistrictScore[] = districts.map((d, i) => {

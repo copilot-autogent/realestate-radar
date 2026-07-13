@@ -637,7 +637,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
             <div class="pw-control-group">
               <label class="pw-label" for="pw-budget-input">💰 購屋預算</label>
               <div class="pw-budget-wrap">
-                <input type="range" id="pw-budget-slider" class="pw-budget-slider" min="300" max="5000" step="100" value="1500" aria-label="預算滑桿" />
+                <input type="range" id="pw-budget-slider" class="pw-budget-slider" min="100" max="5000" step="100" value="1500" aria-label="預算滑桿" />
                 <div class="pw-budget-num-wrap">
                   <input type="number" id="pw-budget-input" class="pw-budget-number" min="100" max="9999" step="100" value="1500" aria-label="預算數值（萬）" />
                   <span class="pw-budget-unit">萬</span>
@@ -7372,7 +7372,8 @@ const showBuyersMarket = !isStale && dataYear !== null;
     });
     budgetInput?.addEventListener("blur", () => {
       // On blur, clamp the displayed value to match what scoring will use
-      const v = parseInt(budgetInput?.value ?? "", 10);
+      if (!budgetInput) return;
+      const v = parseInt(budgetInput.value, 10);
       if (!Number.isFinite(v) || v < 100) {
         budgetInput.value = "100";
         if (budgetSlider) budgetSlider.value = "300";
@@ -7537,6 +7538,14 @@ const showBuyersMarket = !isStale && dataYear !== null;
     const pwAnchor = readPWAnchor() ?? { lat: 25.0478, lng: 121.517 }; // default: Taipei Main
     const pwWeights = readPWWeights();
 
+    // Get the anchor hub label for distance/commute display in rows
+    const pwAnchorSelect = document.getElementById("pw-anchor-select") as HTMLSelectElement | null;
+    const pwAnchorId = pwAnchorSelect?.value ?? "taipei-main";
+    const pwAnchorHub = (TRANSIT_HUBS as any[]).find((h: any) => h.id === pwAnchorId)
+                     ?? (COMMUTE_HUBS as any[]).find((h: any) => h.id === pwAnchorId)
+                     ?? null;
+    const pwAnchorLabel: string = pwAnchorHub?.label ?? "台北車站 (MRT/TRA/HSR)";
+
     const districtsForScoring: DistrictForScoring[] = rows.map(r => ({
       district: r.district,
       city: r.city,
@@ -7584,17 +7593,18 @@ const showBuyersMarket = !isStale && dataYear !== null;
         ? `<span title="${MEDALS[matchIdx] ?? ""}">${MEDALS[matchIdx] ?? ""}</span>`
         : `<span class="sc-rank-num">${globalRank}</span>`;
 
-      // Look up anchor hub from wizard-saved label (COMMUTE_HUBS) or TRANSIT_HUBS
-      const hub = hubLabel
-        ? (COMMUTE_HUBS.find(h => h.label === hubLabel) ?? TRANSIT_HUBS.find(h => h.label === hubLabel) ?? null)
-        : null;
-      const distKm = hub
-        ? Math.round(haversineKm(row.lat, row.lng, hub.lat, hub.lng) * 10) / 10
+      // Use the PW anchor (from the tunable panel) for commute display.
+      // Falls back to wizard hubLabel for backwards compat when no PW anchor found.
+      const displayHub = pwAnchorHub
+        ?? (hubLabel ? (COMMUTE_HUBS.find(h => h.label === hubLabel) ?? TRANSIT_HUBS.find(h => h.label === hubLabel) ?? null) : null);
+      const displayHubLabel = pwAnchorHub ? pwAnchorLabel : (hubLabel ?? null);
+      const distKm = displayHub
+        ? Math.round(haversineKm(row.lat, row.lng, displayHub.lat, displayHub.lng) * 10) / 10
         : null;
 
       // Commute score from anchor (Phase 1: proximity proxy, #171)
-      const commuteScore = hub
-        ? computeAnchorCommuteScore(row.lat, row.lng, hub)
+      const commuteScore = displayHub
+        ? computeAnchorCommuteScore(row.lat, row.lng, displayHub)
         : null;
 
       const priceBadge = row.medianPriceWan !== null
@@ -7639,7 +7649,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
           }).join("")}
         </div>` : "";
 
-      const summary = buildSummary(row, hubLabel, distKm);
+      const summary = buildSummary(row, displayHubLabel ?? undefined, distKm);
 
       return `
         <div class="scorecard-row${isMatch ? " is-match" : ""}"
