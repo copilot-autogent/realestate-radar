@@ -7319,12 +7319,13 @@ const showBuyersMarket = !isStale && dataYear !== null;
     };
   }
 
-  /** Read the budget (萬) from the panel. */
+  /** Read the budget (萬) from the panel, clamped to [100, 9999]. */
   function readPWBudget(): number {
     const el = document.getElementById("pw-budget-input") as HTMLInputElement | null;
     if (!el) return 1500;
     const v = parseInt(el.value, 10);
-    return Number.isFinite(v) && v > 0 ? v : 1500;
+    if (!Number.isFinite(v) || v <= 0) return 1500;
+    return Math.max(100, Math.min(9999, v));
   }
 
   /** Read the commute anchor hub from the panel select. */
@@ -7368,6 +7369,17 @@ const showBuyersMarket = !isStale && dataYear !== null;
         budgetSlider.value = String(Math.min(v, 5000));
       }
       debouncedRenderWeighted();
+    });
+    budgetInput?.addEventListener("blur", () => {
+      // On blur, clamp the displayed value to match what scoring will use
+      const v = parseInt(budgetInput?.value ?? "", 10);
+      if (!Number.isFinite(v) || v < 100) {
+        budgetInput.value = "100";
+        if (budgetSlider) budgetSlider.value = "300";
+      } else if (v > 9999) {
+        budgetInput.value = "9999";
+        if (budgetSlider) budgetSlider.value = "5000";
+      }
     });
 
     // Anchor select

@@ -129,17 +129,43 @@ export function rawSpaceValue(medianPriceWan: number | null, budgetWan: number):
 }
 
 /**
- * Compute the raw "cost" (affordability) value: inverse of median unit price.
- * Lower price → higher affordability → higher raw value.
- * Returns null when median price is unavailable or budget ≤ 0.
+ * Compute the raw "cost" (affordability) value:
+ * **fraction of transactions in the district whose total price is ≤ budget**.
  *
- * We use `budgetWan / medianPriceWan` capped to 1 as the raw affordability ratio,
- * but normalization will handle scale — so we just return the inverse price directly.
+ * This is genuinely distinct from the "space" dimension (which measures
+ * median 坪 per 萬):
+ * - cost captures the price *distribution* (how many units are in reach), not just the median.
+ * - cost is strongly budget-dependent: raising the budget lifts more districts at different rates.
+ * - space measures efficiency at the median price point.
+ *
+ * Returns null when district has < 3 transactions with valid total prices.
  */
-export function rawCostValue(medianPriceWan: number | null): number | null {
-  if (medianPriceWan === null || medianPriceWan <= 0) return null;
-  // Lower price → better → return reciprocal so "higher is better" normalization works
-  return 1 / medianPriceWan;
+export function rawCostValue(
+  features: any[],
+  district: string,
+  city: string,
+  budgetWan: number,
+): number | null {
+  if (!features || features.length === 0 || budgetWan <= 0) return null;
+
+  const budgetNTD = budgetWan * 10_000; // convert 萬 → NT$
+  let total = 0;
+  let affordable = 0;
+
+  for (const f of features) {
+    const p = f?.properties ?? f;
+    if (p.district !== district) continue;
+    if (city && p.city !== city) continue;
+    const totalPrice: number | null = typeof p.totalPrice === "number" && p.totalPrice > 0
+      ? p.totalPrice
+      : null;
+    if (totalPrice === null) continue;
+    total++;
+    if (totalPrice <= budgetNTD) affordable++;
+  }
+
+  if (total < 3) return null; // insufficient data
+  return affordable / total; // 0–1 fraction, higher = more transactions within budget
 }
 
 /**
@@ -180,12 +206,27 @@ export function rawNewnessValue(features: any[], district: string, city: string)
     if (raw === null) continue;
 
     let year: number | null = null;
-    if (typeof raw === "number" && raw >= 100_000) {
-      year = Math.floor(raw / 10_000) + 1911; // ROC YYMMDD
-    } else if (typeof raw === "number" && raw < 200) {
-      year = raw + 1911; // plain ROC year
-    } else if (typeof raw === "number" && raw >= 1900 && raw <= 2200) {
-      year = raw; // Western year
+    let n: number;
+
+    if (typeof raw === "string") {
+      const s = raw.normalize("NFKC").trim();
+      if (!/^\d+$/.test(s)) continue;
+      n = parseInt(s, 10);
+    } else if (typeof raw === "number" && isFinite(raw) && Math.floor(raw) === raw) {
+      n = raw;
+    } else {
+      continue;
+    }
+
+    if (n >= 100_000) {
+      year = Math.floor(n / 10_000) + 1911; // ROC YYMMDD or YYYMMDD
+    } else if (n >= 10_000_000) {
+      // 8-digit Gregorian YYYYMMDD (e.g. 20180512)
+      year = Math.floor(n / 10_000);
+    } else if (n < 200) {
+      year = n + 1911; // plain ROC year
+    } else if (n >= 1900 && n <= 2200) {
+      year = n; // Western year
     }
 
     if (year === null || year < 1900 || year > refYear + 1) continue;
@@ -222,7 +263,9 @@ export function computeWeightedScores(
   if (districts.length === 0) return [];
 
   // Step 1: Extract raw values per dimension
-  const rawCost = districts.map((d) => rawCostValue(d.medianPriceWan));
+  const rawCost = districts.map((d) =>
+    rawCostValue(allFeatures, d.district, d.city, budgetWan),
+  );
   const rawCommute = districts.map((d) =>
     rawCommuteValue(d.lat, d.lng, anchor.lat, anchor.lng),
   );
@@ -258,7 +301,6 @@ export function computeWeightedScores(
     let composite = 0;
     if (totalWeight > 0) {
       let weightedSum = 0;
-      let usedWeight = 0;
       const dims: [keyof DimensionScores, keyof PriorityWeights][] = [
         ["cost", "cost"],
         ["commute", "commute"],
@@ -269,12 +311,13 @@ export function computeWeightedScores(
       for (const [dim, wKey] of dims) {
         const s = scores[dim];
         const w = weights[wKey];
-        if (s !== null && w > 0) {
-          weightedSum += w * s;
-          usedWeight += w;
+        if (w > 0) {
+          // Null dimension treated as 0 to prevent missing-data districts from outranking complete ones.
+          // Only active (weight > 0) dimensions contribute to the total weight denominator.
+          weightedSum += w * (s ?? 0);
         }
       }
-      composite = usedWeight > 0 ? Math.round(weightedSum / usedWeight) : 0;
+      composite = Math.round(weightedSum / totalWeight);
     }
 
     return {

@@ -71,18 +71,61 @@ describe("rawSpaceValue", () => {
 // ── rawCostValue ───────────────────────────────────────────────────────────────
 
 describe("rawCostValue", () => {
-  it("returns 1/price for valid input (lower price → higher cost value)", () => {
-    const cheap = rawCostValue(20)!;
-    const expensive = rawCostValue(80)!;
-    expect(cheap).toBeGreaterThan(expensive);
+  const refYear = new Date().getFullYear();
+  const makeFeature = (district: string, city: string, totalPrice: number) => ({
+    properties: { district, city, totalPrice },
   });
 
-  it("returns null when price is null", () => {
-    expect(rawCostValue(null)).toBeNull();
+  it("returns fraction of transactions within budget (all affordable)", () => {
+    const features = [
+      makeFeature("大安區", "台北市", 8_000_000),
+      makeFeature("大安區", "台北市", 9_000_000),
+      makeFeature("大安區", "台北市", 10_000_000),
+    ];
+    // budget = 1000萬 = 10,000,000 NT$
+    expect(rawCostValue(features, "大安區", "台北市", 1000)).toBe(1);
   });
 
-  it("returns null when price is 0", () => {
-    expect(rawCostValue(0)).toBeNull();
+  it("returns partial fraction when some transactions exceed budget", () => {
+    const features = [
+      makeFeature("大安區", "台北市", 8_000_000),
+      makeFeature("大安區", "台北市", 12_000_000),
+      makeFeature("大安區", "台北市", 15_000_000),
+    ];
+    // budget = 1000萬 = 10,000,000: only first transaction affordable
+    expect(rawCostValue(features, "大安區", "台北市", 1000)).toBeCloseTo(1/3);
+  });
+
+  it("returns null when fewer than 3 transactions", () => {
+    const features = [
+      makeFeature("大安區", "台北市", 5_000_000),
+      makeFeature("大安區", "台北市", 6_000_000),
+    ];
+    expect(rawCostValue(features, "大安區", "台北市", 1000)).toBeNull();
+  });
+
+  it("returns null for empty features", () => {
+    expect(rawCostValue([], "大安區", "台北市", 1000)).toBeNull();
+  });
+
+  it("returns null when budget is 0", () => {
+    const features = [
+      makeFeature("大安區", "台北市", 5_000_000),
+      makeFeature("大安區", "台北市", 6_000_000),
+      makeFeature("大安區", "台北市", 7_000_000),
+    ];
+    expect(rawCostValue(features, "大安區", "台北市", 0)).toBeNull();
+  });
+
+  it("higher budget means more transactions affordable", () => {
+    const features = [
+      makeFeature("板橋區", "新北市", 5_000_000),
+      makeFeature("板橋區", "新北市", 8_000_000),
+      makeFeature("板橋區", "新北市", 12_000_000),
+    ];
+    const lowBudget = rawCostValue(features, "板橋區", "新北市", 700)!;
+    const highBudget = rawCostValue(features, "板橋區", "新北市", 1500)!;
+    expect(highBudget).toBeGreaterThan(lowBudget);
   });
 });
 
@@ -200,10 +243,19 @@ describe("computeWeightedScores", () => {
     }
   });
 
-  it("setting cost weight to 10 and others to 0 ranks cheapest district first", () => {
+  it("setting cost weight to 10 and others to 0 ranks cheapest district first (most transactions within budget)", () => {
+    // Build features: 桃園區 has lower prices → more within budget
+    const features = [
+      // 桃園區 - cheap
+      ...Array(5).fill(null).map(() => ({ properties: { district: "桃園區", city: "桃園市", totalPrice: 5_000_000 } })),
+      // 大安區 - expensive
+      ...Array(5).fill(null).map(() => ({ properties: { district: "大安區", city: "台北市", totalPrice: 30_000_000 } })),
+      // 板橋區 - mid
+      ...Array(5).fill(null).map(() => ({ properties: { district: "板橋區", city: "新北市", totalPrice: 12_000_000 } })),
+    ];
     const costOnly: PriorityWeights = { cost: 10, commute: 0, space: 0, newness: 0, facilities: 0 };
-    const results = computeWeightedScores(districts, 1500, anchor, costOnly);
-    // 桃園區 has lowest price (20 萬/坪) so should rank first for cost
+    const results = computeWeightedScores(districts, 1500, anchor, costOnly, features);
+    // 桃園區 has all 5 transactions within 1500萬, should rank first for cost
     expect(results[0]!.district).toBe("桃園區");
   });
 
@@ -239,10 +291,9 @@ describe("computeWeightedScores", () => {
     }
   });
 
-  it("handles null medianPriceWan (cost and space dimensions are null)", () => {
+  it("handles null medianPriceWan (space dimension is null)", () => {
     const d = [makeDistrict("測試區", "台北市", 25.026, 121.543, null, 50)];
     const results = computeWeightedScores(d, 1500, anchor, DEFAULT_WEIGHTS);
-    expect(results[0]!.dimensions.cost).toBeNull();
     expect(results[0]!.dimensions.space).toBeNull();
   });
 });
