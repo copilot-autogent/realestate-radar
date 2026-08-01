@@ -1,111 +1,102 @@
 # 實價登錄雷達 (Real Price Radar)
 
-Taiwan real estate analytics powered by government-mandated transaction data (實價登錄).
+Real Price Radar answers one focused question:
 
-**🔗 Live Demo**: https://copilot-autogent.github.io/realestate-radar/
+> Given a buyer's budget, commute anchor, and priorities, which districts offer the best cost-quality tradeoff, and why?
 
-## What This Does
+**Live demo:** https://copilot-autogent.github.io/realestate-radar/
 
-- **Actual transaction prices** — not listing prices, what people actually paid
-- **Interactive map** — choropleth heatmap by price/坪, transaction dot layer (MapLibre GL JS)
-- **City & district filters** — all 6 major cities: 台北市, 新北市, 桃園市, 台中市, 台南市, 高雄市
-- **Unit price filter** — filter by 萬/坪 range
-- **Building type filter** — 住宅大樓, 華廈, 公寓, 透天厝, 套房
-- **Date range filter** — presets (近半年 / 近1年 / 近2年) + custom date inputs
-- **Address search** — keyword search across transaction addresses
-- **Stats panel** — match count, median and average price/坪 for current filter
-- **Price distribution histogram** — 10-bin unit price distribution chart
-- **District trend chart** — click any district to see quarterly median price trend
+## Product
 
-## Tech Stack
+This is a completed **n=1 district matcher** for the current target area:
+
+- **Coverage:** 台北市, 新北市, and 桃園市. The interface and district boundary data are intentionally limited to these three cities.
+- **Wizard-first flow:** the 首購族地區配對精靈 collects a total-budget tier, down-payment readiness, commute hub and time limit, then returns up to three ranked district matches.
+- **Ranked scorecard:** after matching, districts are ranked with user-adjustable weights and an explanation of each result.
+- **Five scoring dimensions:** affordability, commute convenience, purchasable space, building newness, and facilities.
+- **Map drill-down:** selecting a ranked district opens its transaction map, filters, boundary heatmap, and supporting district-level details.
+
+The product is in **maintenance-only posture**. The repository does not carry a feature roadmap or new feature commitments.
+
+## Tech stack
 
 | Layer | Technology |
-|-------|-----------|
+|-------|------------|
 | Backend | Node.js + TypeScript + Express |
 | Database | PostgreSQL + PostGIS |
 | Frontend | Astro + MapLibre GL JS |
-| Data Source | 內政部 plvr.land.moi.gov.tw open data |
+| Data source | 內政部 `plvr.land.moi.gov.tw` open data |
 
-## Demo Mode (GitHub Pages)
+## GitHub Pages demo and data scope
 
-The live demo runs fully in the browser — no backend required. A weekly CI job ([`.github/workflows/pipeline.yml`](.github/workflows/pipeline.yml)) downloads the latest 內政部 batch, imports it into PostGIS, and exports an updated `sample-transactions.json` that is then deployed to GitHub Pages. The data reflects the most recent publicly available 實價登錄 records.
+The live demo is a static Astro site and does not require the backend at runtime. It loads the latest committed `frontend/public/data/transactions.json`, together with the district boundaries and supporting JSON data under `frontend/public/data/`.
 
-For local development without a PostGIS connection, the frozen sample dataset is used as a fallback (see **Sample Data Fallback** below).
+The weekly [data pipeline workflow](.github/workflows/pipeline.yml) downloads the latest 內政部 sales batch, imports it into PostGIS, geocodes pending records, exports geocoded transactions to `frontend/public/data/transactions.json`, and commits changed data. The [Pages deployment workflow](.github/workflows/deploy.yml) builds and publishes the frontend when the relevant source or data changes.
 
-## Full Backend Mode (Local Dev)
+內政部 publishes transaction batches on the 1st, 11th, and 21st of each month. The pipeline runs weekly; the site displays the latest transaction date found in the committed JSON data.
 
-To run with real 內政部 data:
+## Local development
+
+Requirements: Node.js 20+ and Docker for the PostGIS-backed backend.
 
 ```bash
-# Start PostGIS
+# From the repository root
+npm ci
+
+# Run the frontend and backend together
+npm run dev
+```
+
+The static frontend can be developed without PostGIS because it reads the committed JSON data. To run the backend API and live data pipeline locally:
+
+```bash
+# From the repository root
 docker compose up -d db
+npm run dev -w backend
 
-# Backend
-cd backend && npm install && npm run dev
-
-# Frontend
-cd frontend && npm install && npm run dev
+# In another terminal
+npm run dev -w frontend
 ```
 
-### Data Pipeline
+The database defaults match `docker-compose.yml`: host `localhost`, port `5432`, database `realestate_radar`, user `radar`, and password `radar_dev`. Override them with `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` when using another PostGIS instance.
 
-Transaction data is published by 內政部 on the 1st, 11th, and 21st of each month. The CI pipeline runs weekly and keeps the GitHub Pages demo up-to-date automatically.
+## Data pipeline commands
+
+Run these from the repository root. The import and export steps require `DATA_SOURCE=live` as a safety guard.
 
 ```bash
-# Download latest batch + import + export static JSON (live mode)
-cd backend && DATA_SOURCE=live npm run pipeline:live
+# Download the current bulk ZIP and extract sales CSVs to data/downloads/
+npm run pipeline:download -w backend
+
+# Import downloaded CSVs, geocode pending records, and export transactions.json
+DATA_SOURCE=live npm run pipeline:live -w backend
 ```
 
-Individual steps:
+For individual live steps:
 
 ```bash
-# Download latest batch
-cd backend && npm run pipeline:download
-
-# Import to PostGIS (incremental — only new records)
-cd backend && DATA_SOURCE=live npm run pipeline:import
-
-# Geocode new records
-cd backend && npm run pipeline:geocode
-
-# Export geocoded records to frontend/public/data/sample-transactions.json
-cd backend && DATA_SOURCE=live npm run pipeline:export
+DATA_SOURCE=live npm run pipeline:import -w backend
+npm run pipeline:geocode -w backend
+DATA_SOURCE=live npm run pipeline:export -w backend
 ```
 
-### Sample Data Fallback
+`pipeline:live` performs download, incremental PostGIS import, geocoding, and static JSON export in that order. The generated download and geocode-cache files are ignored by Git. Do not run the import or export steps without `DATA_SOURCE=live`; for frontend-only work, use the committed `frontend/public/data/transactions.json` instead.
 
-The file `frontend/public/data/sample-transactions.json` is used by the static site. The CI pipeline keeps it fresh. For local development **without** a PostGIS connection, this file serves as the data source automatically — no `DATA_SOURCE` env var is needed.
+## Project structure
 
-The `pipeline:import` and `pipeline:export` scripts require `DATA_SOURCE=live`. Without it, `pipeline:import` exits with an error to prevent accidental CI misconfiguration. For local development **without** a PostGIS connection, use the static `frontend/public/data/sample-transactions.json` file directly — no pipeline setup needed.
-
-## Project Structure
-
-```
-├── backend/          # Express API + data pipeline
+```text
+├── backend/          # Express API, PostGIS schema, and data pipeline
 │   └── src/
 │       ├── api/      # REST endpoints
-│       ├── db/       # PostGIS schema + migrations
-│       └── pipeline/ # 實價登錄 CSV import
-├── frontend/         # Astro + MapLibre map
-│   └── src/
-│       ├── pages/    # Astro pages
-│       └── components/ # Map, search, filters
-├── scripts/          # Utility scripts
-└── docker-compose.yml
+│       ├── db/       # schema and migrations
+│       └── pipeline/ # 內政部 CSV import, geocoding, and export
+├── frontend/         # Astro + MapLibre application
+│   ├── src/pages/    # wizard, scorecard, and page orchestration
+│   ├── src/components/ # map and district detail views
+│   └── public/data/  # committed static data and district boundaries
+├── scripts/          # data and metadata utilities
+└── docker-compose.yml # local PostGIS service
 ```
-
-## Data Sources
-
-| Source | Data | Frequency |
-|--------|------|-----------|
-| 內政部 plvr.land.moi.gov.tw | Transaction records | Monthly (1st/11th/21st) |
-
-## Roadmap
-
-- [ ] Multi-city district choropleth (non-Taipei cities currently show grey)
-- [ ] Total price filter (總價篩選) — filter by buyer budget in 萬
-- [ ] Transaction list panel — sortable table of results below histogram
-- [x] Real 內政部 data pipeline integration — weekly CI cron (#81)
 
 ## License
 
