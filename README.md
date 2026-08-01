@@ -69,15 +69,15 @@ Run these from the repository root. The import and export steps require `DATA_SO
 npm run pipeline:download -w backend
 
 # Import downloaded CSVs, geocode pending records, and export transactions.json
-npm run pipeline:live -w backend
+DATA_SOURCE=live npm run pipeline:live -w backend
 ```
 
 For individual live steps:
 
 ```bash
-npm run pipeline:import -w backend
+DATA_SOURCE=live npm run pipeline:import -w backend
 npm run pipeline:geocode -w backend
-npm run pipeline:export -w backend
+DATA_SOURCE=live npm run pipeline:export -w backend
 ```
 
 `pipeline:live` performs download, incremental PostGIS import, geocoding, and static JSON export in that order. The generated download and geocode-cache files are ignored by Git. Do not run the import or export steps without `DATA_SOURCE=live`; for frontend-only work, use the committed `frontend/public/data/transactions.json` instead.
