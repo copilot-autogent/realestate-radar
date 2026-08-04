@@ -92,27 +92,27 @@ const showBuyersMarket = !isStale && dataYear !== null;
       <div class="filter-group">
         <label for="price-min">單價 (萬/坪)</label>
         <div class="range-inputs">
-          <input type="number" id="price-min" placeholder="最低" />
+          <input type="number" id="price-min" placeholder="最低" aria-label="最低單價 (萬/坪)" />
           <span>~</span>
-          <input type="number" id="price-max" placeholder="最高" />
+          <input type="number" id="price-max" placeholder="最高" aria-label="最高單價 (萬/坪)" />
         </div>
       </div>
 
       <div class="filter-group">
         <label for="total-price-min">總價 (萬)</label>
         <div class="range-inputs">
-          <input type="number" id="total-price-min" placeholder="最低" min="0" />
+          <input type="number" id="total-price-min" placeholder="最低" min="0" aria-label="最低總價 (萬)" />
           <span>~</span>
-          <input type="number" id="total-price-max" placeholder="最高" min="0" />
+          <input type="number" id="total-price-max" placeholder="最高" min="0" aria-label="最高總價 (萬)" />
         </div>
       </div>
 
       <div class="filter-group">
         <label for="area-min">坪數 (坪)</label>
         <div class="range-inputs">
-          <input type="number" id="area-min" placeholder="最低" min="0" step="0.1" />
+          <input type="number" id="area-min" placeholder="最低" min="0" step="0.1" aria-label="最低坪數 (坪)" />
           <span>~</span>
-          <input type="number" id="area-max" placeholder="最高" min="0" step="0.1" />
+          <input type="number" id="area-max" placeholder="最高" min="0" step="0.1" aria-label="最高坪數 (坪)" />
         </div>
       </div>
 
@@ -556,7 +556,7 @@ const showBuyersMarket = !isStale && dataYear !== null;
             <div class="transaction-list-header">
               <h3>交易紀錄</h3>
               <div class="transaction-list-sort">
-                <label>排序：</label>
+                <label for="sort-by">排序：</label>
                 <select id="sort-by">
                   <option value="date-desc">日期 (新→舊)</option>
                   <option value="date-asc">日期 (舊→新)</option>
